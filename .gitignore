@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+contracts/lib/
+
+# Build output
+dist/
+contracts/out/
+contracts/cache/
+contracts/forge-artifacts/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Foundry
+contracts/foundry.toml.bak
+
+# Frontend build
+frontend/dist/

@@ -1,0 +1,24 @@
+{
+  "profiles": {
+    "normal": {
+      "maxLossBps": 100,
+      "maxQuoteDeviationThreshold": 0.008,
+      "failureThreshold": 0.20,
+      "poolRiskThreshold": 70
+    },
+    "conservative": {
+      "maxLossBps": 50,
+      "maxQuoteDeviationThreshold": 0.003,
+      "failureThreshold": 0.10,
+      "poolRiskThreshold": 50
+    },
+    "aggressive": {
+      "maxLossBps": 200,
+      "maxQuoteDeviationThreshold": 0.015,
+      "failureThreshold": 0.35,
+      "poolRiskThreshold": 85
+    }
+  },
+  "defaultProfile": "normal",
+  "paused": false
+}
