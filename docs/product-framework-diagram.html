@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel — 产品框架图 v1.0</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: -apple-system, 'Inter', sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    padding: 40px;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; color: #1d1d1f; }
+  .subtitle { font-size: 13px; color: #86868b; margin-bottom: 6px; }
+  .slogan { display: inline-block; background: #e8e8ed; border: 1px solid #d2d2d7; border-radius: 6px; padding: 4px 12px; font-size: 12px; color: #1d1d1f; margin-bottom: 32px; }
+
+  .section-title { font-size: 15px; font-weight: 700; color: #1d1d1f; margin-bottom: 16px; padding-left: 12px; border-left: 3px solid #1d1d1f; }
+
+  .flow-row { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 36px; flex-wrap: wrap; }
+  .flow-step { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 90px; }
+  .flow-step .circle { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; position: relative; z-index: 2; background: #1d1d1f; }
+  .flow-step .label { font-size: 10px; font-weight: 600; color: #86868b; text-align: center; }
+  .flow-step .step-num { font-size: 9px; color: #b0b0b8; }
+  .flow-arrow { flex-shrink: 0; color: #b0b0b8; font-size: 16px; margin: 0 2px; margin-bottom: 22px; }
+
+  .main-card { background: white; border-radius: 12px; border: 1px solid #d2d2d7; padding: 24px; margin-bottom: 20px; }
+  .main-card .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #e8e8ed; }
+  .main-card .card-header .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: #1d1d1f; }
+  .main-card .card-header h2 { font-size: 14px; font-weight: 700; color: #1d1d1f; }
+  .main-card .badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; margin-left: auto; border: 1px solid #d2d2d7; color: #86868b; }
+  .badge-p0 { background: #f5f5f7; }
+  .badge-p1 { background: #f5f5f7; }
+  .badge-p2 { background: #f5f5f7; }
+  .main-card .desc { font-size: 12px; color: #86868b; margin-bottom: 14px; line-height: 1.5; }
+
+  .mock { background: #fafafa; border-radius: 8px; border: 1px solid #e8e8ed; padding: 16px; font-size: 12px; line-height: 1.6; color: #1d1d1f; }
+  .mock .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .mock .tag { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; border: 1px solid #d2d2d7; }
+  .tag-green { background: #f5f5f7; color: #1d1d1f; border-color: #1d1d1f; }
+  .tag-yellow { background: #f5f5f7; color: #1d1d1f; border-color: #1d1d1f; }
+  .tag-red { background: #f5f5f7; color: #1d1d1f; border-color: #1d1d1f; }
+  .tag-gray { background: #e8e8ed; color: #86868b; border-color: #d2d2d7; }
+  .tag-blue { background: #f5f5f7; color: #1d1d1f; border-color: #1d1d1f; }
+
+  .mock .divider { border-top: 1px solid #e8e8ed; margin: 10px 0; }
+  .mock .input-box { background: white; border: 1px solid #d2d2d7; border-radius: 6px; padding: 8px 12px; margin: 4px 0; display: flex; justify-content: space-between; }
+  .mock .btn { display: inline-block; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 12px; text-align: center; margin: 4px 0; border: 1px solid #1d1d1f; }
+  .btn-primary { background: #1d1d1f; color: white; border-color: #1d1d1f; }
+  .btn-outline { background: transparent; border: 1px solid #d2d2d7; color: #86868b; }
+  .btn-green { background: #1d1d1f; color: white; border-color: #1d1d1f; }
+  .btn-red { background: #1d1d1f; color: white; border-color: #1d1d1f; }
+
+  .mock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+  .mock .card-item { background: white; border: 1px solid #e8e8ed; border-radius: 8px; padding: 12px; }
+
+  .timeline-item { display: flex; gap: 10px; padding: 4px 0; font-size: 11px; }
+  .timeline-item .time { color: #86868b; min-width: 60px; }
+  .timeline-item .event { color: #1d1d1f; }
+  .timeline-item .status { font-weight: 600; }
+
+  .nav-mock { display: flex; align-items: center; padding: 8px 16px; background: white; border-bottom: 1px solid #e8e8ed; border-radius: 8px 8px 0 0; font-size: 11px; border: 1px solid #d2d2d7; }
+  .nav-mock .left { display: flex; align-items: center; gap: 8px; }
+  .nav-mock .center { margin: 0 auto; display: flex; gap: 4px; }
+  .nav-mock .right { display: flex; align-items: center; gap: 6px; }
+  .nav-tag { padding: 2px 8px; border-radius: 4px; background: #e8e8ed; color: #86868b; font-size: 10px; border: 1px solid #d2d2d7; }
+  .nav-tag.active { background: #1d1d1f; color: white; border-color: #1d1d1f; }
+
+  .flow-connector { text-align: center; color: #b0b0b8; font-size: 18px; padding: 6px 0; }
+
+  .legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; padding: 12px; background: white; border-radius: 8px; border: 1px solid #d2d2d7; margin-top: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #86868b; }
+  .legend-item .swatch { width: 10px; height: 10px; border-radius: 3px; background: #1d1d1f; }
+
+  .notes { background: #fafafa; border: 1px solid #d2d2d7; border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #86868b; margin-top: 24px; line-height: 1.6; }
+  .notes strong { color: #1d1d1f; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  @media (max-width: 768px) {
+    .two-col, .mock-grid { grid-template-columns: 1fr; }
+    body { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>🛡️ Sentinel for Safe Execution</h1>
+<p class="subtitle">给 DeFi 用户用的「交易安全助手」</p>
+<div class="slogan">Don't trade naked. 🛡️</div>
+
+<!-- User Flow -->
+<div class="section-title">用户流程图（User Flow）</div>
+<div class="flow-row">
+  <div class="flow-step"><div class="circle">🔗</div><div class="step-num">STEP 1</div><div class="label">连接钱包</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="circle">💱</div><div class="step-num">STEP 2</div><div class="label">输入交易<br>获取报价</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="circle">🛡️</div><div class="step-num">STEP 3</div><div class="label">Agent 评估<br>ALLOW/REJECT/FALLBACK</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="circle">✅</div><div class="step-num">STEP 4</div><div class="label">执行结果<br>+ 时间线</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="circle">🏅</div><div class="step-num">STEP 5</div><div class="label">NFT 成就<br>里程碑奖励</div></div>
+</div>
+
+<!-- Global Nav -->
+<div class="main-card" style="padding:12px 20px;">
+  <div style="display:flex;align-items:center;font-size:12px;">
+    <span style="font-weight:700;">🛡️ Sentinel</span>
+    <span style="margin-left:auto;background:#e8e8ed;padding:2px 10px;border-radius:4px;font-size:10px;color:#86868b;border:1px solid #d2d2d7;">Monad ▼</span>
+    <span style="margin-left:12px;background:#f5f5f7;padding:2px 10px;border-radius:4px;font-size:10px;color:#1d1d1f;border:1px solid #d2d2d7;">🔗 0xABC...123</span>
+  </div>
+</div>
+
+<!-- Page 0: Wallet Connect -->
+<div class="main-card">
+  <div class="card-header">
+    <div class="dot"></div>
+    <h2>P0 · 连接钱包（产品入口）</h2>
+    <span class="badge badge-p0">P0</span>
+  </div>
+  <p class="desc">用户进入产品的第一屏。连接钱包是使用产品的前提条件。</p>
+  <div class="two-col">
+    <div class="mock" style="text-align:center;">
+      <div style="font-size:28px;margin-bottom:6px;">🛡️</div>
+      <div style="font-size:16px;font-weight:700;">Sentinel</div>
+      <div style="font-size:11px;color:#86868b;margin:4px 0 12px;">Don't trade naked. 🛡️</div>
+      <div style="font-size:11px;color:#86868b;margin-bottom:16px;">给 DeFi 用户用的「交易安全助手」</div>
+      <div style="background:#1d1d1f;color:white;padding:10px 24px;border-radius:8px;display:inline-block;font-weight:600;font-size:13px;">🔗 连接钱包</div>
+      <div style="font-size:10px;color:#86868b;margin-top:10px;">支持 MetaMask · WalletConnect</div>
+      <div style="font-size:10px;color:#b0b0b8;margin-top:6px;">── 连接后自动进入仪表盘 ──</div>
+    </div>
+    <div class="mock">
+      <div style="font-weight:600;margin-bottom:8px;">交互说明：</div>
+      <div style="font-size:11px;color:#86868b;">
+        • 未连接时看到 Slogan + 产品介绍 + 连接按钮<br>
+        • 点击连接钱包 → 弹出钱包选择<br>
+        • 连接成功后自动跳转仪表盘<br>
+        • 未连接状态下禁用所有交易功能<br>
+        • 显示项目品牌形象
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="flow-connector">↓ 连接后 →</div>
+
+<!-- Page 1: Dashboard -->
+<div class="main-card">
+  <div class="card-header">
+    <div class="dot"></div>
+    <h2>P1 · 仪表盘总览（Dashboard）</h2>
+    <span class="badge badge-p1">P1</span>
+  </div>
+  <p class="desc">用户连接钱包后看到的第一屏。展示多链安全全景：整体评分、链状态卡片、最近告警。</p>
+  <div class="two-col">
+  <div class="mock">
+    <div style="font-weight:700;margin-bottom:8px;">📊 安全总览</div>
+    <div style="text-align:center;padding:8px 0;">
+      <div style="font-size:28px;font-weight:800;">85</div>
+      <div style="font-size:11px;color:#86868b;">/ 100 · 整体安全</div>
+      <div style="font-size:10px;color:#86868b;margin-top:4px;">监控 5 条链 · 2 条异常 · 3 条告警</div>
+    </div>
+    <div class="divider"></div>
+    <div><div style="font-weight:600;">Chain A</div><div>92 · 0 异常</div>
+    <div style="font-weight:600;">Chain B</div><div>65 · 2 异常</div>
+    <div style="font-weight:600;">Chain C</div><div>35 · 5 异常</div></div>
+    <div class="divider"></div>
+    <div style="font-size:11px;color:#86868b;">⏰ 2m ago  Chain B 报价偏离 2.3%</div>
+    <div style="font-size:11px;color:#86868b;">⏰ 15m ago Chain C 历史失败率 42%</div>
+  </div>
+  <div class="mock">
+    <div style="font-weight:600;margin-bottom:8px;">包含模块：</div>
+    <div style="font-size:11px;color:#86868b;">
+      • 安全总评分卡片（整体健康度）<br>
+      • 多链状态卡片（每条链评分+异常数）<br>
+      • 最近告警列表（时间+类型）<br>
+      • 快速入口「💱 发起交易检测」
+    </div>
+    </div>
+  </div>
+</div>
+
+<div class="flow-connector">↓</div>
+
+<!-- Page 2: Core flow -->
+<div class="main-card">
+  <div class="card-header">
+    <div class="dot"></div>
+    <h2>P2 · 交易安全检测（核心流程）</h2>
+    <span class="badge badge-p0">P0</span>
+  </div>
+  <p class="desc">核心功能页。用户输入交易参数 → 获取报价 → Agent 评估路径风险 → 展示 ALLOW / REJECT / FALLBACK 决策。</p>
+  
+  <div class="two-col">
+    <div class="mock">
+      <div style="font-weight:700;margin-bottom:8px;">💱 交易输入</div>
+      <div class="input-box"><span>From:</span> <span style="font-weight:600;">USDT ▼  1000</span></div>
+      <div class="input-box"><span>To:</span> <span style="font-weight:600;">USDC ▼</span></div>
+      <div style="margin:8px 0;"><span class="btn btn-primary" style="width:100%;text-align:center;">获取报价</span></div>
+      <div class="divider"></div>
+      <div style="font-weight:700;margin-bottom:6px;">候选路径对比</div>
+      
+      <div class="card-item" style="border-color:#1d1d1f;margin-bottom:6px;">
+        <div class="row"><span class="tag tag-green">✅ ALLOW</span> <span style="font-weight:600;">Route A</span> <span>评分 15</span></div>
+        <div style="font-size:10px;color:#86868b;">1000 USDT → 999 USDC</div>
+        <div style="font-size:10px;">低于阈值，安全可执行</div>
+      </div>
+      
+      <div class="card-item" style="border-color:#1d1d1f;margin-bottom:6px;">
+        <div class="row"><span class="tag tag-red">❌ REJECT</span> <span style="font-weight:600;">Route B</span> <span>评分 85</span></div>
+        <div style="font-size:10px;color:#86868b;">1000 USDT → 800 USDC</div>
+        <div style="font-size:10px;">报价偏离 + 历史失败率高</div>
+        <div style="font-size:10px;color:#86868b;">↪️ 建议切换到 Route A</div>
+      </div>
+      
+      <div class="card-item" style="border-color:#1d1d1f;">
+        <div class="row"><span class="tag tag-yellow">⚠️ FALLBACK</span> <span style="font-weight:600;">Route C</span> <span>评分 75</span></div>
+        <div style="font-size:10px;color:#86868b;">1000 USDT → 960 USDC</div>
+        <div style="font-size:10px;">自动切换到安全路径</div>
+      </div>
+    </div>
+    
+    <div class="mock">
+      <div style="font-weight:600;margin-bottom:8px;">交互说明：</div>
+      <div style="font-size:11px;color:#86868b;">
+        • 输入 From/To/Amount → 点击获取报价<br>
+        • 展示多条候选 Route 对比<br>
+        • 每条 Route 显示：评分 + 预期输出 + 风险标签<br>
+        • Agent 决策：ALLOW / REJECT / FALLBACK<br>
+        • 被拒路径显示原因 + 建议切换
+      </div>
+      <div class="divider"></div>
+      <div style="font-weight:600;margin-bottom:6px;">🔄 Demo 切换：</div>
+      <div class="row">
+        <span class="btn btn-green" style="font-size:10px;padding:4px 12px;">🛡️ Safe Mode</span>
+        <span class="btn btn-outline" style="font-size:10px;padding:4px 12px;">❌ Unsafe Mode</span>
+      </div>
+      <div style="font-size:10px;color:#86868b;margin-top:4px;">Safe = 走 Agent 评估 ｜ Unsafe = 跳过直接执行</div>
+    </div>
+  </div>
+</div>
+
+<div class="flow-connector">↓</div>
+
+<!-- Page 3: Result -->
+<div class="main-card">
+  <div class="card-header">
+    <div class="dot"></div>
+    <h2>P3 · 执行结果 & 事件时间线</h2>
+    <span class="badge badge-p0">P0</span>
+  </div>
+  <p class="desc">交易执行后的反馈页面。展示执行状态、Agent 决策详情、节省对比、事件时间线。</p>
+  <div class="two-col">
+    <div class="mock">
+      <div style="font-weight:700;margin-bottom:6px;">✅ 执行结果</div>
+      <div style="font-size:11px;">EXECUTION RESULT</div>
+      <div class="card-item" style="margin:6px 0;">
+        <div style="font-size:11px;">Executed on-chain (mock)</div>
+        <div style="font-size:10px;color:#86868b;">Tx: 0xabc...123</div>
+        <div style="font-size:10px;color:#86868b;">Loss: 10bps</div>
+        <div style="font-size:10px;">Agent Decision: ALLOW</div>
+        <div style="font-size:10px;color:#86868b;">Risk Score: 0/100</div>
+      </div>
+      <div class="divider"></div>
+      <div style="font-weight:600;font-size:11px;">💰 节省对比</div>
+      <div style="font-size:11px;">有 Agent → 1002 MON ✅</div>
+      <div style="font-size:11px;color:#86868b;">无 Agent → 978 MON ❌</div>
+      <div style="font-size:12px;font-weight:700;">节省 +2.4% 🎉</div>
+    </div>
+    <div class="mock">
+      <div style="font-weight:700;margin-bottom:8px;">📋 事件时间线</div>
+      <div class="timeline-item"><span class="time">15:00:00</span><span class="event">📋 RouteEvaluated</span><span class="status">route-a loaded</span></div>
+      <div class="timeline-item"><span class="time">15:00:01</span><span class="event">📋 DecisionMade</span><span class="status">ALLOW</span></div>
+      <div class="timeline-item"><span class="time">15:00:03</span><span class="event">📋 ExecutionSuccess</span><span class="status">✅ on-chain</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="flow-connector">↓</div>
+
+<!-- Page 4: NFT -->
+<div class="main-card">
+  <div class="card-header">
+    <div class="dot"></div>
+    <h2>P4 · 用户成就 & NFT 勋章</h2>
+    <span class="badge badge-p2">P2</span>
+  </div>
+  <p class="desc">展示用户安全交易量累计成就，里程碑达标后解锁 NFT 徽章。</p>
+  <div class="two-col">
+    <div class="mock">
+      <div style="font-weight:700;margin-bottom:6px;">🏅 安全探员</div>
+      <div style="font-size:14px;font-weight:700;">安全交易：12 笔</div>
+      <div class="divider"></div>
+      <div class="row"><span>🥉 铜牌探员</span><span style="font-size:10px;color:#86868b;">10 笔</span><span class="tag tag-green">已解锁 ✅</span></div>
+      <div style="height:6px;background:#e8e8ed;border-radius:4px;margin:4px 0;"><div style="height:6px;background:#1d1d1f;border-radius:4px;width:100%;"></div></div>
+      <div class="row"><span>🥈 银牌探员</span><span style="font-size:10px;color:#86868b;">50 笔</span><span class="tag tag-yellow">12/50</span></div>
+      <div style="height:6px;background:#e8e8ed;border-radius:4px;margin:4px 0;"><div style="height:6px;background:#1d1d1f;border-radius:4px;width:24%;"></div></div>
+      <div class="row"><span>🥇 金牌探员</span><span style="font-size:10px;color:#86868b;">100 笔</span><span class="tag tag-gray">🔒 锁定</span></div>
+      <div class="row"><span>💎 钻石探员</span><span style="font-size:10px;color:#86868b;">500 笔</span><span class="tag tag-gray">🔒 锁定</span></div>
+    </div>
+    <div class="mock">
+      <div style="font-weight:600;margin-bottom:6px;">NFT 详情弹窗</div>
+      <div class="card-item">
+        <div style="font-size:18px;text-align:center;">🥉</div>
+        <div style="font-weight:600;text-align:center;">铜牌探员 NFT</div>
+        <div class="divider"></div>
+        <div style="font-size:10px;color:#86868b;">安全交易次数达标：10 笔</div>
+        <div style="font-size:10px;color:#86868b;">持有者：0xABC...123</div>
+        <div style="font-size:10px;">状态：已 mint 上链 ✅</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Priority -->
+<div class="section-title">MVP 功能优先级</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+  <div class="main-card" style="padding:16px;">
+    <div style="font-weight:700;margin-bottom:8px;">🥇 P0 · 核心闭环</div>
+    <div style="font-size:11px;color:#86868b;">
+      ✅ 交易输入 + 获取报价<br>
+      ✅ 候选路径对比展示<br>
+      ✅ Agent 决策（ALLOW/REJECT/FALLBACK）<br>
+      ✅ 执行结果 + 事件时间线<br>
+      ✅ Safe / Unsafe Mode 切换
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div class="main-card" style="padding:16px;">
+      <div style="font-weight:700;margin-bottom:8px;">🥈 P1</div>
+      <div style="font-size:11px;color:#86868b;">
+        仪表盘总览<br>
+        钱包连接
+      </div>
+    </div>
+    <div class="main-card" style="padding:16px;">
+      <div style="font-weight:700;margin-bottom:8px;">🥉 P2</div>
+      <div style="font-size:11px;color:#86868b;">
+        NFT 勋章墙<br>
+        NFT 详情弹窗
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status -->
+<div class="section-title">状态系统</div>
+<div class="legend">
+  <div class="legend-item"><div class="swatch"></div> 🟢 安全 / ALLOW</div>
+  <div class="legend-item"><div class="swatch"></div> 🟡 警告 / FALLBACK</div>
+  <div class="legend-item"><div class="swatch"></div> 🔴 高风险 / REJECT</div>
+  <div class="legend-item"><div class="swatch"></div> 🔵 进行中</div>
+  <div class="legend-item"><div class="swatch"></div> ⚪ 加载 / 未知</div>
+</div>
+
+<!-- Notes -->
+<div class="notes">
+  <strong>📌 NFT 成就系统：</strong> 交易量里程碑奖励（不是链上身份绑定）。<br>
+  🥉 铜牌 10笔 → 🥈 银牌 50笔 → 🥇 金牌 100笔 → 💎 钻石 500笔<br>
+  P2 优先级，核心闭环完成后开发。<br><br>
+  <strong>📌 Demo 演示：</strong> 对照 Safe Mode vs Unsafe Mode，展示 Agent 价值。<br>
+  <strong>📌 Slogan：</strong> Don't trade naked. 🛡️
+</div>
+
+</div>
+
+</body>
+</html>
