@@ -8,7 +8,7 @@ import executeRouter from "./routes/execute.js";
 import eventsRouter from "./routes/events.js";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 8088;
+const PORT = Number(process.env.PORT) || 8080;
 
 // Middleware
 app.use(cors());
