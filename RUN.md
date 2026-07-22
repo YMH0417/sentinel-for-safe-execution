@@ -1,87 +1,92 @@
-# Sentinel for Safe Execution — 快速启动指南
+# Sentinel for Safe Execution — 启动指南
 
 > 环境：Windows + Git Bash (MINGW64)
 > Node.js v24.15 + Foundry v1.7.1
 
-## 启动顺序（3 步）
+## 环境要求
+
+- Node.js >= 18
+- Foundry (forge, anvil, cast)
+- npm
+
+## 一键启动（3 个终端）
+
+### 终端 1 — Anvil 本地链
 
 ```bash
 cd e:/sentinel-for-safe-execution
-```
-
-### 1. 启动本地链（Anvil）
-
-```bash
 export PATH="$HOME/.foundry/bin:$PATH"
 cd contracts
 anvil
 ```
 
-保持这个终端窗口运行。Anvil 默认监听 `127.0.0.1:8545`。
+> 监听 `127.0.0.1:8545`，保持运行。
 
-### 2. 启动后端 API
-
-打开**第二个**终端：
+### 终端 2 — 后端 API
 
 ```bash
 cd e:/sentinel-for-safe-execution/backend
 npm run dev
 ```
 
-后端监听 `127.0.0.1:8080`，提供 4 个 API：
-- `GET  /api/health` — 健康检查
-- `GET  /api/quote?tokenIn=USDT&tokenOut=USDC&amount=1000` — 获取候选路由
-- `POST /api/evaluate` — Agent 风险评估
-- `POST /api/execute` — 链上执行
-- `GET  /api/events` — 查询事件日志
+> 监听 `127.0.0.1:8080`
 
-### 3. 启动前端 Demo
-
-打开**第三个**终端：
+### 终端 3 — 前端 Demo
 
 ```bash
 cd e:/sentinel-for-safe-execution/frontend
 npm run dev
 ```
 
-前端监听 `127.0.0.1:8081`，通过 Vite proxy 自动转发 `/api/*` 到后端。
+> 监听 `127.0.0.1:8081`，自动代理 `/api` 到后端
 
 ## 验证
 
-三个终端都正常后：
+### 全链路测试
 
 ```bash
-# 后端健康检查
+# Health check
 curl http://127.0.0.1:8080/api/health
-# → {"status":"ok","service":"sentinel-backend","version":"0.1.0"}
 
-# 前端代理测试
-curl http://127.0.0.1:8081/api/health
-# → 同上（通过 Vite proxy 转发）
-
-# 测试三条 route 决策
-curl -X POST http://127.0.0.1:8080/api/evaluate -H "Content-Type: application/json" -d '{"routeId":"route-a"}'
+# 三条 route 的决策
+curl -X POST http://127.0.0.1:8080/api/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"routeId":"route-a"}'
 # → ALLOW (riskScore: 0)
 
-curl -X POST http://127.0.0.1:8080/api/evaluate -H "Content-Type: application/json" -d '{"routeId":"route-b"}'
+curl -X POST http://127.0.0.1:8080/api/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"routeId":"route-b"}'
 # → REJECT (riskScore: 93)
 
-curl -X POST http://127.0.0.1:8080/api/evaluate -H "Content-Type: application/json" -d '{"routeId":"route-c"}'
+curl -X POST http://127.0.0.1:8080/api/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"routeId":"route-c"}'
 # → FALLBACK_TO_SAFE_ROUTE (riskScore: 55)
+
+# 执行
+curl -X POST http://127.0.0.1:8080/api/execute \
+  -H "Content-Type: application/json" \
+  -d '{"routeId":"route-a","maxLossBps":100,"deadline":1721660000}'
+# → {"success":true,"event":{...}}
 ```
 
-浏览器访问 http://127.0.0.1:8081 打开 Demo 页面。
+### 前端 Demo
+
+浏览器访问 http://127.0.0.1:8081
 
 ## 合约测试
 
 ```bash
 cd e:/sentinel-for-safe-execution/contracts
 export PATH="$HOME/.foundry/bin:$PATH"
-forge build    # 编译
-forge test     # 17 tests pass
+forge build
+forge test
 ```
 
-## 部署合约到 Anvil（可选，演示用）
+> 17 tests pass (4 safety + 8 normal + 3 rejection + 2 fuzz)
+
+## 部署合约到 Anvil
 
 ```bash
 cd e:/sentinel-for-safe-execution/contracts
@@ -91,15 +96,21 @@ forge script script/DeployVaultExecution.s.sol \
   --broadcast --slow
 ```
 
-合约地址会打印在日志中，后端 `vaultService.ts` 可替换为真实 cast 调用。
+## 生产构建
+
+```bash
+cd e:/sentinel-for-safe-execution/backend
+npm run build
+node dist/index.js
+```
 
 ## 端口说明
 
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| Anvil | 8545 | 本地 Ethereum 兼容链 |
-| Backend | 8080 | Express API 服务 |
-| Frontend | 8081 | Vite 开发服务器 |
+| 服务 | 端口 |
+|------|------|
+| Anvil | 8545 |
+| Backend | 8080 |
+| Frontend | 8081 |
 
 > ⚠️ 注意：Windows 上 3000-3005 端口被系统阻止（EACCES），
 > 所以默认使用 8080/8081。如需用其他端口，修改对应配置即可。
