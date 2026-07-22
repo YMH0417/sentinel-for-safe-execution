@@ -14,7 +14,7 @@
 ```
 project/
 ├── frontend/          ← React + Vite Demo App（端口 3000）
-├── backend/           ← Express Orchestration Service（端口 3001）
+├── backend/           ← Express Orchestration Service（端口 8088）
 ├── contracts/         ← Foundry VaultExecution 合约（anvil 本地链）
 ├── shared/            ← 全队共享类型 & 数据
 │   ├── types/         ← Route / Decision / Event 类型定义
@@ -43,7 +43,7 @@ forge script script/DeployVaultExecution.s.sol --rpc-url http://127.0.0.1:8545 -
 ```bash
 cd backend
 npm install
-npm run dev         # → http://localhost:3001
+npm run dev         # → http://localhost:8088
 ```
 
 **API 端点：**

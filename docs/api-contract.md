@@ -3,7 +3,7 @@
 ## Base URL
 
 ```
-Backend:  http://localhost:3001/api
+Backend:  http://localhost:8088/api
 Frontend: http://localhost:3000/api/*  (proxied via Vite)
 ```
 
