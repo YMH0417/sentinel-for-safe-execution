@@ -1,3 +1,4 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useState } from "react";
 import { InputPanel } from "./components/InputPanel";
 import { RouteList } from "./components/RouteList";
@@ -5,24 +6,55 @@ import { SafetyPanel } from "./components/SafetyPanel";
 import { ResultPanel } from "./components/ResultPanel";
 import { Timeline } from "./components/Timeline";
 import { SafeUnsafeToggle } from "./components/SafeUnsafeToggle";
-import type { Route, Decision, Event } from "./types";
+import { LandingPage } from "./components/LandingPage";
+import { ToastProvider } from "./components/Toast";
+import { AuthRoute } from "./components/AuthRoute";
+import { HeaderAvatar } from "./components/HeaderAvatar";
+import { WalletProvider, useWallet } from "./contexts/WalletContext";
+import type { Route as RouteType, Decision, Event } from "./types";
 
 const API_BASE = "/api";
 
 export default function App() {
+  return (
+    <WalletProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Landing page — public */}
+            <Route path="/" element={<LandingPage />} />
+
+            {/* Dashboard — protected by AuthRoute */}
+            <Route
+              path="/dashboard"
+              element={
+                <AuthRoute>
+                  <MainApp />
+                </AuthRoute>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
+    </WalletProvider>
+  );
+}
+
+function MainApp() {
   const [safeMode, setSafeMode] = useState(true);
   const [tokenIn, setTokenIn] = useState("USDT");
   const [tokenOut, setTokenOut] = useState("USDC");
   const [amount, setAmount] = useState("1000");
-  const [routes, setRoutes] = useState<Route[]>([]);
+  const [routes, setRoutes] = useState<RouteType[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<string>("route-a");
   const [decision, setDecision] = useState<Decision | null>(null);
   const [resultEvent, setResultEvent] = useState<Event | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const { account } = useWallet();
 
-  // 加载 routes
+  // Load routes
   const loadRoutes = async () => {
     setLoading("Loading routes...");
     try {
@@ -37,7 +69,7 @@ export default function App() {
     setLoading("");
   };
 
-  // 评估 route
+  // Evaluate route
   const evaluateRoute = async () => {
     if (!selectedRoute) return;
     setLoading("Evaluating route with Safety Agent...");
@@ -55,7 +87,7 @@ export default function App() {
     setLoading("");
   };
 
-  // 执行 route
+  // Execute route
   const executeRoute = async () => {
     if (!decision) return;
     setLoading("Executing route on-chain...");
@@ -75,7 +107,6 @@ export default function App() {
       const data = await res.json();
       setResultEvent(data.event);
 
-      // 构建完整事件流
       const newEvents: Event[] = [
         {
           id: "1",
@@ -111,7 +142,7 @@ export default function App() {
     setLoading("");
   };
 
-  // 完整链路（Safe Mode）
+  // Full flow (Safe Mode)
   const runFullFlow = async () => {
     setLoading("Running full flow...");
     setError("");
@@ -120,7 +151,6 @@ export default function App() {
     await evaluateRoute();
     await new Promise(r => setTimeout(r, 300));
     if (decision?.decision === "REJECT" && safeMode) {
-      // 切换到 safe route
       const safeRoute = routes.find(r => r.routeId === "route-a");
       if (safeRoute) setSelectedRoute("route-a");
       await evaluateRoute();
@@ -131,6 +161,9 @@ export default function App() {
     }
     setLoading("");
   };
+
+  // Shorten address for display
+  const shortAddr = account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "";
 
   return (
     <div>
@@ -144,8 +177,24 @@ export default function App() {
             Execution Safety MVP — Week 3 Demo
           </p>
         </div>
-        <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />
+          {account && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#8b949e", fontFamily: "monospace" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#3fb950" }} />
+              {shortAddr}
+              <HeaderAvatar />
+            </div>
+          )}
+        </div>
       </header>
+
+      {/* Account info panel */}
+      {account && (
+        <div style={{ marginBottom: 20, padding: "10px 16px", background: "#2386361a", border: "1px solid #3fb95044", borderRadius: 8, fontSize: 13, color: "#3fb950", fontFamily: "monospace" }}>
+          Connected wallet: {account}
+        </div>
+      )}
 
       {/* Input */}
       <InputPanel
@@ -161,17 +210,13 @@ export default function App() {
 
       {routes.length > 0 && (
         <>
-          {/* Route List */}
           <RouteList
             routes={routes}
             selected={selectedRoute}
             onSelect={setSelectedRoute}
           />
-
-          {/* Safety Panel */}
           <SafetyPanel decision={decision} />
 
-          {/* Actions */}
           <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 24 }}>
             <button
               onClick={runFullFlow}
@@ -187,10 +232,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Result */}
           {resultEvent && <ResultPanel event={resultEvent} decision={decision} />}
-
-          {/* Timeline */}
           {events.length > 0 && <Timeline events={events} />}
         </>
       )}

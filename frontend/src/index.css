@@ -1,4 +1,3 @@
-/* Sentinel for Safe Execution — 全局样式 */
 * {
   margin: 0;
   padding: 0;
@@ -13,12 +12,12 @@ body {
 }
 
 #root {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
 }
 
-/* Status colors */
 .status-allow {
   color: #3fb950;
   border-color: #3fb950;
