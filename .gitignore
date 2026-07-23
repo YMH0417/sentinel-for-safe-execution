@@ -30,3 +30,6 @@ contracts/foundry.toml.bak
 
 # Frontend build
 frontend/dist/
+
+# Temporary / working files
+tmp/

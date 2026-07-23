@@ -20,21 +20,21 @@ export function createMockDecision(routeId: string, decisionType: DecisionType):
   const decisions: Record<DecisionType, Omit<Decision, "routeId" | "fallbackRouteId">> = {
     ALLOW: {
       decision: "ALLOW",
-      riskScore: 20,
+      riskScore: 0,
       reason: "All risk metrics within acceptable thresholds. Route is safe to execute.",
       flags: [],
     },
     REJECT: {
       decision: "REJECT",
-      riskScore: 84,
-      reason: "Quote deviation and failure risk exceed configured safety policy.",
-      flags: ["quote_deviation", "failure_risk"],
+      riskScore: 95,
+      reason: "Quote deviation (8%), failure rate (45%), and pool risk (90) all exceed safety thresholds. SDA bridge delay detected.",
+      flags: ["quote_deviation", "failure_risk", "pool_risk"],
     },
     FALLBACK_TO_SAFE_ROUTE: {
       decision: "FALLBACK_TO_SAFE_ROUTE",
-      riskScore: 55,
-      reason: "Moderate risk detected. Fallback to safer route available.",
-      flags: ["moderate_quote_deviation"],
+      riskScore: 60,
+      reason: "Moderate risk detected: quote deviation 4%, failure rate 25%, pool risk 90. Fallback to safer route available.",
+      flags: ["quote_deviation", "failure_risk", "pool_risk"],
     },
   };
 

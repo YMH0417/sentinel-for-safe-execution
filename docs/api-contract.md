@@ -25,11 +25,11 @@ GET /api/quote?tokenIn=USDT&tokenOut=USDC&amount=1000
   "routes": [
     {
       "routeId": "route-a",
-      "label": "Safe Pool Route",
+      "label": "Healthy SIA Route (Base↔Arbitrum)",
       "tokenIn": "USDT",
       "tokenOut": "USDC",
       "amountIn": 1000,
-      "quotedOut": 999,
+      "quotedOut": 998,
       "expectedOut": 1000,
       "poolRiskScore": 15,
       "historicalFailureRate": 0.02,
@@ -60,8 +60,8 @@ Content-Type: application/json
 ```json
 {
   "decision": "REJECT",
-  "riskScore": 84,
-  "reason": "Risk score 84/100 exceeds 70 threshold. Flags: [quote_deviation, failure_risk, pool_risk]. Issues: quote deviation 20.0%; failure rate 42%; pool risk score 85",
+  "riskScore": 95,
+  "reason": "Risk score 95/100 exceeds 70 threshold. Flags: [quote_deviation, failure_risk, pool_risk]. Issues: quote deviation 8.0%; failure rate 45%; pool risk score 90",
   "routeId": "route-b",
   "fallbackRouteId": "route-a",
   "flags": ["quote_deviation", "failure_risk", "pool_risk"]

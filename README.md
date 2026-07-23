@@ -62,11 +62,11 @@ curl -X POST http://127.0.0.1:8080/api/evaluate \
 
 curl -X POST http://127.0.0.1:8080/api/evaluate \
   -H "Content-Type: application/json" -d '{"routeId":"route-b"}'
-# → REJECT (riskScore: 93)
+# → REJECT (riskScore: 95)
 
 curl -X POST http://127.0.0.1:8080/api/evaluate \
   -H "Content-Type: application/json" -d '{"routeId":"route-c"}'
-# → FALLBACK_TO_SAFE_ROUTE (riskScore: 55)
+# → FALLBACK_TO_SAFE_ROUTE (riskScore: 60)
 
 # 执行
 curl -X POST http://127.0.0.1:8080/api/execute \
@@ -116,9 +116,9 @@ npm run build
 
 | Route | 预期 Decision | 说明 |
 |-------|-------------|------|
-| route-a | ALLOW | 低风险，报价接近预期 |
-| route-b | REJECT | 高风险，报价偏差大，失败率高 |
-| route-c | FALLBACK_TO_SAFE_ROUTE | 中等风险，有 fallback |
+| route-a | ALLOW | 低风险，报价接近预期（SIA 健康场景） |
+| route-b | REJECT | 高风险，报价偏差大，失败率高（SDA 桥接延迟场景） |
+| route-c | FALLBACK_TO_SAFE_ROUTE | 中等风险，有 fallback（Sandwich/集中化预警场景） |
 
 ## 风险规则引擎
 
