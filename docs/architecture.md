@@ -38,8 +38,8 @@ Contract (VaultExecution.sol on Anvil)
 
 ### Contracts (Foundry)
 - **VaultExecution.sol**: Chain-side gate enforcement
-  - Hard constraints: paused, maxLossBps, deadline
-  - Accepts agent's riskScore as input (agent is the real decision maker)
+  - Hard constraints: paused, maxLossBps, deadline, nonce
+  - Agent 的 EIP-712 签名绑定 route、报价、riskScore、decision 与 nonce，调用方不能伪造评估结果
   - Emits VaultExecuted / VaultRejected / VaultPaused events
 
 ### Shared

@@ -12,11 +12,22 @@ contract DeployVaultExecution is Script {
     uint256 public constant DEFAULT_MAX_LOSS_BPS = 100;
 
     function run() external returns (address) {
-        vm.startBroadcast();
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
+        address admin = vm.envOr("VAULT_ADMIN", deployer);
+        address agentSigner = vm.envAddress("AGENT_SIGNER");
 
-        VaultExecution vault = new VaultExecution(DEFAULT_MAX_LOSS_BPS);
+        vm.startBroadcast(deployerPrivateKey);
+
+        VaultExecution vault = new VaultExecution(
+            DEFAULT_MAX_LOSS_BPS,
+            admin,
+            agentSigner
+        );
 
         console.log("VaultExecution deployed at:", address(vault));
+        console.log("Owner:", vault.owner());
+        console.log("Agent signer:", vault.agentSigner());
         console.log("Max loss bps:", vault.maxLossBps());
         console.log("Paused:", vault.paused());
 

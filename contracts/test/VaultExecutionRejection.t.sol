@@ -1,81 +1,116 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
 import {VaultExecution} from "../src/VaultExecution.sol";
+import {VaultExecutionTestBase} from "./VaultExecutionTestBase.sol";
 
 /**
- * @notice 拒绝路径测试 — route-b 被拒绝的场景
+ * @notice ALLOW / REJECT / FALLBACK 决策测试
  */
-contract VaultExecutionRejectionTest is Test {
-    VaultExecution public vault;
-    address public user = address(0x1234);
-
-    function setUp() public {
-        vault = new VaultExecution(100); // 1%
-    }
-
-    /**
-     * @dev route-b: quotedOut=800, expectedOut=1000
-     * lossBps = (1000-800)*10000/1000 = 2000 bps >> 100 → Revert
-     */
-    function test_Reject_RouteB_LossExceeds() public {
+contract VaultExecutionRejectionTest is VaultExecutionTestBase {
+    function test_Reject_WhenAgentDecisionIsReject() public {
         uint256 deadline = block.timestamp + 3600;
-
-        vm.expectRevert();
-        vm.prank(user);
-        vault.executeRoute(
+        bytes memory signature = signPermit(
+            user,
             "route-b",
             1000,
-            800,
+            999,
             deadline,
-            84,
-            "REJECT"
+            60,
+            VaultExecution.Decision.REJECT,
+            0
         );
-    }
 
-    /**
-     * @dev route-b 高 riskScore 触发 VaultRejected 事件
-     */
-    function test_Reject_RouteB_HighRiskScore() public {
-        uint256 deadline = block.timestamp + 3600;
-
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit(true, true, false, true);
         emit VaultExecution.VaultRejected(
             user,
             "route-b",
-            "Risk score 84 exceeds threshold. Decision: REJECT",
-            84,
+            "Agent decision is REJECT",
+            60,
             block.timestamp
         );
 
         vm.prank(user);
-        vault.executeRoute(
+        bool executed = vault.executeRoute(
+            user,
             "route-b",
             1000,
-            999, // loss 低但 riskScore 高
+            999,
             deadline,
-            84,
-            "REJECT"
+            60,
+            VaultExecution.Decision.REJECT,
+            0,
+            signature
         );
+
+        assertFalse(executed);
+        assertEq(vault.nonces(user), 1);
     }
 
-    /**
-     * @dev paused + 任何 route → Revert
-     */
-    function test_Reject_WhenVaultPaused() public {
-        vault.setPaused(true);
+    function test_Reject_WhenRiskScoreIsHigh() public {
         uint256 deadline = block.timestamp + 3600;
+        bytes memory signature = signPermit(
+            user,
+            "route-b",
+            1000,
+            999,
+            deadline,
+            84,
+            VaultExecution.Decision.ALLOW,
+            0
+        );
 
-        vm.expectRevert(VaultExecution.VaultIsPaused.selector);
-        vm.prank(user);
-        vault.executeRoute(
+        vm.expectEmit(true, true, false, true);
+        emit VaultExecution.VaultRejected(
+            user,
+            "route-b",
+            "Risk score exceeds threshold",
+            84,
+            block.timestamp
+        );
+
+        vm.prank(relayer);
+        bool executed = vault.executeRoute(
+            user,
+            "route-b",
+            1000,
+            999,
+            deadline,
+            84,
+            VaultExecution.Decision.ALLOW,
+            0,
+            signature
+        );
+
+        assertFalse(executed);
+    }
+
+    function test_Allow_FallbackDecision() public {
+        uint256 deadline = block.timestamp + 3600;
+        bytes memory signature = signPermit(
+            user,
             "route-a",
             1000,
             999,
             deadline,
-            10,
-            "ALLOW"
+            60,
+            VaultExecution.Decision.FALLBACK_TO_SAFE_ROUTE,
+            0
         );
+
+        vm.prank(relayer);
+        bool executed = vault.executeRoute(
+            user,
+            "route-a",
+            1000,
+            999,
+            deadline,
+            60,
+            VaultExecution.Decision.FALLBACK_TO_SAFE_ROUTE,
+            0,
+            signature
+        );
+
+        assertTrue(executed);
     }
 }

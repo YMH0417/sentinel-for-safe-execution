@@ -1,0 +1,30 @@
+{
+  "primaryType": "ExecutionPermit",
+  "domain": {
+    "name": "Sentinel Vault Execution",
+    "version": "1",
+    "chainId": "<runtime chain id>",
+    "verifyingContract": "<VaultExecution address>"
+  },
+  "types": {
+    "ExecutionPermit": [
+      { "name": "user", "type": "address" },
+      { "name": "routeId", "type": "bytes32" },
+      { "name": "amountIn", "type": "uint256" },
+      { "name": "amountOutQuoted", "type": "uint256" },
+      { "name": "deadline", "type": "uint256" },
+      { "name": "riskScore", "type": "uint256" },
+      { "name": "decision", "type": "uint8" },
+      { "name": "nonce", "type": "uint256" }
+    ]
+  },
+  "decision": {
+    "ALLOW": 0,
+    "REJECT": 1,
+    "FALLBACK_TO_SAFE_ROUTE": 2
+  },
+  "routeIdEncoding": "bytes32 UTF-8 string, right-padded with zero bytes",
+  "signatureFormat": "65-byte ECDSA r || s || v; v must be 27 or 28; low-s required",
+  "nonceSource": "VaultExecution.nonces(user)",
+  "abi": "../abi/VaultExecution.json"
+}

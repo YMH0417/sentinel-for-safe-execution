@@ -1,95 +1,140 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
 import {VaultExecution} from "../src/VaultExecution.sol";
+import {VaultExecutionTestBase} from "./VaultExecutionTestBase.sol";
 
 /**
- * @notice 安全约束测试 — maxLossBps, deadline, paused
+ * @notice 安全约束测试 — maxLossBps, deadline, signature, nonce
  */
-contract VaultExecutionSafetyTest is Test {
-    VaultExecution public vault;
-    address public user = address(0x1234);
-
-    function setUp() public {
-        vault = new VaultExecution(100); // 1%
-    }
-
+contract VaultExecutionSafetyTest is VaultExecutionTestBase {
     function test_Revert_WhenDeadlineExpired() public {
         uint256 pastDeadline = block.timestamp - 1;
 
-        vm.expectRevert();
-        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VaultExecution.DeadlineExpired.selector,
+                pastDeadline,
+                block.timestamp
+            )
+        );
+        vm.prank(relayer);
         vault.executeRoute(
+            user,
             "route-a",
             1000,
             999,
             pastDeadline,
             10,
-            "ALLOW"
+            VaultExecution.Decision.ALLOW,
+            0,
+            hex""
         );
     }
 
     function test_Revert_WhenLossExceedsMax() public {
-        // amountOutQuoted=800 → loss=2000 bps > 100 bps
         uint256 deadline = block.timestamp + 3600;
-
-        vm.expectRevert();
-        vm.prank(user);
-        vault.executeRoute(
+        bytes memory signature = signPermit(
+            user,
             "route-b",
             1000,
             800,
             deadline,
-            84,
-            "REJECT"
-        );
-    }
-
-    function test_Reject_WhenRiskScoreHigh() public {
-        uint256 deadline = block.timestamp + 3600;
-
-        // riskScore=85 >= 70 → VaultRejected 事件，不 revert
-        vm.expectEmit(true, true, true, true);
-        emit VaultExecution.VaultRejected(
-            user,
-            "route-b",
-            "Risk score 85 exceeds threshold. Decision: REJECT",
-            85,
-            block.timestamp
+            60,
+            VaultExecution.Decision.FALLBACK_TO_SAFE_ROUTE,
+            0
         );
 
-        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VaultExecution.LossExceedsMax.selector,
+                2000,
+                100
+            )
+        );
+        vm.prank(relayer);
         vault.executeRoute(
+            user,
             "route-b",
             1000,
-            999, // loss 很小，但 riskScore 高
+            800,
             deadline,
-            85,
-            "REJECT"
+            60,
+            VaultExecution.Decision.FALLBACK_TO_SAFE_ROUTE,
+            0,
+            signature
         );
     }
 
-    function test_Allow_WhenAllPass() public {
+    function test_Revert_WhenSignatureIsNotFromAgent() public {
         uint256 deadline = block.timestamp + 3600;
-
-        vm.expectEmit(true, true, true, true);
-        emit VaultExecution.VaultExecuted(
+        bytes32 digest = vault.getExecutionDigest(
             user,
-            "route-a",
+            "route-b",
             1000,
             999,
-            block.timestamp
+            deadline,
+            20,
+            VaultExecution.Decision.ALLOW,
+            0
         );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xB0B, digest);
 
-        vm.prank(user);
+        vm.expectRevert(VaultExecution.InvalidSignature.selector);
+        vm.prank(relayer);
         vault.executeRoute(
+            user,
+            "route-b",
+            1000,
+            999,
+            deadline,
+            20,
+            VaultExecution.Decision.ALLOW,
+            0,
+            abi.encodePacked(r, s, v)
+        );
+    }
+
+    function test_Revert_WhenNonceIsReplayed() public {
+        uint256 deadline = block.timestamp + 3600;
+        bytes memory signature = signPermit(
+            user,
             "route-a",
             1000,
             999,
             deadline,
             20,
-            "ALLOW"
+            VaultExecution.Decision.ALLOW,
+            0
+        );
+
+        vm.prank(relayer);
+        vault.executeRoute(
+            user,
+            "route-a",
+            1000,
+            999,
+            deadline,
+            20,
+            VaultExecution.Decision.ALLOW,
+            0,
+            signature
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(VaultExecution.InvalidNonce.selector, 1, 0)
+        );
+        vm.prank(relayer);
+        vault.executeRoute(
+            user,
+            "route-a",
+            1000,
+            999,
+            deadline,
+            20,
+            VaultExecution.Decision.ALLOW,
+            0,
+            signature
         );
     }
 }

@@ -72,6 +72,8 @@ Content-Type: application/json
 
 ## 3. Execute Route
 
+> ⚠️ 下方 HTTP 示例是当前 DevD 的 mock API。真实链上接入时，DevD 必须按照本节末的 DevA 合约接口传入 Agent 签名，不得写死 `ALLOW` 或 `riskScore = 0`。
+
 ```http
 POST /api/execute
 Content-Type: application/json
@@ -82,6 +84,28 @@ Content-Type: application/json
   "deadline": 1721659999
 }
 ```
+
+### DevA 链上执行接口（后端迁移目标）
+
+```solidity
+executeRoute(
+  address user,
+  bytes32 routeId,
+  uint256 amountIn,
+  uint256 amountOutQuoted,
+  uint256 deadline,
+  uint256 riskScore,
+  uint8 decision,
+  uint256 nonce,
+  bytes signature
+) returns (bool executed)
+```
+
+- `decision`：`0 = ALLOW`、`1 = REJECT`、`2 = FALLBACK_TO_SAFE_ROUTE`。
+- `signature`：DevE 使用 Agent signer 对 EIP-712 `ExecutionPermit` 签发的 65-byte 签名。
+- `nonce`：调用前通过 `VaultExecution.nonces(user)` 获取。
+- `executed = false` 且有 `VaultRejected`：业务拒绝；EVM revert：硬约束或签名校验失败。
+- ABI 与完整 typed-data schema：`contracts/abi/VaultExecution.json`、`contracts/integration/execution-permit.json`。
 
 **Response:**
 
