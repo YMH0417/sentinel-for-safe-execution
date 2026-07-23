@@ -81,7 +81,8 @@ Content-Type: application/json
 {
   "routeId": "route-a",
   "maxLossBps": 100,
-  "deadline": 1721659999
+  "deadline": 1721659999,
+  "configProfile": "normal"
 }
 ```
 
@@ -107,7 +108,7 @@ executeRoute(
 - `executed = false` 且有 `VaultRejected`：业务拒绝；EVM revert：硬约束或签名校验失败。
 - ABI 与完整 typed-data schema：`contracts/abi/VaultExecution.json`、`contracts/integration/execution-permit.json`。
 
-**Response:**
+**Response (ALLOW):**
 
 ```json
 {
@@ -117,8 +118,43 @@ executeRoute(
     "eventType": "ExecutionSuccess",
     "timestamp": 1721659200,
     "routeId": "route-a",
+    "decision": "ALLOW",
+    "riskScore": 0,
     "message": "Executed on-chain (mock). Tx: 0xabc123... Loss: 10bps",
     "txHash": "0xabc123def456..."
+  },
+  "decision": {
+    "decision": "ALLOW",
+    "riskScore": 0,
+    "reason": "Risk score 0/100 is below threshold...",
+    "routeId": "route-a",
+    "fallbackRouteId": null,
+    "flags": []
+  }
+}
+```
+
+**Response (REJECT / FALLBACK_TO_SAFE_ROUTE):**
+
+```json
+{
+  "success": false,
+  "event": {
+    "id": "evt_1721659200000_2",
+    "eventType": "ExecutionRejected",
+    "timestamp": 1721659200,
+    "routeId": "route-b",
+    "decision": "REJECT",
+    "riskScore": 95,
+    "message": "Execution blocked by Safety Agent gate. Decision: REJECT, RiskScore: 95. ..."
+  },
+  "decision": {
+    "decision": "REJECT",
+    "riskScore": 95,
+    "reason": "Risk score 95/100 exceeds 70 threshold...",
+    "routeId": "route-b",
+    "fallbackRouteId": "route-a",
+    "flags": ["quote_deviation", "failure_risk", "pool_risk"]
   }
 }
 ```
