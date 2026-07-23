@@ -53,7 +53,7 @@ export async function runFullFlow(
     message: `Decision: ${decision.decision} (riskScore=${decision.riskScore}). ${decision.reason}`,
   });
 
-  // 读取 route 数据获取金额
+  // 读取 route 数据获取金额（仅用于 ALLOW 场景执行）
   const routesRaw = fs.readFileSync(
     path.join(__dirname, "../../../shared/demo-data/routes.json"),
     "utf-8"
@@ -61,18 +61,32 @@ export async function runFullFlow(
   const routesData = JSON.parse(routesRaw) as { routes: Route[] };
   const route = routesData.routes.find((r: Route) => r.routeId === routeId);
 
-  const executeResult = await executeRoute(
-    routeId,
-    route?.amountIn || amount,
-    route?.quotedOut || amount,
-    Math.floor(Date.now() / 1000) + 3600,
-    decision.riskScore,
-    decision.decision,
-    100
-  );
+  // 根据决策类型分发不同处理路径
+  if (decision.decision === "ALLOW") {
+    // 执行原 route
+    const executeResult = await executeRoute(
+      routeId,
+      route?.amountIn || amount,
+      route?.quotedOut || amount,
+      Math.floor(Date.now() / 1000) + 3600,
+      decision.riskScore,
+      decision.decision,
+      100
+    );
+    addEvent(executeResult.event);
+  } else if (decision.decision === "REJECT") {
+    // REJECT 场景：记录链上拦截事件
+    addEvent({
+      eventType: "ExecutionRejected",
+      routeId,
+      decision: decision.decision,
+      riskScore: decision.riskScore,
+      message: `Execution blocked by Safety Agent gate. Decision: ${decision.decision}, RiskScore: ${decision.riskScore}. ${decision.reason}`,
+      txHash: undefined,
+    });
+  }
 
-  addEvent(executeResult.event);
-
+  // FALLBACK 场景：如果决策是 FALLBACK，记录 FallbackTriggered 事件
   if (decision.decision === "FALLBACK_TO_SAFE_ROUTE" && decision.fallbackRouteId) {
     addEvent({
       eventType: "FallbackTriggered",
