@@ -1,16 +1,13 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { setAccountSync } from "./AuthRoute";
+import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 
-interface Props {
-  onConnected?: (address: string) => void;
-}
-
-export function LandingPage({ onConnected }: Props) {
+export function LandingPage() {
   const [connecting, setConnecting] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const { setAccount } = useWallet();
 
   const handleConnect = async () => {
     if (!window.ethereum) {
@@ -39,11 +36,9 @@ export function LandingPage({ onConnected }: Props) {
 
     const checksumAddr = accounts[0].replace(/^0x/i, "0x");
 
-    setAccountSync(checksumAddr);
+    setAccount(checksumAddr);
 
     showToast({ type: "success", message: `Wallet connected: ${checksumAddr.slice(0, 8)}...` });
-    onConnected?.(checksumAddr);
-
     navigate("/dashboard", { replace: true });
     setConnecting(false);
   };
@@ -204,34 +199,13 @@ export function LandingPage({ onConnected }: Props) {
           )}
         </button>
 
-        {/* Import Via WalletConnect placeholder */}
-        <button
-          disabled
-          style={{
-            width: "100%",
-            marginTop: 12,
-            padding: "14px 24px",
-            fontSize: 13,
-            fontWeight: 400,
-            letterSpacing: 2,
-            fontFamily: "'Courier New', monospace",
-            color: "#484f58",
-            background: "transparent",
-            border: "1px solid #30363d33",
-            borderRadius: 4,
-            cursor: "not-allowed",
-          }}
-        >
-          IMPORT VIA WALLETCONNECT
-        </button>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
-
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

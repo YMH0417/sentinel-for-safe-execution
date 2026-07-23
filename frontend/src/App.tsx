@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useState } from "react";
 import { InputPanel } from "./components/InputPanel";
 import { RouteList } from "./components/RouteList";
@@ -8,31 +8,35 @@ import { Timeline } from "./components/Timeline";
 import { SafeUnsafeToggle } from "./components/SafeUnsafeToggle";
 import { LandingPage } from "./components/LandingPage";
 import { ToastProvider } from "./components/Toast";
-import { AuthRoute, HeaderAvatar } from "./components/AuthRoute";
+import { AuthRoute } from "./components/AuthRoute";
+import { HeaderAvatar } from "./components/HeaderAvatar";
+import { WalletProvider, useWallet } from "./contexts/WalletContext";
 import type { Route as RouteType, Decision, Event } from "./types";
 
 const API_BASE = "/api";
 
 export default function App() {
   return (
-    <ToastProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Landing page — public */}
-          <Route path="/" element={<LandingPage onConnected={() => {}} />} />
+    <WalletProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Landing page — public */}
+            <Route path="/" element={<LandingPage />} />
 
-          {/* Dashboard — protected by AuthRoute */}
-          <Route
-            path="/dashboard"
-            element={
-              <AuthRoute>
-                <MainApp />
-              </AuthRoute>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </ToastProvider>
+            {/* Dashboard — protected by AuthRoute */}
+            <Route
+              path="/dashboard"
+              element={
+                <AuthRoute>
+                  <MainApp />
+                </AuthRoute>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
+    </WalletProvider>
   );
 }
 
@@ -48,7 +52,9 @@ function MainApp() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const { account } = useWallet();
 
+  // Load routes
   const loadRoutes = async () => {
     setLoading("Loading routes...");
     try {
@@ -63,6 +69,7 @@ function MainApp() {
     setLoading("");
   };
 
+  // Evaluate route
   const evaluateRoute = async () => {
     if (!selectedRoute) return;
     setLoading("Evaluating route with Safety Agent...");
@@ -80,6 +87,7 @@ function MainApp() {
     setLoading("");
   };
 
+  // Execute route
   const executeRoute = async () => {
     if (!decision) return;
     setLoading("Executing route on-chain...");
@@ -134,6 +142,7 @@ function MainApp() {
     setLoading("");
   };
 
+  // Full flow (Safe Mode)
   const runFullFlow = async () => {
     setLoading("Running full flow...");
     setError("");
@@ -153,6 +162,9 @@ function MainApp() {
     setLoading("");
   };
 
+  // Shorten address for display
+  const shortAddr = account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "";
+
   return (
     <div>
       {/* Header */}
@@ -162,16 +174,29 @@ function MainApp() {
             Sentinel for Safe Execution
           </h1>
           <p style={{ fontSize: 13, color: "#8b949e", marginTop: 4 }}>
-            Execution Safety MVP - Week 3 Demo
+            Execution Safety MVP — Week 3 Demo
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />
-          <HeaderAvatar />
+          {account && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#8b949e", fontFamily: "monospace" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#3fb950" }} />
+              {shortAddr}
+              <HeaderAvatar />
+            </div>
+          )}
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Account info panel */}
+      {account && (
+        <div style={{ marginBottom: 20, padding: "10px 16px", background: "#2386361a", border: "1px solid #3fb95044", borderRadius: 8, fontSize: 13, color: "#3fb950", fontFamily: "monospace" }}>
+          Connected wallet: {account}
+        </div>
+      )}
+
+      {/* Input */}
       <InputPanel
         tokenIn={tokenIn}
         tokenOut={tokenOut}
@@ -218,8 +243,9 @@ function MainApp() {
         </div>
       )}
 
+      {/* Footer */}
       <footer style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #30363d", textAlign: "center", color: "#484f58", fontSize: 13 }}>
-        Sentinel v0.1.0 - MVP for Week 3 Demo
+        Sentinel v0.1.0 — MVP for Week 3 Demo
       </footer>
     </div>
   );
