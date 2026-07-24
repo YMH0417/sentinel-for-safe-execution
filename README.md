@@ -99,6 +99,12 @@ forge test          # 17 tests pass
 forge script script/DeployVaultExecution.s.sol \
   --rpc-url http://127.0.0.1:8545 \
   --broadcast --slow
+
+# ABI 输出
+# → contracts/abi/VaultExecution.json
+
+# 集成测试数据
+# → contracts/integration/execution-permit.json
 ```
 
 ## 生产构建
@@ -137,22 +143,47 @@ npm run build
 project/
 ├── contracts/           # Foundry 智能合约
 │   ├── src/VaultExecution.sol    # 闸门校验合约
+│   ├── src/Counter.sol           # 测试合约
 │   ├── script/DeployVaultExecution.s.sol  # 部署脚本
-│   └── test/                        # 17 个测试
+│   ├── test/                     # 5 个测试文件（17 tests pass）
+│   ├── abi/                      # 编译后 ABI 输出
+│   │   └── VaultExecution.json
+│   ├── broadcast/                # 部署记录
+│   └── integration/              # 集成测试数据
+│       └── execution-permit.json
 ├── backend/             # Express API 服务 (TypeScript)
-│   ├── src/routes/              # 4 个 API 路由
-│   ├── src/services/            # route/agent/vault/event 服务
-│   └── src/config/risk-config.json  # 风险配置
+│   ├── src/index.ts               # 入口
+│   ├── src/routes/                # 4 个 API 路由 (quote/evaluate/execute/events)
+│   ├── src/services/              # route/agent/vault/event 服务
+│   ├── src/config/risk-config.json  # 风险配置
+│   └── dist/                      # 编译输出
 ├── frontend/            # React + Vite Demo App
-│   ├── src/components/          # 6 个 UI 组件
-│   └── src/App.tsx              # 主页面（含完整交互逻辑）
+│   ├── src/App.tsx              # 主页面（含完整交互逻辑）
+│   ├── src/components/          # UI 组件
+│   ├── src/services/            # API 请求封装
+│   ├── src/types/               # 前端类型定义
+│   ├── src/pages/               # 页面组件
+│   ├── src/contexts/            # React Context
+│   └── dist/                    # 生产构建输出
 ├── shared/              # 全队共享
-│   ├── types/                   # Route/Decision/Event 类型
-│   └── demo-data/routes.json    # 3 条核心路由
+│   ├── types/                   # Route/Decision/Event 类型 + index.ts
+│   │   ├── route.ts
+│   │   ├── decision.ts
+│   │   ├── event.ts
+│   │   └── index.ts
+│   └── demo-data/               # Mock 数据
+│       ├── routes.json          # 3 条核心路由
+│       └── demo-routes.json     # 录屏专用 demo 数据（含 profile 约束说明）
 └── docs/
     ├── architecture.md
     ├── api-contract.md
-    └── demo-script.md
+    ├── demo-script.md
+    ├── route-scenarios.md       # 场景说明（基于论文 2501.17335v2）
+    └── dev-changes/             # 每日变更记录
+        ├── dev-c-changes-thu.md
+        ├── dev-c-changes-fri.md
+        ├── dev-d-changes-07-23.md
+        └── dev-a-changes-thu.md
 ```
 
 ## 端口说明
@@ -169,7 +200,7 @@ project/
 
 - **Dev A**: VaultExecution 合约 + 部署脚本
 - **Dev B**: risk-config.json + 阈值管理
-- **Dev C**: routes.json + mock 数据
+- **Dev C**: routes.json + demo-routes.json + mock 数据 + 场景说明
 - **Dev D**: backend 服务 + 4 个 API + 事件管理
 - **Dev E**: evaluateRoute() Agent 规则引擎
 - **前端**: Demo App 页面 + 状态展示
@@ -180,5 +211,21 @@ project/
 
 - **合约**: Solidity 0.8.24 + Foundry
 - **后端**: Node.js + Express + TypeScript
-- **前端**: React + Vite + TypeScript
+- **前端**: React + Vite + TypeScript + Wagmi + Ethers
 - **链**: Anvil (本地 Ethereum 兼容链)
+- **参考论文**: 2501.17335v2 — *Pandora's Box: Cross-Chain Arbitrages in the Realm of Blockchain Interoperability*
+
+## 开发日志
+
+- `tmp/done.md` — 每日完成总结（周四 + 周五已合并）
+- `tmp/tomo.md` — 周六 TODO
+- `tmp/todo.md` — 历史每日 TODO（周四）
+
+## 本周进展
+
+| 日期 | 状态 | 关键进展 |
+|------|:----:|---------|
+| Day 1 周四 | ✅ | 3 条 route 数据设计完成，Agent 决策引擎验证通过 |
+| Day 2 周五 | ✅ | 主链路 quote→evaluate→execute 端到端联调，FALLBACK 事件链路修复 |
+| Day 3 周六 | 🔄 | 数据冻结，彩排准备 |
+| Day 4 周日 | ⏳ | 封版录屏 |
