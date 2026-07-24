@@ -215,17 +215,3 @@ project/
 - **链**: Anvil (本地 Ethereum 兼容链)
 - **参考论文**: 2501.17335v2 — *Pandora's Box: Cross-Chain Arbitrages in the Realm of Blockchain Interoperability*
 
-## 开发日志
-
-- `tmp/done.md` — 每日完成总结（周四 + 周五已合并）
-- `tmp/tomo.md` — 周六 TODO
-- `tmp/todo.md` — 历史每日 TODO（周四）
-
-## 本周进展
-
-| 日期 | 状态 | 关键进展 |
-|------|:----:|---------|
-| Day 1 周四 | ✅ | 3 条 route 数据设计完成，Agent 决策引擎验证通过 |
-| Day 2 周五 | ✅ | 主链路 quote→evaluate→execute 端到端联调，FALLBACK 事件链路修复 |
-| Day 3 周六 | 🔄 | 数据冻结，彩排准备 |
-| Day 4 周日 | ⏳ | 封版录屏 |
