@@ -12,6 +12,12 @@ router.post("/", (req: Request, res: Response) => {
     return res.status(400).json({ error: "routeId is required" });
   }
 
+  addEvent({
+    eventType: "RouteEvaluated",
+    routeId,
+    message: `Route ${routeId} submitted for safety evaluation`,
+  });
+
   const decision = evaluateRoute(routeId, configProfile || "normal");
 
   addEvent({

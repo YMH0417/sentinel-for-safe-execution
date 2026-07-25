@@ -33,6 +33,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    GET  /api/quote          — 获取候选 routes`);
   console.log(`    POST /api/evaluate       — Agent 风险评估`);
   console.log(`    POST /api/execute        — 链上执行（闸门校验）`);
+  console.log(`    GET  /api/execute/nonce  — 查询用户 permit nonce`);
   console.log(`    GET  /api/events         — 查询事件日志`);
   console.log(`    GET  /api/health         — 健康检查\n`);
 });
