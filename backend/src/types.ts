@@ -24,6 +24,13 @@ export interface QuoteResponse {
 }
 
 export type DecisionType = "ALLOW" | "REJECT" | "FALLBACK_TO_SAFE_ROUTE";
+export type EventType =
+  | "RouteEvaluated"
+  | "DecisionMade"
+  | "ExecutionAttempted"
+  | "ExecutionSuccess"
+  | "ExecutionRejected"
+  | "FallbackRequired";
 
 export interface Decision {
   decision: DecisionType;
@@ -39,20 +46,33 @@ export interface EvaluateRequest {
   configProfile: "normal" | "conservative" | "aggressive";
 }
 
-export interface ExecuteRequest {
+export type ContractDecision = 0 | 1 | 2;
+
+export interface ExecutionPermit {
+  user: string;
   routeId: string;
-  maxLossBps: number;
-  deadline: number;
-  contractAddress?: string;
+  amountIn: string;
+  amountOutQuoted: string;
+  deadline: string;
+  riskScore: string;
+  decision: ContractDecision;
+  nonce: string;
+}
+
+export interface ExecuteRequest {
+  evaluation: Decision;
+  permit: ExecutionPermit;
+  signature: string;
 }
 
 export interface Event {
   id: string;
-  eventType: string;
+  eventType: EventType;
   timestamp: number;
   routeId?: string;
-  decision?: string;
+  decision?: DecisionType;
   riskScore?: number;
+  fallbackRouteId?: string;
   message: string;
   txHash?: string;
 }
