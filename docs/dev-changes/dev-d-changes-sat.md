@@ -101,14 +101,13 @@ RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected | Fallb
 - [x] evaluation 与 permit 不一致返回 `400`。
 - [x] 非法 user address 返回 `400`。
 - [x] 缺少链配置时返回明确错误。
-- [x] 前端文件未修改。
-- [ ] 使用 DevE 真实签名 permit 完成链上执行。
+- [ ] 使用 Dev E 真实签名 permit 完成链上执行。
 - [ ] 验证 nonce 重放保护。
 - [ ] 验证真实合约 custom error 响应。
 
 ## 不在本次范围
 
-- DevE permit 生成与 Agent signer 私钥管理。
+- Dev E permit 生成与 Agent signer 私钥管理。
 - 前端 permit 获取、提交和 UI 展示。
 - `VaultExecution` 部署。
 - 真实链上端到端成功测试。
