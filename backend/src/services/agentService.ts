@@ -19,13 +19,24 @@ function getRoutesPath(): string {
   return path.join(__dirname, "../../../shared/demo-data/routes.json");
 }
 
+type ProfileName = keyof RiskConfig["profiles"];
+
+function resolveProfile(config: RiskConfig, configProfile: string): RiskConfig["profiles"]["normal"] {
+  if (configProfile in config.profiles) {
+    return config.profiles[configProfile as ProfileName];
+  }
+  return config.profiles[config.defaultProfile as ProfileName] ?? config.profiles.normal;
+}
+
 /**
  * 计算 risk score (0-100)
  */
-function calculateRiskScore(route: Route, config: RiskConfig): { score: number; flags: string[] } {
+function calculateRiskScore(
+  route: Route,
+  profile: RiskConfig["profiles"]["normal"]
+): { score: number; flags: string[] } {
   const flags: string[] = [];
   let score = 0;
-  const profile = (config.profiles as any)[config.defaultProfile] || config.profiles.normal;
 
   // Rule A: Quote Deviation
   const quoteDeviation = Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
@@ -61,10 +72,12 @@ function loadRoute(routeId: string): Route | undefined {
 export function evaluateRoute(routeId: string, configProfile: string = "normal"): Decision {
   const route = loadRoute(routeId);
   if (!route) {
+    const reason = `Route "${routeId}" not found in available routes.`;
     return {
       decision: "REJECT",
       riskScore: 100,
-      reason: `Route "${routeId}" not found in available routes.`,
+      reason,
+      reasonTechnical: `route_not_found: no entry for routeId=${routeId} in shared/demo-data/routes.json`,
       routeId,
       fallbackRouteId: null,
       flags: ["route_not_found"],
@@ -72,34 +85,58 @@ export function evaluateRoute(routeId: string, configProfile: string = "normal")
   }
 
   const config = loadRiskConfig();
-  if (configProfile !== config.defaultProfile) {
-    (config as any).defaultProfile = configProfile;
-  }
-
-  const { score, flags } = calculateRiskScore(route, config);
+  const profile = resolveProfile(config, configProfile);
+  const { score, flags } = calculateRiskScore(route, profile);
 
   let decision: Decision["decision"];
   let reason: string;
+  let reasonTechnical: string;
 
   if (score >= 70) {
     decision = "REJECT";
     reason = generateReason("reject", route, score, flags);
+    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "REJECT");
   } else if (score >= 40 && route.supportsFallback) {
     decision = "FALLBACK_TO_SAFE_ROUTE";
     reason = generateReason("fallback", route, score, flags);
+    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "FALLBACK_TO_SAFE_ROUTE", route.fallbackRouteId);
   } else {
     decision = "ALLOW";
     reason = generateReason("allow", route, score, flags);
+    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "ALLOW");
   }
 
   return {
     decision,
     riskScore: score,
     reason,
+    reasonTechnical,
     routeId: route.routeId,
     fallbackRouteId: route.fallbackRouteId,
     flags,
   };
+}
+
+function buildTechnicalReason(
+  route: Route,
+  profile: RiskConfig["profiles"]["normal"],
+  score: number,
+  flags: string[],
+  decision: Decision["decision"],
+  fallbackRouteId: string | null = null
+): string {
+  const quoteDeviation = Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
+  const parts = [
+    `profile thresholds: quoteDeviation>${profile.maxQuoteDeviationThreshold}, failure>${profile.failureThreshold}, poolRisk>${profile.poolRiskThreshold}`,
+    `route metrics: quoteDeviation=${(quoteDeviation * 100).toFixed(2)}%, failureRate=${(route.historicalFailureRate * 100).toFixed(0)}%, poolRiskScore=${route.poolRiskScore}`,
+    `flags=[${flags.join(", ")}]`,
+    `riskScore=${score}`,
+    `decision=${decision}`,
+  ];
+  if (fallbackRouteId) {
+    parts.push(`fallbackRouteId=${fallbackRouteId}`);
+  }
+  return parts.join(" | ");
 }
 
 function generateReason(type: "allow" | "reject" | "fallback", route: Route, score: number, flags: string[]): string {

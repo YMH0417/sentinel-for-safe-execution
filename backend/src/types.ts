@@ -36,6 +36,7 @@ export interface Decision {
   decision: DecisionType;
   riskScore: number;
   reason: string;
+  reasonTechnical?: string;
   routeId: string;
   fallbackRouteId: string | null;
   flags: string[];

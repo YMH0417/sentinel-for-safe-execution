@@ -6,6 +6,8 @@ import quoteRouter from "./routes/quote.js";
 import evaluateRouter from "./routes/evaluate.js";
 import executeRouter from "./routes/execute.js";
 import eventsRouter from "./routes/events.js";
+import configRouter from "./routes/config.js";
+import debugRouter from "./routes/debug.js";
 import { isMockChainMode } from "./config/chainConfig.js";
 
 const app = express();
@@ -20,6 +22,8 @@ app.use("/api/quote", quoteRouter);
 app.use("/api/evaluate", evaluateRouter);
 app.use("/api/execute", executeRouter);
 app.use("/api/events", eventsRouter);
+app.use("/api/config", configRouter);
+app.use("/api/debug", debugRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -37,6 +41,8 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    POST /api/execute        — 链上执行（闸门校验）`);
   console.log(`    GET  /api/execute/nonce  — 查询用户 permit nonce`);
   console.log(`    GET  /api/events         — 查询事件日志`);
+  console.log(`    GET  /api/config         — 读取 risk config`);
+  console.log(`    GET  /api/debug/status   — 录屏前自检`);
   console.log(`    GET  /api/health         — 健康检查\n`);
 });
 

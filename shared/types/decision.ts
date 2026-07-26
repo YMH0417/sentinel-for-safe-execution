@@ -6,6 +6,8 @@ export interface Decision {
   decision: DecisionType;
   riskScore: number;
   reason: string;
+  /** Judge-facing technical breakdown; optional for backward compatibility */
+  reasonTechnical?: string;
   routeId: string;
   fallbackRouteId: string | null;
   flags: string[];

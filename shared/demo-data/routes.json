@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "v1.0",
+    "frozen": "2026-07-26",
+    "notes": "Week 3 demo freeze — do not change route values without re-validating evaluate decisions"
+  },
   "routes": [
     {
       "routeId": "route-a",
