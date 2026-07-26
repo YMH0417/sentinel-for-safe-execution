@@ -140,26 +140,26 @@ function buildTechnicalReason(
 }
 
 function generateReason(type: "allow" | "reject" | "fallback", route: Route, score: number, flags: string[]): string {
-  const deviations: string[] = [];
+  const issues: string[] = [];
   const quoteDeviation = Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
   if (quoteDeviation > 0.005) {
-    deviations.push(`quote deviation ${(quoteDeviation * 100).toFixed(1)}%`);
+    issues.push(`报价偏差 ${(quoteDeviation * 100).toFixed(1)}%（预期 ${route.expectedOut}，实际报价 ${route.quotedOut}）`);
   }
   if (route.historicalFailureRate > 0.1) {
-    deviations.push(`failure rate ${(route.historicalFailureRate * 100).toFixed(0)}%`);
+    issues.push(`历史失败率 ${(route.historicalFailureRate * 100).toFixed(0)}%`);
   }
   if (route.poolRiskScore > 50) {
-    deviations.push(`pool risk score ${route.poolRiskScore}`);
+    issues.push(`池子风险评分 ${route.poolRiskScore}/100`);
   }
 
   switch (type) {
     case "allow":
-      return `Risk score ${score}/100 is below threshold. All metrics within acceptable ranges. Route is safe to execute.`;
+      return `风险评分 ${score}/100，处于安全范围。报价、失败率与池风险均在可接受阈值内，可以执行此路由。`;
     case "reject":
-      return `Risk score ${score}/100 exceeds 70 threshold. Flags: [${flags.join(", ")}]. ${deviations.length > 0 ? "Issues: " + deviations.join("; ") : ""}`;
+      return `风险评分 ${score}/100，已超过危险阈值（≥70）。${issues.length > 0 ? "主要问题：" + issues.join("；") + "。" : ""}建议拒绝执行，避免潜在损失。`;
     case "fallback":
-      return `Risk score ${score}/100 is moderate. ${deviations.length > 0 ? "Concerns: " + deviations.join("; ") + ". " : ""}Switching to safer fallback route.`;
+      return `风险评分 ${score}/100，处于警告区间。${issues.length > 0 ? "发现：" + issues.join("；") + "。" : ""}建议切换到更安全的备用路由${route.fallbackRouteId ? `（${route.fallbackRouteId}）` : ""}。`;
     default:
-      return "Unknown decision type.";
+      return "未知决策类型。";
   }
 }

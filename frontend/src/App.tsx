@@ -29,11 +29,7 @@ export default function App() {
               />
               <Route
                 path='/transaction'
-                element={
-                  <AuthRoute>
-                    <TransactionRouter />
-                  </AuthRoute>
-                }
+                element={<TransactionRouter />}
               />
               <Route
                 path='/profile'
@@ -62,6 +58,18 @@ function TransactionRouter() {
   const [safeMode, setSafeMode] = useState(true);
   return (
     <>
+      <div style={{
+        marginBottom: 16,
+        padding: "10px 16px",
+        borderRadius: 8,
+        background: "#d2992211",
+        border: "1px solid #d2992244",
+        fontSize: 13,
+        color: "#d29922",
+        lineHeight: 1.5,
+      }}>
+        <strong>Demo 模式</strong> — 当前使用模拟路由数据，无需真实资金。连接钱包仅在实际执行（Execute）时需要；获取报价和风险评估可游客预览。
+      </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e1e4e8' }}>交易检测</h2>
         <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />

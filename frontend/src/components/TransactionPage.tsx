@@ -47,6 +47,8 @@ export function TransactionPage({ safeMode }: Props) {
   const [loading, setLoading] = useState<string>("");
   const [error, setError] = useState<string>("");
 
+  const [recommendedRouteId, setRecommendedRouteId] = useState<string | null>(null);
+
   const loadRoutes = async () => {
     setLoading("Loading routes...");
     try {
@@ -61,21 +63,33 @@ export function TransactionPage({ safeMode }: Props) {
     setLoading("");
   };
 
-  const evaluateRoute = async () => {
-    if (!selectedRoute) return;
+  const evaluateRoute = async (routeId?: string) => {
+    const target = routeId ?? selectedRoute;
+    if (!target) return;
     setLoading("Evaluating route with Safety Agent...");
     try {
       const res = await fetch(`${API_BASE}/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routeId: selectedRoute, configProfile: "normal" }),
+        body: JSON.stringify({ routeId: target, configProfile: "normal" }),
       });
       const data = await res.json();
       setDecision(data);
+      if (data.decision === "FALLBACK_TO_SAFE_ROUTE" && data.fallbackRouteId) {
+        setRecommendedRouteId(data.fallbackRouteId);
+      } else {
+        setRecommendedRouteId(null);
+      }
     } catch (e: any) {
       setError(`Evaluate failed: ${e.message}`);
     }
     setLoading("");
+  };
+
+  const switchToFallbackRoute = async (fallbackRouteId: string) => {
+    setSelectedRoute(fallbackRouteId);
+    setRecommendedRouteId(fallbackRouteId);
+    await evaluateRoute(fallbackRouteId);
   };
 
   /** Fetch current chain nonce via GET /api/execute/nonce */
@@ -97,7 +111,12 @@ export function TransactionPage({ safeMode }: Props) {
    * }
    */
   const executeRoute = async () => {
-    if (!decision || !account) return;
+    if (!decision) return;
+    if (!account) {
+      setError("链上执行需要连接 MetaMask 钱包。您仍可游客预览报价与风险评估。");
+      showToast({ type: "error", message: "请先连接 MetaMask 再执行链上交易" });
+      return;
+    }
     setLoading("Executing route on-chain...");
     try {
       // Determine effective route ID (fallback if needed)
@@ -241,15 +260,40 @@ export function TransactionPage({ safeMode }: Props) {
 
       {routes.length > 0 && (
         <>
-          <RouteList routes={routes} selected={selectedRoute} onSelect={setSelectedRoute} />
-          <SafetyPanel decision={decision} />
+          <RouteList
+            routes={routes}
+            selected={selectedRoute}
+            onSelect={(id) => {
+              setSelectedRoute(id);
+              setRecommendedRouteId(null);
+            }}
+            recommendedRouteId={recommendedRouteId}
+          />
+          <SafetyPanel decision={decision} onSwitchToFallback={switchToFallbackRoute} />
 
-          <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 24 }}>
+          <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 24, flexWrap: "wrap" }}>
+            <button
+              onClick={() => evaluateRoute()}
+              disabled={!!loading || !selectedRoute}
+              style={{
+                padding: "12px 20px",
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 8,
+                border: "1px solid #30363d",
+                cursor: loading ? "not-allowed" : "pointer",
+                background: "#21262d",
+                color: "#e1e4e8",
+              }}
+            >
+              {loading === "Evaluating route with Safety Agent..." ? "评估中..." : "风险评估"}
+            </button>
             <button
               onClick={runFullFlow}
               disabled={!!loading}
               style={{
                 flex: 1,
+                minWidth: 200,
                 padding: "12px 24px",
                 fontSize: 15,
                 fontWeight: 600,
@@ -260,7 +304,7 @@ export function TransactionPage({ safeMode }: Props) {
                 color: "white",
               }}
             >
-              {loading ? "Running..." : safeMode ? "Run With Safety Agent" : "Run Without Safety"}
+              {loading && loading !== "Evaluating route with Safety Agent..." ? "Running..." : safeMode ? "一键完整流程（含执行）" : "无安全模式执行"}
             </button>
           </div>
 
