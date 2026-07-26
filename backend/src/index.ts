@@ -6,6 +6,7 @@ import quoteRouter from "./routes/quote.js";
 import evaluateRouter from "./routes/evaluate.js";
 import executeRouter from "./routes/execute.js";
 import eventsRouter from "./routes/events.js";
+import { isMockChainMode } from "./config/chainConfig.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
@@ -29,6 +30,7 @@ app.get("/api/health", (_req, res) => {
 const server = http.createServer(app);
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`\n  Sentinel Backend running at http://127.0.0.1:${PORT}`);
+  console.log(`  Chain mode: ${isMockChainMode() ? "mock" : "rpc"}`);
   console.log(`  API Endpoints:`);
   console.log(`    GET  /api/quote          — 获取候选 routes`);
   console.log(`    POST /api/evaluate       — Agent 风险评估`);

@@ -14,6 +14,13 @@ import {
   VaultExecutionError,
 } from "../services/vaultService.js";
 import { ChainConfigurationError } from "../config/chainConfig.js";
+import { isMockChainMode } from "../config/chainConfig.js";
+import { evaluateRoute } from "../services/agentService.js";
+import {
+  executeMockLegacy,
+  executeMockPermit,
+  getMockVaultNonce,
+} from "../services/mockChainService.js";
 import type {
   ContractDecision,
   DecisionType,
@@ -153,6 +160,10 @@ router.get("/nonce", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "user must be a valid Ethereum address" });
   }
 
+  if (isMockChainMode()) {
+    return res.json(getMockVaultNonce(user));
+  }
+
   try {
     const result = await getVaultNonce(user);
     return res.json(result);
@@ -164,6 +175,29 @@ router.get("/nonce", async (req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
+  if (
+    isMockChainMode() &&
+    req.body &&
+    typeof req.body === "object" &&
+    typeof req.body.routeId === "string" &&
+    !req.body.permit
+  ) {
+    const route = getRouteById(req.body.routeId);
+    if (!route) {
+      return res.status(404).json({ error: `Route ${req.body.routeId} not found` });
+    }
+
+    const decision = evaluateRoute(
+      req.body.routeId,
+      typeof req.body.configProfile === "string"
+        ? req.body.configProfile
+        : "normal"
+    );
+    const result = executeMockLegacy(decision);
+    const event = addEvent(result.event);
+    return res.json({ success: result.success, event, decision });
+  }
+
   const validation = validateExecuteRequest(req.body);
   if (!validation.request || !validation.effectiveRouteId) {
     return res.status(400).json({
@@ -177,6 +211,16 @@ router.post("/", async (req: Request, res: Response) => {
   const { evaluation, permit, signature } = validation.request;
 
   try {
+    if (isMockChainMode()) {
+      const result = executeMockPermit(
+        permit,
+        evaluation.decision,
+        validation.effectiveRouteId
+      );
+      const event = addEvent(result.event);
+      return res.json({ success: result.success, event, decision: evaluation });
+    }
+
     const result = await executeSignedPermit(
       permit,
       signature,

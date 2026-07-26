@@ -16,6 +16,10 @@ export class ChainConfigurationError extends Error {
   }
 }
 
+export function isMockChainMode(): boolean {
+  return process.env.CHAIN_MODE?.trim().toLowerCase() === "mock";
+}
+
 export function getChainConfig(): ChainConfig {
   const rpcUrl = process.env.RPC_URL?.trim();
   const configuredAddress = process.env.VAULT_EXECUTION_ADDRESS?.trim();

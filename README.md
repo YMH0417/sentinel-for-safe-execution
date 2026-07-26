@@ -16,6 +16,26 @@
 - Foundry (forge, anvil, cast)
 - npm
 
+### 仅前后端 Demo（无需 Anvil）
+
+在 PowerShell 中显式开启 mock chain 模式后启动后端：
+
+```powershell
+cd backend
+$env:CHAIN_MODE = "mock"
+npm run dev
+```
+
+另开一个终端启动前端：
+
+```powershell
+cd frontend
+npm run dev
+```
+
+mock 模式下 `/api/execute/nonce` 和 `/api/execute` 不访问 RPC，仅用于本地
+前后端 Demo。未设置 `CHAIN_MODE=mock` 时，后端保持真实 RPC 行为。
+
 ### 终端 1 — Anvil 本地链
 
 ```bash
