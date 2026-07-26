@@ -1,5 +1,4 @@
 ﻿import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 import { getAddress } from "ethers";
@@ -20,7 +19,6 @@ const API_BASE = "/api";
 
 interface Props {
   safeMode: boolean;
-  onSafeModeChange: (v: boolean) => void;
 }
 
 /** Pad a hex string to 66 chars (0x + 64 hex digits = 32 bytes) */
@@ -35,8 +33,7 @@ function generateDummySignature(): string {
   return "0x" + "12".repeat(65);
 }
 
-export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
-  const navigate = useNavigate();
+export function TransactionPage({ safeMode }: Props) {
   const { account } = useWallet();
   const { showToast } = useToast();
   const [tokenIn, setTokenIn] = useState("USDT");

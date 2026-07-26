@@ -70,7 +70,6 @@ export function UserProfilePage() {
   const [showModal, setShowModal] = useState(false);
 
   const checksumAddr = account ? getAddress(account) : "0x0000000000000000000000000000000000000000";
-  const shortAddr = `${checksumAddr.slice(0, 8)}...${checksumAddr.slice(-6)}`;
 
   const unlockedBadges = BADGES.filter((b) => MOCK_SAFE_VOLUME >= b.threshold);
   const lockedBadges = BADGES.filter((b) => MOCK_SAFE_VOLUME < b.threshold);

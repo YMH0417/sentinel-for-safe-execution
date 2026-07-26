@@ -174,28 +174,144 @@ router.get("/nonce", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
-  if (
-    isMockChainMode() &&
-    req.body &&
-    typeof req.body === "object" &&
-    typeof req.body.routeId === "string" &&
-    !req.body.permit
-  ) {
-    const route = getRouteById(req.body.routeId);
-    if (!route) {
-      return res.status(404).json({ error: `Route ${req.body.routeId} not found` });
+type MockHandleResult =
+  | {
+      success: boolean;
+      event: ReturnType<typeof addEvent>;
+      decision: ExecuteRequest["evaluation"];
     }
+  | { error: string; status: number };
 
+/**
+ * Local demo helper: frontend currently pads UTF-8 route ids as if they were
+ * hex (e.g. "route-a" → "0x...route-a"), which fails strict bytes32 checks.
+ * In mock mode we trust evaluation and rewrite permit fields for the demo.
+ */
+function handleMockPermitBody(body: unknown): MockHandleResult {
+  if (!body || typeof body !== "object") {
+    return { error: "request body must be an object", status: 400 };
+  }
+
+  const candidate = body as Partial<ExecuteRequest> & {
+    routeId?: string;
+    configProfile?: string;
+  };
+
+  // Legacy shape: { routeId } without permit
+  if (typeof candidate.routeId === "string" && !candidate.permit) {
+    const route = getRouteById(candidate.routeId);
+    if (!route) {
+      return { error: `Route ${candidate.routeId} not found`, status: 404 };
+    }
     const decision = evaluateRoute(
-      req.body.routeId,
-      typeof req.body.configProfile === "string"
-        ? req.body.configProfile
+      candidate.routeId,
+      typeof candidate.configProfile === "string"
+        ? candidate.configProfile
         : "normal"
     );
     const result = executeMockLegacy(decision);
-    const event = addEvent(result.event);
-    return res.json({ success: result.success, event, decision });
+    return {
+      success: result.success,
+      event: addEvent(result.event),
+      decision,
+    };
+  }
+
+  const evaluation = candidate.evaluation;
+  if (!evaluation || typeof evaluation !== "object") {
+    return { error: "evaluation is required", status: 400 };
+  }
+  if (!["ALLOW", "REJECT", "FALLBACK_TO_SAFE_ROUTE"].includes(evaluation.decision)) {
+    return { error: "evaluation.decision is invalid", status: 400 };
+  }
+
+  const effectiveRouteId =
+    evaluation.decision === "FALLBACK_TO_SAFE_ROUTE"
+      ? evaluation.fallbackRouteId
+      : evaluation.routeId;
+  if (!effectiveRouteId) {
+    return {
+      error: "evaluation.fallbackRouteId is required for fallback",
+      status: 400,
+    };
+  }
+
+  const route = getRouteById(effectiveRouteId);
+  if (!route) {
+    return { error: `Route ${effectiveRouteId} not found`, status: 404 };
+  }
+
+  const permitIn = candidate.permit;
+  const user =
+    permitIn && typeof permitIn === "object" && typeof permitIn.user === "string"
+      ? permitIn.user
+      : "";
+  if (!isAddress(user) || user === ZeroAddress) {
+    return {
+      error: "permit.user must be a non-zero Ethereum address",
+      status: 400,
+    };
+  }
+
+  let encodedRouteId: string;
+  try {
+    encodedRouteId = encodeBytes32String(effectiveRouteId);
+  } catch {
+    return {
+      error: "effective routeId must fit in bytes32 UTF-8 encoding",
+      status: 400,
+    };
+  }
+
+  const currentNonce = getMockVaultNonce(user).nonce;
+  const permit: ExecutionPermit = {
+    user,
+    routeId: encodedRouteId,
+    amountIn: String(route.amountIn),
+    amountOutQuoted: String(route.quotedOut),
+    deadline: String(
+      Math.max(
+        Number(permitIn?.deadline) || 0,
+        Math.floor(Date.now() / 1000) + 3600
+      )
+    ),
+    riskScore: String(evaluation.riskScore),
+    decision: contractDecision[evaluation.decision],
+    nonce:
+      typeof permitIn?.nonce === "string" && isDecimalString(permitIn.nonce)
+        ? permitIn.nonce
+        : currentNonce,
+  };
+
+  try {
+    const result = executeMockPermit(permit, evaluation.decision, effectiveRouteId);
+    return {
+      success: result.success,
+      event: addEvent(result.event),
+      decision: evaluation,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Mock execution failed";
+    return { error: message, status: 400 };
+  }
+}
+
+router.post("/", async (req: Request, res: Response) => {
+  if (isMockChainMode()) {
+    const mockResult = handleMockPermitBody(req.body);
+    if ("error" in mockResult) {
+      return res.status(mockResult.status).json({
+        error: {
+          code: "INVALID_EXECUTION_REQUEST",
+          message: mockResult.error,
+        },
+      });
+    }
+    return res.json({
+      success: mockResult.success,
+      event: mockResult.event,
+      decision: mockResult.decision,
+    });
   }
 
   const validation = validateExecuteRequest(req.body);
@@ -211,15 +327,6 @@ router.post("/", async (req: Request, res: Response) => {
   const { evaluation, permit, signature } = validation.request;
 
   try {
-    if (isMockChainMode()) {
-      const result = executeMockPermit(
-        permit,
-        evaluation.decision,
-        validation.effectiveRouteId
-      );
-      const event = addEvent(result.event);
-      return res.json({ success: result.success, event, decision: evaluation });
-    }
 
     const result = await executeSignedPermit(
       permit,

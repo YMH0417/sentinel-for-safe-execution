@@ -66,7 +66,7 @@ function TransactionRouter() {
         <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e1e4e8' }}>交易检测</h2>
         <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />
       </div>
-      <TransactionPage safeMode={safeMode} onSafeModeChange={setSafeMode} />
+      <TransactionPage safeMode={safeMode} />
     </>
   );
 }
