@@ -1,4 +1,4 @@
-// frontend/src/types.ts — 本地类型定义（避免引用 shared 路径问题）
+﻿// frontend/src/types.ts  — 本地类型定义（避免引用 shared 路径问题）
 
 export interface Route {
   routeId: string;
@@ -23,8 +23,11 @@ export interface QuoteResponse {
   routes: Route[];
 }
 
+export type DecisionType = "ALLOW" | "REJECT" | "FALLBACK_TO_SAFE_ROUTE";
+export type ContractDecision = 0 | 1 | 2;
+
 export interface Decision {
-  decision: "ALLOW" | "REJECT" | "FALLBACK_TO_SAFE_ROUTE";
+  decision: DecisionType;
   riskScore: number;
   reason: string;
   routeId: string;
@@ -37,10 +40,11 @@ export interface Event {
   eventType: string;
   timestamp: number;
   routeId?: string;
-  decision?: string;
+  decision?: DecisionType;
   riskScore?: number;
   message: string;
   txHash?: string;
+  fallbackRouteId?: string;
 }
 
 export interface EvaluateRequest {
@@ -48,8 +52,19 @@ export interface EvaluateRequest {
   configProfile: string;
 }
 
-export interface ExecuteRequest {
+export interface ExecutionPermit {
+  user: string;
   routeId: string;
-  maxLossBps: number;
-  deadline: number;
+  amountIn: string;
+  amountOutQuoted: string;
+  deadline: string;
+  riskScore: string;
+  decision: ContractDecision;
+  nonce: string;
+}
+
+export interface ExecuteRequest {
+  evaluation: Decision;
+  permit: ExecutionPermit;
+  signature: string;
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
@@ -77,16 +77,12 @@ export function HeaderAvatar() {
             }}
             onClick={() => {
               setShowDropdown(false);
-              showToast({
-                type: "info",
-                message: `Profile — ${checksumAddr}`,
-                duration: 0,
-              });
+              navigate("/profile");
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = "#1f6feb33"}
             onMouseLeave={(e) => e.currentTarget.style.background = "#1c2128"}
           >
-            <span style={{ fontSize: 16 }}>👤</span>
+            <span style={{ fontSize: 16 }}>馃懁</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#e1e4e8" }}>User Profile</div>
               <div style={{ fontSize: 11, color: "#8b949e", fontFamily: "monospace", marginTop: 2 }}>{shortAddr}</div>
@@ -102,7 +98,7 @@ export function HeaderAvatar() {
             onMouseEnter={(e) => e.currentTarget.style.background = "#f8514933"}
             onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
           >
-            <span style={{ fontSize: 16 }}>🔌</span>
+            <span style={{ fontSize: 16 }}>馃攳</span>
             <div style={{ fontSize: 13, fontWeight: 600, color: "#f85149", flex: 1 }}>Disconnect Wallet</div>
           </div>
         </div>
