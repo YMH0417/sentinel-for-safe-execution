@@ -138,6 +138,8 @@ GET /api/execute/nonce?user=0x1111111111111111111111111111111111111111
 - `nonce` 和 `chainId` 使用字符串返回。
 - 后端需要配置 `RPC_URL` 和 `VAULT_EXECUTION_ADDRESS`。
 - RPC 不可用返回 `502`；链配置缺失返回 `503`；user 地址非法返回 `400`。
+- 本地前后端 Demo 可显式设置 `CHAIN_MODE=mock`；此时 nonce 和执行结果为
+  进程内模拟数据，不访问 RPC，也不用于验证签名或防重放。
 
 ### DevA 链上执行接口（后端迁移目标）
 
