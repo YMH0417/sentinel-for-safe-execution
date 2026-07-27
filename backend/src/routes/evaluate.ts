@@ -4,12 +4,42 @@ import { evaluateRoute } from "../services/agentService.js";
 import { addEvent } from "../services/eventService.js";
 
 const router = Router();
+const CONFIG_PROFILES = new Set(["normal", "conservative", "aggressive"]);
 
 router.post("/", (req: Request, res: Response) => {
-  const { routeId, configProfile } = req.body;
+  if (!req.body || typeof req.body !== "object") {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_EVALUATE_REQUEST",
+        message: "request body must be an object",
+      },
+    });
+  }
 
-  if (!routeId) {
-    return res.status(400).json({ error: "routeId is required" });
+  const { routeId, configProfile = "normal" } = req.body as {
+    routeId?: unknown;
+    configProfile?: unknown;
+  };
+
+  if (typeof routeId !== "string" || routeId.trim() === "") {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_EVALUATE_REQUEST",
+        message: "routeId must be a non-empty string",
+      },
+    });
+  }
+  if (
+    typeof configProfile !== "string" ||
+    !CONFIG_PROFILES.has(configProfile)
+  ) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_EVALUATE_REQUEST",
+        message:
+          "configProfile must be normal, conservative, or aggressive",
+      },
+    });
   }
 
   addEvent({
@@ -18,7 +48,7 @@ router.post("/", (req: Request, res: Response) => {
     message: `Route ${routeId} submitted for safety evaluation`,
   });
 
-  const decision = evaluateRoute(routeId, configProfile || "normal");
+  const decision = evaluateRoute(routeId, configProfile);
 
   addEvent({
     eventType: "DecisionMade",
@@ -28,7 +58,7 @@ router.post("/", (req: Request, res: Response) => {
     message: `Decision: ${decision.decision} (riskScore=${decision.riskScore}). ${decision.reason}`,
   });
 
-  res.json(decision);
+  return res.json(decision);
 });
 
 export default router;

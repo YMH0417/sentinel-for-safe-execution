@@ -17,7 +17,10 @@ router.get("/", (req: Request, res: Response) => {
 
   if (requested && !isProfileName(requested)) {
     return res.status(400).json({
-      error: "Invalid profile. Use normal, conservative, or aggressive.",
+      error: {
+        code: "INVALID_CONFIG_PROFILE",
+        message: "profile must be normal, conservative, or aggressive",
+      },
     });
   }
 
@@ -26,7 +29,7 @@ router.get("/", (req: Request, res: Response) => {
     ? config.profiles[activeProfile]
     : config.profiles.normal;
 
-  res.json({
+  return res.json({
     defaultProfile: config.defaultProfile,
     activeProfile,
     paused: config.paused,
