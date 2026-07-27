@@ -35,7 +35,9 @@ Contract (VaultExecution.sol on Anvil)
 - **Agent Service**: Implements risk scoring rules (quote deviation, failure risk, pool risk)
 - **Vault Service**: Calls `VaultExecution.executeRoute()` through ethers using a signed DevE permit
 - **Event Service**: In-memory event log with the fixed timeline contract
-  `RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected | FallbackRequired`
+  `RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected`
+  (`FALLBACK_TO_SAFE_ROUTE` executes the selected safe route and ends in
+  `ExecutionSuccess`; `FallbackRequired` is reserved for compatibility.)
 
 ### Contracts (Foundry)
 - **VaultExecution.sol**: Chain-side gate enforcement

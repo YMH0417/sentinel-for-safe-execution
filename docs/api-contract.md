@@ -259,31 +259,126 @@ GET /api/events
 一次标准流程固定按以下顺序产生事件：
 
 ```text
-RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected | FallbackRequired
+RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected
 ```
 
 - `RouteEvaluated`：`POST /api/evaluate` 收到 route 后产生。
 - `DecisionMade`：Safety Agent 完成确定性判断后产生。
-- `ExecutionSuccess`：ALLOW route 通过执行闸门并成功执行。
+- `ExecutionSuccess`：ALLOW route，或已切换到 `fallbackRouteId` 的安全 route，通过执行闸门并成功执行。
 - `ExecutionRejected`：REJECT route 被执行闸门拦截。
-- `FallbackRequired`：当前 route 不执行，调用方应根据 `fallbackRouteId` 重新评估并执行安全路线。
-- 系统不会把 `FallbackRequired` 表示成已经执行 fallback，也不使用 `FallbackTriggered`。
 - `GET /api/events` 返回后端内存中按发生顺序排列的真实事件；服务重启后事件清空。
 
-**FALLBACK event example:**
+**FALLBACK execution example:**
 
 ```json
 {
   "id": "evt_1721659200000_3",
-  "eventType": "FallbackRequired",
+  "eventType": "ExecutionSuccess",
   "timestamp": 1721659200000,
-  "routeId": "route-c",
+  "routeId": "route-a",
   "decision": "FALLBACK_TO_SAFE_ROUTE",
   "riskScore": 60,
   "fallbackRouteId": "route-a",
-  "message": "Execution requires fallback from route-c to route-a"
+  "message": "Executed successfully in local mock chain mode"
 }
 ```
+
+`FALLBACK_TO_SAFE_ROUTE` 表示执行参数已切换到 `fallbackRouteId`。当前 Week 3
+Vault 和 backend 会按安全 route 继续执行，因此成功事件为 `ExecutionSuccess`。
+`FallbackRequired` 仅保留为事件类型兼容项，当前流程不产生该事件。
+
+---
+
+## 5. Get Risk Config
+
+```http
+GET /api/config
+GET /api/config?profile=conservative
+```
+
+`profile` 可选值为 `normal`、`conservative` 或 `aggressive`。省略时使用
+`defaultProfile`。
+
+**Response:**
+
+```json
+{
+  "defaultProfile": "normal",
+  "activeProfile": "normal",
+  "paused": false,
+  "profile": {
+    "maxLossBps": 100,
+    "maxQuoteDeviationThreshold": 0.008,
+    "failureThreshold": 0.2,
+    "poolRiskThreshold": 70
+  },
+  "profiles": {},
+  "decisionThresholds": {
+    "allow": "riskScore < 40",
+    "fallback": "40 <= riskScore < 70 and supportsFallback",
+    "reject": "riskScore >= 70"
+  }
+}
+```
+
+非法 profile 返回 HTTP 400：
+
+```json
+{
+  "error": {
+    "code": "INVALID_CONFIG_PROFILE",
+    "message": "profile must be normal, conservative, or aggressive"
+  }
+}
+```
+
+---
+
+## 6. Debug Status
+
+```http
+GET /api/debug/status
+```
+
+用于启动后和录屏前检查后端状态，返回 chain mode、route 数据版本、事件数量和
+配置状态。
+
+```json
+{
+  "service": "sentinel-backend",
+  "version": "0.1.0",
+  "chainMode": "mock",
+  "rpcConfigured": false,
+  "vaultConfigured": false,
+  "defaultProfile": "normal",
+  "paused": false,
+  "routeCount": 3,
+  "routesVersion": "v1.0",
+  "eventCount": 0,
+  "endpoints": []
+}
+```
+
+该接口只返回配置是否存在，不返回 RPC URL、私钥、签名或请求体。
+
+---
+
+## Error Contract
+
+所有 API 错误使用 JSON：
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Human-readable error message"
+  }
+}
+```
+
+- 参数错误或非法 JSON：HTTP 400。
+- 未知 API endpoint：HTTP 404。
+- 未捕获后端异常：HTTP 500，响应中不包含堆栈。
 
 ---
 
@@ -317,11 +412,11 @@ RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected | Fallb
 | Field | Type | Description |
 |-------|------|-------------|
 | id | string | Unique event identifier |
-| eventType | string | RouteEvaluated, DecisionMade, ExecutionSuccess, ExecutionRejected, or FallbackRequired |
+| eventType | string | RouteEvaluated, DecisionMade, ExecutionSuccess, or ExecutionRejected (`FallbackRequired` is reserved) |
 | timestamp | number | Unix timestamp in milliseconds |
 | routeId | string | Route that produced the event |
 | decision | string/optional | Agent decision when applicable |
 | riskScore | number/optional | Risk score when applicable |
-| fallbackRouteId | string/optional | Suggested safe route for FallbackRequired |
+| fallbackRouteId | string/optional | Safe route selected for fallback execution |
 | message | string | Human-readable event explanation |
 | txHash | string/optional | Confirmed on-chain transaction hash |
