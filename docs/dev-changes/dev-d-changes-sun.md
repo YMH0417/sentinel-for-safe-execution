@@ -1,5 +1,7 @@
 # Dev D 变更记录 — 2026-07-26（周日）
 
+> **2026-07-28 追加**：Demo chain + Swap API 见 [`dev-d-changes-demo-chain.md`](dev-d-changes-demo-chain.md)。
+
 ## 变更目的
 
 为优先完成 Week 3 前后端 Demo 联调，增加显式本地 mock chain 模式，使前端无需

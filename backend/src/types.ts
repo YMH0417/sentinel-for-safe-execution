@@ -14,6 +14,12 @@ export interface Route {
   fallbackRouteId: string | null;
   warningFlags: string[];
   expectedDecision?: string;
+  spotPrice?: number;
+  priceImpactBps?: number;
+  poolLabel?: string;
+  pairAddress?: string;
+  isReferencePool?: boolean;
+  notes?: string;
 }
 
 export interface QuoteResponse {
@@ -21,6 +27,10 @@ export interface QuoteResponse {
   tokenOut: string;
   amountIn: number;
   routes: Route[];
+  referencePriceSource?: string;
+  referencePrice?: number;
+  bestQuotedRouteId?: string;
+  recommendedRouteId?: string;
 }
 
 export type DecisionType = "ALLOW" | "REJECT" | "FALLBACK_TO_SAFE_ROUTE";
@@ -30,7 +40,10 @@ export type EventType =
   | "ExecutionAttempted"
   | "ExecutionSuccess"
   | "ExecutionRejected"
-  | "FallbackRequired";
+  | "FallbackRequired"
+  | "SwapExecuted"
+  | "SwapFailed"
+  | "SwapBatchCompleted";
 
 export interface Decision {
   decision: DecisionType;
@@ -45,6 +58,16 @@ export interface Decision {
 export interface EvaluateRequest {
   routeId: string;
   configProfile: "normal" | "conservative" | "aggressive";
+  tokenIn?: string;
+  tokenOut?: string;
+  amountIn?: number;
+}
+
+export interface SafetyExplanation {
+  narrative: string;
+  source: "llm" | "local-post-train";
+  model: string;
+  generatedAt: string;
 }
 
 export type ContractDecision = 0 | 1 | 2;
@@ -86,4 +109,56 @@ export interface RiskConfig {
   };
   defaultProfile: string;
   paused: boolean;
+  maxSlippageBps?: number;
+}
+
+export interface TokenBalance {
+  symbol: string;
+  address: string;
+  raw: string;
+  human: number;
+}
+
+export interface SwapRequest {
+  routeId: string;
+  amountIn: number;
+  tokenIn?: string;
+  tokenOut?: string;
+  recipient?: string;
+  skipEvaluate?: boolean;
+  force?: boolean;
+  configProfile?: "normal" | "conservative" | "aggressive";
+  useRouter?: boolean;
+}
+
+export interface SwapResult {
+  success: boolean;
+  routeId: string;
+  requestedRouteId?: string;
+  executedRouteId?: string;
+  agentDecision?: DecisionType;
+  executionMode?: "router" | "direct";
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: number;
+  quotedOut: number;
+  actualOut: number;
+  amountOutMin?: number;
+  slippageBps?: number;
+  recipient: string;
+  pairAddress: string;
+  txHash: string;
+  blockNumber: number;
+  gasUsed: string;
+  balancesBefore: Partial<Record<string, TokenBalance>>;
+  balancesAfter: Partial<Record<string, TokenBalance>>;
+  balanceDelta: Partial<Record<string, number>>;
+}
+
+export interface SwapBatchResult {
+  passed: number;
+  failed: number;
+  total: number;
+  results: SwapResult[];
+  errors: Array<{ routeId: string; error: string }>;
 }

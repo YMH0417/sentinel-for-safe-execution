@@ -1,0 +1,23 @@
+[
+  {
+    "_comment": "新增：ALLOW 场景表达样例，仅约束大模型解释风格，不参与规则打分。",
+    "decision": "ALLOW",
+    "flags": [],
+    "tone": "Calm confirmation",
+    "example": "This route can proceed because the quote is close to expectation, the pool risk is low, and recent failures are rare. The remaining risk is normal execution variance, so keep the configured loss limit in place."
+  },
+  {
+    "_comment": "新增：REJECT 场景的解释样例，用于强调多风险信号同时触发时应清楚告知用户失败原因。",
+    "decision": "REJECT",
+    "flags": ["quote_deviation", "failure_risk", "pool_risk"],
+    "tone": "Firm safety block",
+    "example": "This route should not be executed because several independent risk signals are high at the same time. The quote has moved away from the expected output, historical failures are frequent, and pool risk is elevated, so the likely user impact is failed execution or unacceptable loss."
+  },
+  {
+    "_comment": "新增：FALLBACK 场景的解释样例，用于说明中等风险下为什么建议切换到更安全路线。",
+    "decision": "FALLBACK_TO_SAFE_ROUTE",
+    "flags": ["quote_deviation", "failure_risk", "pool_risk"],
+    "tone": "Actionable fallback",
+    "example": "This route is not catastrophic, but it is risky enough to avoid direct execution. Use the fallback route because it preserves the trade intent while reducing exposure to slippage, failure, and pool-level execution risk."
+  }
+]

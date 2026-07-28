@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 import { getAddress } from "ethers";
@@ -36,11 +36,12 @@ function generateDummySignature(): string {
 export function TransactionPage({ safeMode }: Props) {
   const { account } = useWallet();
   const { showToast } = useToast();
-  const [tokenIn, setTokenIn] = useState("USDT");
-  const [tokenOut, setTokenOut] = useState("USDC");
-  const [amount, setAmount] = useState("1000");
+  const [tokenIn, setTokenIn] = useState("USDC");
+  const [tokenOut, setTokenOut] = useState("GOOD");
+  const [amount, setAmount] = useState("100");
   const [routes, setRoutes] = useState<RouteType[]>([]);
-  const [selectedRoute, setSelectedRoute] = useState<string>("route-a");
+  const [selectedRoute, setSelectedRoute] = useState<string>("route-good-safe");
+  const [quoteMeta, setQuoteMeta] = useState<{ referencePrice?: number; recommendedRouteId?: string }>({});
   const [decision, setDecision] = useState<Decision | null>(null);
   const [resultEvent, setResultEvent] = useState<Event | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -54,8 +55,14 @@ export function TransactionPage({ safeMode }: Props) {
     try {
       const res = await fetch(`${API_BASE}/quote?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amount=${amount}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Quote failed");
       setRoutes(data.routes);
-      if (data.routes.length > 0) setSelectedRoute(data.routes[0].routeId);
+      setQuoteMeta({
+        referencePrice: data.referencePrice,
+        recommendedRouteId: data.recommendedRouteId,
+      });
+      const recommended = data.recommendedRouteId ?? data.routes[0]?.routeId;
+      if (recommended) setSelectedRoute(recommended);
       setError("");
     } catch (e: any) {
       setError(`Failed to load routes: ${e.message}`);
@@ -71,9 +78,16 @@ export function TransactionPage({ safeMode }: Props) {
       const res = await fetch(`${API_BASE}/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routeId: target, configProfile: "normal" }),
+        body: JSON.stringify({
+          routeId: target,
+          configProfile: "normal",
+          tokenIn,
+          tokenOut,
+          amountIn: Number(amount),
+        }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Evaluate failed");
       setDecision(data);
       if (data.decision === "FALLBACK_TO_SAFE_ROUTE" && data.fallbackRouteId) {
         setRecommendedRouteId(data.fallbackRouteId);
@@ -232,8 +246,8 @@ export function TransactionPage({ safeMode }: Props) {
     await evaluateRoute();
     await new Promise((r) => setTimeout(r, 300));
     if (decision?.decision === "REJECT" && safeMode) {
-      const safeRoute = routes.find((r) => r.routeId === "route-a");
-      if (safeRoute) setSelectedRoute("route-a");
+      const safeRoute = routes.find((r) => r.routeId.includes("-safe"));
+      if (safeRoute) setSelectedRoute(safeRoute.routeId);
       await evaluateRoute();
       await new Promise((r) => setTimeout(r, 300));
       await executeRoute();
@@ -260,6 +274,24 @@ export function TransactionPage({ safeMode }: Props) {
 
       {routes.length > 0 && (
         <>
+          {quoteMeta.referencePrice !== undefined && (
+            <div style={{
+              background: "#161b22",
+              borderRadius: 12,
+              padding: "12px 20px",
+              marginBottom: 16,
+              border: "1px solid #30363d",
+              color: "#8b949e",
+              fontSize: 14,
+            }}>
+              Reference Price (SAFE pool): <strong style={{ color: "#e1e4e8" }}>{quoteMeta.referencePrice}</strong>
+              {quoteMeta.recommendedRouteId && (
+                <span style={{ marginLeft: 16 }}>
+                  Recommended: <strong style={{ color: "#3fb950" }}>{quoteMeta.recommendedRouteId}</strong>
+                </span>
+              )}
+            </div>
+          )}
           <RouteList
             routes={routes}
             selected={selectedRoute}
@@ -267,7 +299,7 @@ export function TransactionPage({ safeMode }: Props) {
               setSelectedRoute(id);
               setRecommendedRouteId(null);
             }}
-            recommendedRouteId={recommendedRouteId}
+            recommendedRouteId={recommendedRouteId ?? quoteMeta.recommendedRouteId ?? null}
           />
           <SafetyPanel decision={decision} onSwitchToFallback={switchToFallbackRoute} />
 

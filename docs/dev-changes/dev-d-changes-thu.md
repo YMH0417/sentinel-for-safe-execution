@@ -1,5 +1,7 @@
 # Dev D 变更记录 — 2026-07-23（周四）
 
+> **2026-07-28 最新**：Demo chain + Swap API → [`dev-d-changes-demo-chain.md`](dev-d-changes-demo-chain.md)
+
 ## 改了哪些文件
 
 | 文件 | 改了什么 |

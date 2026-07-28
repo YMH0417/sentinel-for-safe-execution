@@ -1,5 +1,7 @@
 # Dev C 今日变更记录 — 2026-07-23（周四）
 
+> **2026-07-28 追加**：Demo 36 路由 → [`dev-c-changes-demo-chain.md`](dev-c-changes-demo-chain.md)
+
 > 这份文档是给其他 Dev 看的——Dev C 改了哪些数据，其他人需要关注什么。
 
 ---

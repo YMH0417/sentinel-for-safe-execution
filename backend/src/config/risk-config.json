@@ -20,5 +20,6 @@
     }
   },
   "defaultProfile": "normal",
-  "paused": false
+  "paused": false,
+  "maxSlippageBps": 100
 }

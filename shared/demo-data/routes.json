@@ -2,7 +2,8 @@
   "_meta": {
     "version": "v1.0",
     "frozen": "2026-07-26",
-    "notes": "Week 3 demo freeze — do not change route values without re-validating evaluate decisions"
+    "scope": "mock mode only (CHAIN_MODE=mock)",
+    "notes": "Legacy Week 3 demo freeze. On-chain demo uses 36 routes — see docs/route-scenarios.md Part II. Do not change values without re-validating evaluate decisions."
   },
   "routes": [
     {

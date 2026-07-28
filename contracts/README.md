@@ -1,25 +1,172 @@
-# VaultExecution（DevA）
+# Contracts — Sentinel Demo + VaultExecution
 
-Week 3 MVP 的链上执行闸门。当前只校验并记录 route，不调用真实 DEX。
+> **Last updated**: 2026-07-28
 
-## 交付文件
+Solidity **0.8.24**, Foundry. Two deployment tracks:
 
-- `abi/VaultExecution.json`：与当前编译产物一致的标准 JSON ABI。
-- `integration/execution-permit.json`：DevD/DevE 使用的 EIP-712 schema、Decision 映射与编码约定。
-- `deployments/anvil-31337.json`：本地部署和 `executeRoute` 冒烟测试记录（本地临时文件，不提交）。
-- `deployments/monad-testnet-10143.json`：Monad Testnet 部署完成后生成。
-- `../docs/dev-a-changes-thu.md`：DevA 变更、对接要求与提交白名单。
+1. **VaultExecution** — EIP-712 execution gate (production path)
+2. **Demo scenario** — 36 pools, 4 tokens, real swaps on Anvil (+ DemoSwapRouter)
 
-## 安全约束
+---
 
-- `paused`：仅 owner 可暂停或恢复。
-- `maxLossBps`：仅 owner 可更新，范围为 `0-10000`。
-- `deadline`：过期许可直接 revert。
-- `agentSignature`：`decision`、`riskScore` 和 route 参数必须由 `agentSigner` 通过 EIP-712 签发。
-- `nonce`：按用户递增，防止执行许可重放。
-- `riskScore >= 70` 或 `decision == REJECT`：不执行，发出 `VaultRejected`。
+## Quick start (Windows, recommended)
 
-## executeRoute 接口
+```powershell
+# From repo root — Anvil + deploy + backend/.env + services
+.\start-demo.ps1
+```
+
+Or deploy only:
+
+```powershell
+anvil --chain-id 31337 --port 8545 --block-gas-limit 120000000
+
+cd contracts
+forge script script/DeployAllDemo.s.sol:DeployAllDemo `
+  --rpc-url http://127.0.0.1:8545 --broadcast -vvv
+
+powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1
+```
+
+> Anvil restart invalidates state — re-run `.\start-demo.ps1` to redeploy and rewrite `.env`.
+
+---
+
+## Demo 36-Route Scenario (Anvil)
+
+### Prerequisites
+
+```powershell
+# MUST raise block gas limit (deploy ~48M gas)
+anvil --chain-id 31337 --port 8545 --block-gas-limit 120000000
+```
+
+### Deploy output
+
+Forge auto-writes **`deployments/anvil-31337-demo.json`**:
+
+```json
+{
+  "chainId": 31337,
+  "registry": "0x...",
+  "vaultExecution": "0x...",
+  "swapRouter": "0x...",
+  "scenarioDeployer": "0x...",
+  "agentSigner": "0x...",
+  "tokens": { "USDC": "0x...", "GOOD": "0x...", "BAD": "0x...", "BAIT": "0x..." },
+  "pools": []
+}
+```
+
+Pool metadata is read from chain by backend (`DemoPoolRegistry.poolCount()` = 36, sealed).
+
+### Core demo contracts
+
+| Contract | Role |
+|----------|------|
+| `MockUSDC` | 6-decimal USDC |
+| `DemoToken` / `DemoERC20` | GOOD, BAD, BAIT (18 dec) |
+| `DemoPair` | Uniswap V2-style `swap()`, `getReserves()` |
+| `DemoPoolRegistry` | Register 36 pools, seal, token risk tags, `getPoolByRouteId` |
+| `DemoScenarioDeployer` | Deploy all, seed liquidity, `fundSwapper()` |
+| `DemoSwapRouter` | `vault.executeRoute` + `fundSwapper` + `pair.swap` in **one tx** |
+| `VaultExecution` | EIP-712 gate (standalone or via Router) |
+
+### Price ratio
+
+USDC : GOOD : BAD : BAIT = **1 : 20 : 100 : 1** (reserve math in deployer).
+
+### Route naming (off-chain convention)
+
+```text
+route-{tokenIn}-{tokenOut}-{safe|shallow|toxic}
+```
+
+12 directed pairs × 3 pools = **36 routes**.
+
+### Verification scripts
+
+```powershell
+# Forge unit test (no RPC)
+forge test --match-contract SwapAll36Routes -vvv
+forge test --match-contract DemoSwapRouter -vvv
+
+# On-chain swap script (needs deployed registry)
+forge script script/TestAll36Swaps.s.sol:TestAll36Swaps `
+  --rpc-url http://127.0.0.1:8545 -vvv
+
+# Quote tables
+forge script script/GenerateQuoteTables.s.sol:GenerateQuoteTables `
+  --rpc-url http://127.0.0.1:8545 -vvv
+
+# Post-deploy sanity
+forge script script/Verify36SwapsDeployed.s.sol:Verify36SwapsDeployed `
+  --rpc-url http://127.0.0.1:8545 -vvv
+```
+
+Legacy 9-pool quote verify:
+
+```powershell
+$env:DEMO_REGISTRY_ADDRESS = "0x..."
+$env:DEMO_USDC_ADDRESS = "0x..."
+forge script script/VerifyDemoQuotes.s.sol:VerifyDemoQuotes `
+  --rpc-url http://127.0.0.1:8545 -vvv
+```
+
+### fundSwapper (demo only)
+
+```solidity
+function fundSwapper(address token, address recipient, uint256 amount) external;
+```
+
+Transfers from deployer inventory to swap wallet. **Access controlled:** only addresses in `authorizedFunders` (DemoSwapRouter + deployer EOA). `DeployAllDemo` calls `authorizeFunder(router)` and `authorizeFunder(deployer)`.
+
+Backend `swapService` uses Router (1 tx) or direct path: `fundSwapper` → `transfer` → `pair.swap()`.
+
+### DemoSwapRouter
+
+```solidity
+function swapWithPermit(
+    address user,
+    bytes32 routeId,
+    uint256 amountIn,
+    uint256 amountOutQuoted,
+    uint256 amountOutMin,
+    uint256 deadline,
+    uint256 riskScore,
+    uint8 decision,
+    uint256 nonce,
+    bytes calldata signature,
+    address recipient
+) external returns (uint256 amountOut);
+```
+
+Combines Vault gate + funding + DEX swap. Backend signs EIP-712 permit via `agentSignService.ts`.
+
+---
+
+## VaultExecution (Execution Gate)
+
+Chain-side gate. Validates Agent EIP-712 permit; does **not** call DEX directly (Router wraps it for demo).
+
+### Deliverables
+
+| File | Purpose |
+|------|---------|
+| `abi/VaultExecution.json` | Standard ABI |
+| `integration/execution-permit.json` | EIP-712 schema |
+| `script/DeployVaultExecution.s.sol` | Standalone Vault deploy |
+
+### Security constraints
+
+- `paused` — owner only
+- `maxLossBps` — owner, 0–10000
+- `deadline` — expired permit reverts
+- `agentSignature` — must match `agentSigner` EIP-712 digest
+- `nonce` — per-user monotonic
+- `riskScore >= 70` or `decision == REJECT` → `VaultRejected`, no execution
+
+### executeRoute
 
 ```solidity
 function executeRoute(
@@ -35,75 +182,83 @@ function executeRoute(
 ) external returns (bool executed);
 ```
 
-`Decision` 的 ABI 数值：
+| decision | Value |
+|----------|------:|
+| ALLOW | 0 |
+| REJECT | 1 |
+| FALLBACK_TO_SAFE_ROUTE | 2 |
 
-| 数值 | 决策 |
-|---:|---|
-| `0` | `ALLOW` |
-| `1` | `REJECT` |
-| `2` | `FALLBACK_TO_SAFE_ROUTE` |
-
-对于 fallback，Agent/后端应传入最终安全 route 的 `routeId` 和报价，并对这组最终参数签名。
-
-## EIP-712 签名
-
-Domain：
+### EIP-712 Domain
 
 ```text
 name: Sentinel Vault Execution
 version: 1
-chainId: 当前链 ID
-verifyingContract: VaultExecution 部署地址
+chainId: <current>
+verifyingContract: <VaultExecution address>
 ```
 
-Primary type：
+Primary type: `ExecutionPermit(user, routeId, amountIn, amountOutQuoted, deadline, riskScore, decision, nonce)`.
 
-```text
-ExecutionPermit(
-  address user,
-  bytes32 routeId,
-  uint256 amountIn,
-  uint256 amountOutQuoted,
-  uint256 deadline,
-  uint256 riskScore,
-  uint8 decision,
-  uint256 nonce
-)
-```
+---
 
-后端可调用 `getExecutionDigest(...)` 核对待签 digest，并通过 `nonces(user)` 获取当前 nonce。
+## Build & Test
 
-## 构建和测试
-
-```shell
+```powershell
+cd contracts
 forge build
 forge test
 ```
 
-## 部署
+Notable tests:
 
-复制 `.env.example` 并设置：
+- `SwapAll36Routes.t.sol` — 36/36 swaps in forge
+- `DemoSwapRouter.t.sol` — Router + Vault + swap
+- `VaultExecution*.t.sol` — gate, rejection, boundary
+- `DemoPoolRegistry.t.sol` — seal count, reference pool
 
-- `PRIVATE_KEY`：部署账户私钥。
-- `AGENT_SIGNER`：签发 ExecutionPermit 的 Agent 地址。
-- `VAULT_ADMIN`：可选，默认使用部署账户。
-- `MONAD_RPC_URL`：Monad Testnet RPC，默认使用官方公共端点。
+CI: `.github/workflows/ci.yml` runs `forge test` + backend build.
 
-```shell
-forge script script/DeployVaultExecution.s.sol:DeployVaultExecution \
-  --rpc-url <RPC_URL> \
-  --broadcast
+---
+
+## Deploy Vault (standalone)
+
+Copy `.env.example`:
+
+```env
+PRIVATE_KEY=
+AGENT_SIGNER=
+VAULT_ADMIN=
+MONAD_RPC_URL=https://testnet-rpc.monad.xyz
 ```
 
-部署脚本会输出合约地址、owner、agent signer、max loss 和 paused 状态。
-
-Monad Testnet：
-
-```shell
-source .env
-forge script script/DeployVaultExecution.s.sol:DeployVaultExecution \
-  --rpc-url "$MONAD_RPC_URL" \
-  --broadcast
+```powershell
+forge script script/DeployVaultExecution.s.sol:DeployVaultExecution `
+  --rpc-url http://127.0.0.1:8545 --broadcast
 ```
 
-不要将 `.env`、私钥或签名服务密钥提交到 Git。
+Monad Testnet (chain ID 10143): use `$MONAD_RPC_URL`.
+
+**Never commit `.env` or private keys.**
+
+---
+
+## Backend integration
+
+After deploy, run `scripts/sync-backend-env.ps1` or `.\start-demo.ps1` — **do not hand-copy addresses**.
+
+Generated `backend/.env`:
+
+```env
+CHAIN_MODE=demo
+RPC_URL=http://127.0.0.1:8545
+DEMO_REGISTRY_ADDRESS=<from JSON>
+VAULT_EXECUTION_ADDRESS=<from JSON>
+DEMO_SWAP_ROUTER_ADDRESS=<from JSON>
+DEMO_SCENARIO_DEPLOYER=<from JSON>
+SWAP_PRIVATE_KEY=<Anvil #0>
+AGENT_PRIVATE_KEY=<Anvil #0, must match agentSigner>
+```
+
+Backend also reads vault/router from `DEMO_DEPLOYMENT_PATH` if env vars omitted.
+
+See root [`README.md`](../README.md) and [`docs/api-contract.md`](../docs/api-contract.md).

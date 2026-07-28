@@ -1,5 +1,7 @@
 # Dev D 变更记录 — 2026-07-25（周六）
 
+> **2026-07-28 最新**：Demo chain + Swap API → [`dev-d-changes-demo-chain.md`](dev-d-changes-demo-chain.md)
+
 ## 变更目的
 
 根据 Dev A 新版 `VaultExecution` 的后端对接要求，将 Dev D 的执行服务从

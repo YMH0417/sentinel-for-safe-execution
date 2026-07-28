@@ -6,7 +6,7 @@ import { addEvent } from "../services/eventService.js";
 const router = Router();
 const CONFIG_PROFILES = new Set(["normal", "conservative", "aggressive"]);
 
-router.post("/", (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   if (!req.body || typeof req.body !== "object") {
     return res.status(400).json({
       error: {
@@ -16,9 +16,12 @@ router.post("/", (req: Request, res: Response) => {
     });
   }
 
-  const { routeId, configProfile = "normal" } = req.body as {
+  const { routeId, configProfile = "normal", tokenIn, tokenOut, amountIn } = req.body as {
     routeId?: unknown;
     configProfile?: unknown;
+    tokenIn?: unknown;
+    tokenOut?: unknown;
+    amountIn?: unknown;
   };
 
   if (typeof routeId !== "string" || routeId.trim() === "") {
@@ -36,8 +39,7 @@ router.post("/", (req: Request, res: Response) => {
     return res.status(400).json({
       error: {
         code: "INVALID_EVALUATE_REQUEST",
-        message:
-          "configProfile must be normal, conservative, or aggressive",
+        message: "configProfile must be normal, conservative, or aggressive",
       },
     });
   }
@@ -48,17 +50,31 @@ router.post("/", (req: Request, res: Response) => {
     message: `Route ${routeId} submitted for safety evaluation`,
   });
 
-  const decision = evaluateRoute(routeId, configProfile);
+  try {
+    const decision = await evaluateRoute(routeId, configProfile, {
+      tokenIn: typeof tokenIn === "string" ? tokenIn : undefined,
+      tokenOut: typeof tokenOut === "string" ? tokenOut : undefined,
+      amountIn: amountIn !== undefined ? Number(amountIn) : undefined,
+    });
 
-  addEvent({
-    eventType: "DecisionMade",
-    routeId,
-    decision: decision.decision,
-    riskScore: decision.riskScore,
-    message: `Decision: ${decision.decision} (riskScore=${decision.riskScore}). ${decision.reason}`,
-  });
+    addEvent({
+      eventType: "DecisionMade",
+      routeId,
+      decision: decision.decision,
+      riskScore: decision.riskScore,
+      message: `Decision: ${decision.decision} (riskScore=${decision.riskScore}). ${decision.reason}`,
+    });
 
-  return res.json(decision);
+    return res.json(decision);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Evaluate failed";
+    return res.status(503).json({
+      error: {
+        code: "EVALUATE_FAILED",
+        message,
+      },
+    });
+  }
 });
 
 export default router;

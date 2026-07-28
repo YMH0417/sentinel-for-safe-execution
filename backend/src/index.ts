@@ -1,4 +1,9 @@
 // backend/src/index.ts — Dev D: Orchestration Service 入口
+import { config as loadEnv } from "dotenv";
+import { resolve } from "path";
+
+loadEnv({ path: resolve(process.cwd(), ".env") });
+
 import express from "express";
 import cors from "cors";
 import http from "http";
@@ -8,6 +13,8 @@ import executeRouter from "./routes/execute.js";
 import eventsRouter from "./routes/events.js";
 import configRouter from "./routes/config.js";
 import debugRouter from "./routes/debug.js";
+import demoRouter from "./routes/demo.js";
+import swapRouter from "./routes/swap.js";
 import { isMockChainMode } from "./config/chainConfig.js";
 import {
   errorHandler,
@@ -28,6 +35,8 @@ app.use("/api/execute", executeRouter);
 app.use("/api/events", eventsRouter);
 app.use("/api/config", configRouter);
 app.use("/api/debug", debugRouter);
+app.use("/api/demo", demoRouter);
+app.use("/api/swap", swapRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -41,7 +50,7 @@ app.use(errorHandler);
 const server = http.createServer(app);
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`\n  Sentinel Backend running at http://127.0.0.1:${PORT}`);
-  console.log(`  Chain mode: ${isMockChainMode() ? "mock" : "rpc"}`);
+  console.log(`  Chain mode: ${isMockChainMode() ? "mock" : process.env.DEMO_REGISTRY_ADDRESS || process.env.DEMO_DEPLOYMENT_PATH || "demo (deployment file)"}`);
   console.log(`  API Endpoints:`);
   console.log(`    GET  /api/quote          — 获取候选 routes`);
   console.log(`    POST /api/evaluate       — Agent 风险评估`);
@@ -49,7 +58,16 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    GET  /api/execute/nonce  — 查询用户 permit nonce`);
   console.log(`    GET  /api/events         — 查询事件日志`);
   console.log(`    GET  /api/config         — 读取 risk config`);
-  console.log(`    GET  /api/debug/status   — 录屏前自检`);
+  console.log(`    GET  /api/quote/route/:id — 单条路由报价`);
+  console.log(`    GET  /api/demo/tokens     — Demo 代币元数据`);
+  console.log(`    GET  /api/demo/pools      — Demo 36 池注册表`);
+  console.log(`    POST /api/swap            — Safe swap (evaluate + fallback)`);
+  console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
+  console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
+  console.log(`    POST /api/swap/verify-all — Batch 36 (default force; ?safe=true)`);
+  console.log(`    GET  /api/debug/pools-health — 36 池健康检查`);
+  console.log(`    GET  /api/swap/wallet     — Swap 钱包地址`);
+  console.log(`    GET  /api/swap/balances   — Swap 钱包余额`);
   console.log(`    GET  /api/health         — 健康检查\n`);
 });
 
