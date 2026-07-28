@@ -14,28 +14,64 @@ router.get("/route/:routeId", async (req: Request, res: Response) => {
   try {
     const route = await getRouteById(routeId, { tokenIn, tokenOut, amountIn: amount });
     if (!route) {
-      return res.status(404).json({ error: `Route ${routeId} not found` });
+      return res.status(404).json({
+        error: {
+          code: "ROUTE_NOT_FOUND",
+          message: `Route ${routeId} not found`,
+        },
+      });
     }
-    res.json({ route });
+    return res.json({ route });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Quote failed";
-    res.status(isDemoChainMode() ? 503 : 500).json({ error: message });
+    return res.status(isDemoChainMode() ? 503 : 500).json({
+      error: {
+        code: isDemoChainMode() ? "QUOTE_UNAVAILABLE" : "QUOTE_FAILED",
+        message,
+      },
+    });
   }
 });
 
 router.get("/", async (req: Request, res: Response) => {
   const { tokenIn, tokenOut, amount } = req.query;
 
+  if (
+    typeof tokenIn !== "string" ||
+    tokenIn.trim() === "" ||
+    typeof tokenOut !== "string" ||
+    tokenOut.trim() === ""
+  ) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_QUOTE_REQUEST",
+        message: "tokenIn and tokenOut must be non-empty strings",
+      },
+    });
+  }
+
+  const parsedAmount =
+    typeof amount === "string" && amount.trim() !== "" ? Number(amount) : NaN;
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_QUOTE_REQUEST",
+        message: "amount must be a positive number",
+      },
+    });
+  }
+
   try {
-    const result = await getRoutes(
-      tokenIn as string | undefined,
-      tokenOut as string | undefined,
-      amount ? Number(amount) : undefined
-    );
-    res.json(result);
+    const result = await getRoutes(tokenIn, tokenOut, parsedAmount);
+    return res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Quote failed";
-    res.status(isDemoChainMode() ? 503 : 500).json({ error: message });
+    return res.status(isDemoChainMode() ? 503 : 500).json({
+      error: {
+        code: isDemoChainMode() ? "QUOTE_UNAVAILABLE" : "QUOTE_FAILED",
+        message,
+      },
+    });
   }
 });
 

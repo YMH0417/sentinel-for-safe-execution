@@ -46,6 +46,9 @@ swapService
 eventService → memory + backend/data/events.jsonl
 ```
 
+API errors use structured `{ error: { code, message } }` via route validators and
+`middleware/errorHandler.ts` (invalid JSON → 400, unknown route → 404).
+
 ### Vault-only flow (separate)
 
 ```

@@ -16,6 +16,10 @@ import debugRouter from "./routes/debug.js";
 import demoRouter from "./routes/demo.js";
 import swapRouter from "./routes/swap.js";
 import { isMockChainMode } from "./config/chainConfig.js";
+import {
+  errorHandler,
+  notFoundHandler,
+} from "./middleware/errorHandler.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
@@ -38,6 +42,9 @@ app.use("/api/swap", swapRouter);
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "sentinel-backend", version: "0.1.0" });
 });
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 // Start server — bind to 127.0.0.1 to avoid EACCES on Windows
 const server = http.createServer(app);

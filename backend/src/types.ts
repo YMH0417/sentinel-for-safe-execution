@@ -19,6 +19,7 @@ export interface Route {
   poolLabel?: string;
   pairAddress?: string;
   isReferencePool?: boolean;
+  notes?: string;
 }
 
 export interface QuoteResponse {
@@ -60,6 +61,13 @@ export interface EvaluateRequest {
   tokenIn?: string;
   tokenOut?: string;
   amountIn?: number;
+}
+
+export interface SafetyExplanation {
+  narrative: string;
+  source: "llm" | "local-post-train";
+  model: string;
+  generatedAt: string;
 }
 
 export type ContractDecision = 0 | 1 | 2;

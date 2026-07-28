@@ -84,3 +84,51 @@ npm.cmd run dev
 - mock 模式不验证 EIP-712 签名、防重放安全性或真实交易 receipt。
 - 真实 Anvil 联调仍需配置 `RPC_URL`、`VAULT_EXECUTION_ADDRESS` 和
   `EXECUTOR_PRIVATE_KEY`，并使用真实 Agent signer 签名。
+
+---
+
+## 变更补充
+
+### 完成事项
+
+- `/api/quote` 增加币种与正数金额校验。
+- `/api/evaluate` 增加 `routeId` 类型和 `configProfile` 白名单校验。
+- `/api/config` 的非法 profile 响应统一为结构化错误。
+- `/api/execute/nonce` 的地址、链配置和查询错误统一为结构化错误。
+- 增加全局 JSON 错误处理，覆盖非法 JSON、未知 endpoint 和未捕获异常。
+- `docs/api-contract.md` 补充 `/api/config`、`/api/debug/status` 和统一错误合同。
+- API contract 与 architecture 统一 fallback 口径：安全 route 执行成功后产生
+  `ExecutionSuccess`，`FallbackRequired` 仅作为兼容事件类型保留。
+
+### 影响文件
+
+| 文件 | 说明 |
+|---|---|
+| `backend/src/middleware/errorHandler.ts` | JSON 404、非法 JSON 与全局异常处理 |
+| `backend/src/index.ts` | 注册全局错误处理中间件 |
+| `backend/src/routes/quote.ts` | quote 请求校验 |
+| `backend/src/routes/evaluate.ts` | evaluate 请求校验 |
+| `backend/src/routes/config.ts` | config 错误合同统一 |
+| `backend/src/routes/execute.ts` | nonce 查询错误合同统一 |
+| `docs/api-contract.md` | config、debug、error 和 fallback 合同 |
+| `docs/architecture.md` | Timeline 口径同步 |
+
+### 验收结果
+
+- [x] 后端 TypeScript production build 通过。
+- [x] `route-a` 返回 `ExecutionSuccess(route-a)`。
+- [x] `route-b` 返回 `ExecutionRejected(route-b)`。
+- [x] `route-c` 返回 `ExecutionSuccess(route-a)`。
+- [x] `/api/debug/status` 正确返回 mock 与 route 数据状态。
+- [x] 非法 quote 金额、evaluate 请求、config profile 和 nonce user 均返回
+  HTTP 400 JSON。
+- [x] 非法 JSON 返回 HTTP 400 JSON。
+- [x] 未知 endpoint 返回 HTTP 404 JSON。
+- [x] Debug status 不包含 RPC URL、私钥、签名或请求体。
+
+### 注意事项
+
+- `/api/quote` 要求提供非空 `tokenIn`、`tokenOut` 和正数 `amount`。
+- `configProfile` 仅接受 `normal`、`conservative` 和 `aggressive`。
+- `/api/events` 与 mock nonce 是进程内数据，后端重启后会重置。
+- 全局 HTTP 500 响应不返回内部错误堆栈；详细异常只写入后端控制台。

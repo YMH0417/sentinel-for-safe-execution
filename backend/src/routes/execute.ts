@@ -162,7 +162,12 @@ router.get("/nonce", async (req: Request, res: Response) => {
   const user = typeof req.query.user === "string" ? req.query.user : "";
 
   if (!isAddress(user)) {
-    return res.status(400).json({ error: "user must be a valid Ethereum address" });
+    return res.status(400).json({
+      error: {
+        code: "INVALID_USER_ADDRESS",
+        message: "user must be a valid Ethereum address",
+      },
+    });
   }
 
   if (isMockChainMode()) {
@@ -175,7 +180,15 @@ router.get("/nonce", async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Chain query failed";
     const status = err instanceof ChainConfigurationError ? 503 : 502;
-    return res.status(status).json({ error: message });
+    return res.status(status).json({
+      error: {
+        code:
+          err instanceof ChainConfigurationError
+            ? "CHAIN_CONFIGURATION_ERROR"
+            : "CHAIN_QUERY_FAILED",
+        message,
+      },
+    });
   }
 });
 

@@ -111,7 +111,37 @@ Demo mode only. Returns reserves and health for all 36 pools.
 
 Optional query: `?profile=conservative|aggressive|normal`
 
-Returns contents of `backend/src/config/risk-config.json` (includes `maxSlippageBps`, default 100 = 1%).
+```json
+{
+  "defaultProfile": "normal",
+  "activeProfile": "normal",
+  "paused": false,
+  "profile": {
+    "maxLossBps": 100,
+    "maxQuoteDeviationThreshold": 0.008,
+    "failureThreshold": 0.2,
+    "poolRiskThreshold": 70,
+    "maxSlippageBps": 100
+  },
+  "profiles": {},
+  "decisionThresholds": {
+    "allow": "riskScore < 40",
+    "fallback": "40 <= riskScore < 70 and supportsFallback",
+    "reject": "riskScore >= 70"
+  }
+}
+```
+
+Invalid profile → HTTP 400:
+
+```json
+{
+  "error": {
+    "code": "INVALID_CONFIG_PROFILE",
+    "message": "profile must be normal, conservative, or aggressive"
+  }
+}
+```
 
 ---
 
@@ -597,6 +627,73 @@ RouteEvaluated → DecisionMade → [FallbackRequired] → SwapExecuted | SwapFa
 RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected
 ```
 
+`FALLBACK_TO_SAFE_ROUTE` on execute switches to `fallbackRouteId` and ends in
+`ExecutionSuccess` when the Vault gate passes.
+
+**Vault FALLBACK example:**
+
+```json
+{
+  "id": "evt_1721659200000_3",
+  "eventType": "ExecutionSuccess",
+  "timestamp": 1721659200000,
+  "routeId": "route-a",
+  "decision": "FALLBACK_TO_SAFE_ROUTE",
+  "riskScore": 60,
+  "fallbackRouteId": "route-a",
+  "message": "Executed successfully in local mock chain mode"
+}
+```
+
+---
+
+## Error Contract
+
+All API errors use structured JSON:
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Human-readable error message"
+  }
+}
+```
+
+| HTTP | When |
+|------|------|
+| 400 | Invalid params, malformed JSON (`INVALID_JSON`), validation errors |
+| 404 | Unknown endpoint (`NOT_FOUND`) or route not found |
+| 409 | Slippage exceeded (`SLIPPAGE_EXCEEDED`) |
+| 422 | Agent or Vault rejection |
+| 500 | Unhandled server error (no stack trace in response) |
+| 502 | RPC / chain query failure |
+| 503 | Missing chain configuration or evaluate/quote unavailable |
+
+Common error codes:
+
+| code | Endpoint |
+|------|----------|
+| `INVALID_QUOTE_REQUEST` | GET /quote |
+| `INVALID_EVALUATE_REQUEST` | POST /evaluate |
+| `INVALID_EXECUTION_REQUEST` | POST /execute |
+| `INVALID_CONFIG_PROFILE` | GET /config |
+| `INVALID_USER_ADDRESS` | GET /execute/nonce |
+| `SWAP_REJECTED_BY_AGENT` | POST /swap/safe |
+| `SLIPPAGE_EXCEEDED` | POST /swap/safe |
+
+Swap rejection example:
+
+```json
+{
+  "error": {
+    "code": "SWAP_REJECTED_BY_AGENT",
+    "message": "...",
+    "details": { "decision": { "...": "..." } }
+  }
+}
+```
+
 ---
 
 ## Field Reference
@@ -645,37 +742,16 @@ RouteEvaluated → DecisionMade → ExecutionSuccess | ExecutionRejected
 | balanceDelta | object | Per-symbol human delta |
 | txHash | string | Final swap tx |
 
----
+### Event
 
-## Error Conventions
-
-| HTTP | Meaning |
-|------|---------|
-| 400 | Validation / unknown route |
-| 404 | Endpoint disabled for current chain mode |
-| 409 | Slippage exceeded |
-| 422 | Agent rejected swap |
-| 502 | Upstream RPC or tx error |
-| 503 | Missing chain configuration |
-
-Swap errors (422/400/409):
-
-```json
-{
-  "error": {
-    "code": "SWAP_REJECTED_BY_AGENT",
-    "message": "...",
-    "details": { "decision": { "...": "..." } }
-  }
-}
-```
-
-```json
-{
-  "error": {
-    "code": "SLIPPAGE_EXCEEDED",
-    "message": "Output below minimum after re-quote",
-    "details": { "quotedOut": 0.04, "amountOutMin": 0.049 }
-  }
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Unique event identifier |
+| eventType | string | See event types table above |
+| timestamp | number | Unix timestamp in milliseconds |
+| routeId | string | Route that produced the event |
+| decision | string (optional) | Agent decision when applicable |
+| riskScore | number (optional) | Risk score when applicable |
+| fallbackRouteId | string (optional) | Safe route selected for fallback |
+| message | string | Human-readable event explanation |
+| txHash | string (optional) | Confirmed on-chain transaction hash |
