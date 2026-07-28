@@ -9,6 +9,8 @@ interface Props {
   loading: string;
 }
 
+const DEMO_TOKENS = ["USDC", "GOOD", "BAD", "BAIT"] as const;
+
 export function InputPanel({
   tokenIn, tokenOut, amount,
   onTokenInChange, onTokenOutChange, onAmountChange,
@@ -29,15 +31,19 @@ export function InputPanel({
         <div>
           <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>Token In</label>
           <select value={tokenIn} onChange={e => onTokenInChange(e.target.value)} style={inputStyle}>
-            <option value="USDT">USDT</option>
-            <option value="ETH">ETH</option>
+            {DEMO_TOKENS.map((t) => (
+              <option key={t} value={t} disabled={t === tokenOut}>{t}</option>
+            ))}
+            <option value="USDT">USDT (mock only)</option>
           </select>
         </div>
         <div>
           <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>Token Out</label>
           <select value={tokenOut} onChange={e => onTokenOutChange(e.target.value)} style={inputStyle}>
-            <option value="USDC">USDC</option>
-            <option value="WETH">WETH</option>
+            {DEMO_TOKENS.map((t) => (
+              <option key={t} value={t} disabled={t === tokenIn}>{t}</option>
+            ))}
+            <option value="USDC_MOCK">USDC (mock legacy)</option>
           </select>
         </div>
         <div>

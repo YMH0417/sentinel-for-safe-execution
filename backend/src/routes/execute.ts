@@ -36,6 +36,10 @@ const contractDecision: Record<DecisionType, ContractDecision> = {
   FALLBACK_TO_SAFE_ROUTE: 2,
 };
 
+function isAmountString(value: unknown): value is string {
+  return typeof value === "string" && /^(0|[1-9]\d*)(\.\d+)?$/.test(value);
+}
+
 function isDecimalString(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9]\d*)$/.test(value);
 }
@@ -55,7 +59,8 @@ function validatePermitFields(permit: ExecutionPermit): string | null {
     "riskScore",
     "nonce",
   ] as const) {
-    if (!isDecimalString(permit[field])) {
+    const validator = field === "amountIn" || field === "amountOutQuoted" ? isAmountString : isDecimalString;
+    if (!validator(permit[field])) {
       return `permit.${field} must be a non-negative decimal string`;
     }
   }
@@ -76,9 +81,9 @@ function validatePermitFields(permit: ExecutionPermit): string | null {
   return null;
 }
 
-function validateExecuteRequest(
+async function validateExecuteRequest(
   body: unknown
-): { request?: ExecuteRequest; effectiveRouteId?: string; error?: string } {
+): Promise<{ request?: ExecuteRequest; effectiveRouteId?: string; error?: string }> {
   if (!body || typeof body !== "object") {
     return { error: "request body must be an object" };
   }
@@ -136,13 +141,13 @@ function validateExecuteRequest(
     return { error: "permit.riskScore does not match evaluation.riskScore" };
   }
 
-  const route = getRouteById(effectiveRouteId);
+  const route = await getRouteById(effectiveRouteId);
   if (!route) {
     return { error: `Route ${effectiveRouteId} not found` };
   }
   if (
-    BigInt(permit.amountIn) !== BigInt(route.amountIn) ||
-    BigInt(permit.amountOutQuoted) !== BigInt(route.quotedOut)
+    Math.abs(parseFloat(permit.amountIn) - route.amountIn) > 0.0001 ||
+    Math.abs(parseFloat(permit.amountOutQuoted) - route.quotedOut) > 0.05
   ) {
     return { error: "permit amounts do not match the evaluated route data" };
   }
@@ -187,7 +192,7 @@ type MockHandleResult =
  * hex (e.g. "route-a" → "0x...route-a"), which fails strict bytes32 checks.
  * In mock mode we trust evaluation and rewrite permit fields for the demo.
  */
-function handleMockPermitBody(body: unknown): MockHandleResult {
+async function handleMockPermitBody(body: unknown): Promise<MockHandleResult> {
   if (!body || typeof body !== "object") {
     return { error: "request body must be an object", status: 400 };
   }
@@ -199,11 +204,11 @@ function handleMockPermitBody(body: unknown): MockHandleResult {
 
   // Legacy shape: { routeId } without permit
   if (typeof candidate.routeId === "string" && !candidate.permit) {
-    const route = getRouteById(candidate.routeId);
+    const route = await getRouteById(candidate.routeId);
     if (!route) {
       return { error: `Route ${candidate.routeId} not found`, status: 404 };
     }
-    const decision = evaluateRoute(
+    const decision = await evaluateRoute(
       candidate.routeId,
       typeof candidate.configProfile === "string"
         ? candidate.configProfile
@@ -236,7 +241,7 @@ function handleMockPermitBody(body: unknown): MockHandleResult {
     };
   }
 
-  const route = getRouteById(effectiveRouteId);
+  const route = await getRouteById(effectiveRouteId);
   if (!route) {
     return { error: `Route ${effectiveRouteId} not found`, status: 404 };
   }
@@ -298,7 +303,7 @@ function handleMockPermitBody(body: unknown): MockHandleResult {
 
 router.post("/", async (req: Request, res: Response) => {
   if (isMockChainMode()) {
-    const mockResult = handleMockPermitBody(req.body);
+    const mockResult = await handleMockPermitBody(req.body);
     if ("error" in mockResult) {
       return res.status(mockResult.status).json({
         error: {
@@ -314,7 +319,7 @@ router.post("/", async (req: Request, res: Response) => {
     });
   }
 
-  const validation = validateExecuteRequest(req.body);
+  const validation = await validateExecuteRequest(req.body);
   if (!validation.request || !validation.effectiveRouteId) {
     return res.status(400).json({
       error: {

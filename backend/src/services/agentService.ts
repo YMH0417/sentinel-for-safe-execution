@@ -1,10 +1,12 @@
 // backend/src/services/agentService.ts — Dev E: Execution Safety Agent
-// Rule-based 风险判断引擎 — deterministic 决策
 
 import { fileURLToPath } from "url";
 import { Decision, Route, RiskConfig } from "../types.js";
 import * as path from "path";
 import * as fs from "fs";
+import { isDemoChainMode } from "../config/demoConfig.js";
+import { getRouteById } from "./routeService.js";
+import { getTokenRiskTag, inferQuoteParamsFromRouteId, QuoteParams } from "./chainQuoteService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,93 +30,48 @@ function resolveProfile(config: RiskConfig, configProfile: string): RiskConfig["
   return config.profiles[config.defaultProfile as ProfileName] ?? config.profiles.normal;
 }
 
-/**
- * 计算 risk score (0-100)
- */
 function calculateRiskScore(
   route: Route,
   profile: RiskConfig["profiles"]["normal"]
 ): { score: number; flags: string[] } {
-  const flags: string[] = [];
+  const flags: string[] = [...route.warningFlags];
   let score = 0;
 
-  // Rule A: Quote Deviation
   const quoteDeviation = Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
   if (quoteDeviation > profile.maxQuoteDeviationThreshold) {
-    flags.push("quote_deviation");
+    if (!flags.includes("quote_deviation")) flags.push("quote_deviation");
     score += Math.min(35, Math.round(quoteDeviation * 500));
   }
 
-  // Rule B: Failure Risk
   if (route.historicalFailureRate > profile.failureThreshold) {
-    flags.push("failure_risk");
+    if (!flags.includes("failure_risk")) flags.push("failure_risk");
     score += Math.min(30, Math.round((route.historicalFailureRate - profile.failureThreshold) * 200));
   }
 
-  // Rule C: Pool Risk
   if (route.poolRiskScore > profile.poolRiskThreshold) {
-    flags.push("pool_risk");
+    if (!flags.includes("pool_risk")) flags.push("pool_risk");
     score += Math.round(route.poolRiskScore / 3);
   }
 
-  return { score: Math.min(100, score), flags };
+  if (route.priceImpactBps && route.priceImpactBps > 1000 && !flags.includes("high_price_impact")) {
+    flags.push("high_price_impact");
+    score += Math.min(20, Math.round(route.priceImpactBps / 100));
+  }
+
+  return { score: Math.min(100, score), flags: [...new Set(flags)] };
 }
 
-function loadRoute(routeId: string): Route | undefined {
+function loadMockRoute(routeId: string): Route | undefined {
   const raw = fs.readFileSync(getRoutesPath(), "utf-8");
   const data = JSON.parse(raw) as { routes: Route[] };
-  return data.routes.find(r => r.routeId === routeId);
+  return data.routes.find((r) => r.routeId === routeId);
 }
 
-/**
- * 核心评估函数 — Dev E 的 deliverable
- */
-export function evaluateRoute(routeId: string, configProfile: string = "normal"): Decision {
-  const route = loadRoute(routeId);
-  if (!route) {
-    const reason = `Route "${routeId}" not found in available routes.`;
-    return {
-      decision: "REJECT",
-      riskScore: 100,
-      reason,
-      reasonTechnical: `route_not_found: no entry for routeId=${routeId} in shared/demo-data/routes.json`,
-      routeId,
-      fallbackRouteId: null,
-      flags: ["route_not_found"],
-    };
+async function loadRoute(routeId: string, quoteParams: QuoteParams = {}): Promise<Route | undefined> {
+  if (isDemoChainMode()) {
+    return getRouteById(routeId, inferQuoteParamsFromRouteId(routeId, quoteParams));
   }
-
-  const config = loadRiskConfig();
-  const profile = resolveProfile(config, configProfile);
-  const { score, flags } = calculateRiskScore(route, profile);
-
-  let decision: Decision["decision"];
-  let reason: string;
-  let reasonTechnical: string;
-
-  if (score >= 70) {
-    decision = "REJECT";
-    reason = generateReason("reject", route, score, flags);
-    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "REJECT");
-  } else if (score >= 40 && route.supportsFallback) {
-    decision = "FALLBACK_TO_SAFE_ROUTE";
-    reason = generateReason("fallback", route, score, flags);
-    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "FALLBACK_TO_SAFE_ROUTE", route.fallbackRouteId);
-  } else {
-    decision = "ALLOW";
-    reason = generateReason("allow", route, score, flags);
-    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "ALLOW");
-  }
-
-  return {
-    decision,
-    riskScore: score,
-    reason,
-    reasonTechnical,
-    routeId: route.routeId,
-    fallbackRouteId: route.fallbackRouteId,
-    flags,
-  };
+  return loadMockRoute(routeId);
 }
 
 function buildTechnicalReason(
@@ -151,6 +108,9 @@ function generateReason(type: "allow" | "reject" | "fallback", route: Route, sco
   if (route.poolRiskScore > 50) {
     issues.push(`池子风险评分 ${route.poolRiskScore}/100`);
   }
+  if (route.priceImpactBps && route.priceImpactBps > 500) {
+    issues.push(`价格冲击 ${route.priceImpactBps} bps`);
+  }
 
   switch (type) {
     case "allow":
@@ -162,4 +122,83 @@ function generateReason(type: "allow" | "reject" | "fallback", route: Route, sco
     default:
       return "未知决策类型。";
   }
+}
+
+export async function evaluateRoute(
+  routeId: string,
+  configProfile: string = "normal",
+  quoteParams: QuoteParams = {}
+): Promise<Decision> {
+  const route = await loadRoute(routeId, quoteParams);
+  if (!route) {
+    const reason = `Route "${routeId}" not found in available routes.`;
+    return {
+      decision: "REJECT",
+      riskScore: 100,
+      reason,
+      reasonTechnical: `route_not_found: no entry for routeId=${routeId}`,
+      routeId,
+      fallbackRouteId: null,
+      flags: ["route_not_found"],
+    };
+  }
+
+  if (isDemoChainMode()) {
+    const tokenOut = route.tokenOut.toUpperCase();
+    if (tokenOut === "BAD" || tokenOut === "BAIT") {
+      const riskTag = await getTokenRiskTag(tokenOut as "BAD" | "BAIT");
+      const tokenFlag = tokenOut === "BAIT" ? "suspicious_token" : "high_token_risk";
+      return {
+        decision: "REJECT",
+        riskScore: 100,
+        reason:
+          tokenOut === "BAIT"
+            ? "目标资产被标记为诱骗型代币（BAIT），无论池子报价如何都不应执行。"
+            : "目标资产被标记为高风险代币（BAD），即使池子流动性正常也应拒绝执行。",
+        reasonTechnical: `token_risk: tokenOut=${tokenOut}, registryRiskTag=${riskTag}`,
+        routeId: route.routeId,
+        fallbackRouteId: null,
+        flags: [tokenFlag, ...route.warningFlags],
+      };
+    }
+  }
+
+  const config = loadRiskConfig();
+  const profile = resolveProfile(config, configProfile);
+  const { score, flags } = calculateRiskScore(route, profile);
+
+  let decision: Decision["decision"];
+  let reason: string;
+  let reasonTechnical: string;
+
+  if (score >= 70) {
+    decision = "REJECT";
+    reason = generateReason("reject", route, score, flags);
+    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "REJECT");
+  } else if (score >= 40 && route.supportsFallback) {
+    decision = "FALLBACK_TO_SAFE_ROUTE";
+    reason = generateReason("fallback", route, score, flags);
+    reasonTechnical = buildTechnicalReason(
+      route,
+      profile,
+      score,
+      flags,
+      "FALLBACK_TO_SAFE_ROUTE",
+      route.fallbackRouteId
+    );
+  } else {
+    decision = "ALLOW";
+    reason = generateReason("allow", route, score, flags);
+    reasonTechnical = buildTechnicalReason(route, profile, score, flags, "ALLOW");
+  }
+
+  return {
+    decision,
+    riskScore: score,
+    reason,
+    reasonTechnical,
+    routeId: route.routeId,
+    fallbackRouteId: route.fallbackRouteId,
+    flags,
+  };
 }

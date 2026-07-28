@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "npx tsx watch src/index.ts",
     "build": "npx tsc && npx copyfiles -u 1 \"src/**/*.json\" dist/",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "verify:swaps": "powershell -ExecutionPolicy Bypass -File scripts/verify-swaps.ps1",
+    "sync:env": "powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1"
   },
   "dependencies": {
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "ethers": "^6.15.0",
     "express": "^4.22.2"
   },

@@ -1,5 +1,7 @@
 # Dev A 变更与交接记录 — 2026-07-23
 
+> **2026-07-28 追加**：36 路由 demo 场景见 [`dev-a-changes-demo-chain.md`](dev-a-changes-demo-chain.md)。
+
 > 给 Codex、CC、Cursor 与队友：本文件是当前合约版本的交接说明。后续任何 DevA 改动完成后，必须在文末追加变更记录。
 
 ## 本次交付

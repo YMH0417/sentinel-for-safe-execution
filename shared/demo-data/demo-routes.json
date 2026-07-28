@@ -50,9 +50,11 @@
     }
   ],
   "_metadata": {
-    "purpose": "录屏专用 demo 数据",
+    "purpose": "录屏专用 demo 数据（mock 模式）",
     "profile": "normal",
+    "scope": "CHAIN_MODE=mock only; 链上 36 路由见 docs/route-scenarios.md Part II",
     "notes": "与 routes.json 数值一致。route-a 和 route-b 在所有 profile 下决策稳定；route-c 的 FALLBACK 决策仅在 normal/aggressive 下稳定，录屏时统一使用 normal profile 以确保三种决策（ALLOW/REJECT/FALLBACK）全部正确展示。",
-    "created": "2026-07-24"
+    "created": "2026-07-24",
+    "updated": "2026-07-28"
   }
 }

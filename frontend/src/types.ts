@@ -1,4 +1,4 @@
-﻿// frontend/src/types.ts  — 本地类型定义（避免引用 shared 路径问题）
+// frontend/src/types.ts  — 本地类型定义（避免引用 shared 路径问题）
 
 export interface Route {
   routeId: string;
@@ -21,6 +21,10 @@ export interface QuoteResponse {
   tokenOut: string;
   amountIn: number;
   routes: Route[];
+  referencePriceSource?: string;
+  referencePrice?: number;
+  bestQuotedRouteId?: string;
+  recommendedRouteId?: string;
 }
 
 export type DecisionType = "ALLOW" | "REJECT" | "FALLBACK_TO_SAFE_ROUTE";

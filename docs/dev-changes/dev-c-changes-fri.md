@@ -1,5 +1,7 @@
 # Dev C 周五变更日志 — 2026-07-24
 
+> **2026-07-28 追加**：Demo 36 路由场景见 [`dev-c-changes-demo-chain.md`](dev-c-changes-demo-chain.md)。
+
 > **作者**：Dev C — Market Simulation / Mock Route
 > **日期**：2026-07-24（周五 · Day 2）
 > **版本**：v1.0
