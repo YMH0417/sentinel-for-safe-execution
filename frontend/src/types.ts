@@ -87,4 +87,6 @@ export interface SwapResult {
   actualOut: number;
   txHash: string;
   recipient: string;
+  gasUsed?: string;
+  balanceDelta?: Partial<Record<string, number>>;
 }

@@ -3,186 +3,126 @@ import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 
 export function LandingPage() {
-  const { showToast } = useToast();
   const navigate = useNavigate();
-  const { connectWallet, isConnecting } = useWallet();
+  const { connectWallet, isConnecting, account } = useWallet();
+  const { showToast } = useToast();
 
   const handleConnect = async () => {
     try {
-      const address = await connectWallet();
-      showToast({
-        type: "success",
-        message: `钱包已连接：${address.slice(0, 6)}...${address.slice(-4)}`,
-      });
-      navigate("/dashboard", { replace: true });
-    } catch (e: unknown) {
-      const err = e as { message?: string };
-      showToast({ type: "error", message: err.message ?? "连接钱包失败" });
+      await connectWallet();
+      showToast({ type: "success", message: "钱包已连接" });
+      navigate("/dashboard");
+    } catch (e) {
+      showToast({ type: "error", message: e instanceof Error ? e.message : "连接失败" });
     }
   };
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "#0a0e17",
-      position: "relative",
-      overflow: "hidden",
-    }}>
-      {/* Grid background */}
-      <div style={{
-        position: "absolute", inset: 0,
-        backgroundImage: `
-          linear-gradient(rgba(0,255,255,0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(0,255,255,0.03) 1px, transparent 1px)
-        `,
-        backgroundSize: "40px 40px",
-      }} />
+    <div style={{ position: "relative", overflow: "hidden", minHeight: "calc(100vh - 60px)" }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `
+            linear-gradient(rgba(0,255,255,0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,255,255,0.04) 1px, transparent 1px)
+          `,
+          backgroundSize: "48px 48px",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: "20%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 600,
+          height: 400,
+          background: "radial-gradient(circle, rgba(0,255,136,0.08) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
 
-      {/* Gradient glow at top */}
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 3,
-        background: "linear-gradient(90deg, #00ffff, #00ff88, #8b5cf6, #00ffff)",
-      }} />
-
-      {/* Ambient glow behind card */}
-      <div style={{
-        position: "absolute",
-        width: 500, height: 500,
-        borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(0,200,255,0.06) 0%, transparent 70%)",
-        filter: "blur(60px)",
-        transform: "translate(-50%, -50%)",
-      }} />
-
-      {/* Card */}
-      <div style={{
-        position: "relative", zIndex: 1,
-        textAlign: "center",
-        maxWidth: 460,
-        padding: "60px 40px",
-      }}>
-        {/* Hexagon Shield Icon */}
-        <div style={{
-          width: 96, height: 96,
-          margin: "0 auto 32px",
+      <div
+        className="landing-grid"
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "60px 24px",
           position: "relative",
-        }}>
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: "100%", height: "100%" }}>
-            <defs>
-              <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#00ffff" />
-                <stop offset="100%" stopColor="#00ff88" />
-              </linearGradient>
-            </defs>
-            <polygon points="50,4 93,27 93,73 50,96 7,73 7,27"
-              fill="url(#hexGrad)" opacity="0.1" stroke="url(#hexGrad)" strokeWidth="2"/>
-            <path d="M38 50 L46 58 L64 40" stroke="url(#hexGrad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            <circle cx="50" cy="50" r="32" stroke="url(#hexGrad)" strokeWidth="1" opacity="0.3"/>
-          </svg>
+        }}
+      >
+        <div>
+          <p
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 12,
+              letterSpacing: 4,
+              color: "var(--cyan)",
+              marginBottom: 16,
+            }}
+          >
+            — DEFI SECURITY —
+          </p>
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 48,
+              fontWeight: 700,
+              letterSpacing: 4,
+              marginBottom: 16,
+              lineHeight: 1.1,
+            }}
+          >
+            SENTINEL
+          </h1>
+          <p style={{ fontSize: 22, color: "var(--text-muted)", marginBottom: 8, fontFamily: "var(--font-display)" }}>
+            Don&apos;t trade <span style={{ color: "var(--green)" }}>naked</span>.
+          </p>
+          <p style={{ fontSize: 15, color: "var(--text-dim)", marginBottom: 32, lineHeight: 1.6 }}>
+            Every route analyzed. Every contract scored.
+            <br />
+            Agent 软规则 + Vault 硬约束，swap 前识别高风险路径。
+          </p>
+
+          {account ? (
+            <button type="button" className="sentinel-btn sentinel-btn-primary" onClick={() => navigate("/dashboard")} style={{ padding: "14px 28px", fontSize: 16 }}>
+              进入仪表盘 →
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-primary"
+              onClick={handleConnect}
+              disabled={isConnecting}
+              style={{ padding: "14px 28px", fontSize: 16, letterSpacing: 1 }}
+            >
+              ⬡ {isConnecting ? "CONNECTING..." : "CONNECT WALLET"}
+            </button>
+          )}
         </div>
 
-        {/* Title */}
-        <h1 style={{
-          fontSize: 42,
-          fontWeight: 700,
-          color: "#e1e4e8",
-          letterSpacing: 6,
-          fontFamily: "'Courier New', monospace",
-          marginBottom: 8,
-        }}>
-          SENTINEL
-        </h1>
-        <p style={{
-          fontSize: 12,
-          letterSpacing: 4,
-          color: "#00ffff",
-          textTransform: "uppercase",
-          marginBottom: 32,
-          fontFamily: "'Courier New', monospace",
-        }}>
-          — DEFI SECURITY —
-        </p>
-
-        {/* Tagline */}
-        <p style={{
-          fontSize: 20,
-          color: "#8b949e",
-          marginBottom: 8,
-          fontFamily: "'Courier New', monospace",
-          letterSpacing: 1,
-        }}>
-          Don{''}t trade <span style={{ color: "#f85149", fontWeight: 600 }}>naked</span>.
-        </p>
-        <p style={{
-          fontSize: 14,
-          color: "#484f58",
-          marginBottom: 48,
-          lineHeight: 1.6,
-        }}>
-          Every route analyzed. Every contract scored.
-        </p>
-
-        {/* Connect Wallet Button */}
-        <button
-          onClick={handleConnect}
-          disabled={isConnecting}
+        <div
           style={{
-            width: "100%",
-            padding: "16px 24px",
-            fontSize: 16,
-            fontWeight: 600,
-            letterSpacing: 3,
-            fontFamily: "'Courier New', monospace",
-            color: isConnecting ? "#484f58" : "#00ffff",
-            background: isConnecting ? "transparent" : "rgba(0,255,255,0.06)",
-            border: `1px solid ${isConnecting ? "#30363d" : "#00ffff44"}`,
-            borderRadius: 4,
-            cursor: isConnecting ? "not-allowed" : "pointer",
-            transition: "all 0.3s ease",
-            boxShadow: isConnecting ? "none" : "0 0 20px rgba(0,255,255,0.1), inset 0 0 20px rgba(0,255,255,0.03)",
-          }}
-          onMouseEnter={(e) => {
-            if (!isConnecting) {
-              e.currentTarget.style.background = "rgba(0,255,255,0.12)";
-              e.currentTarget.style.boxShadow = "0 0 30px rgba(0,255,255,0.2), inset 0 0 30px rgba(0,255,255,0.05)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isConnecting) {
-              e.currentTarget.style.background = "rgba(0,255,255,0.06)";
-              e.currentTarget.style.boxShadow = "0 0 20px rgba(0,255,255,0.1), inset 0 0 20px rgba(0,255,255,0.03)";
-            }
+            borderRadius: 24,
+            border: "2px solid rgba(0,255,136,0.25)",
+            background: "linear-gradient(145deg, rgba(0,255,136,0.06), rgba(0,255,255,0.04))",
+            padding: 32,
+            minHeight: 320,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
           }}
         >
-          {isConnecting ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-              <span style={{
-                display: "inline-block",
-                width: 16, height: 16,
-                border: "2px solid #484f58",
-                borderTopColor: "#00ffff",
-                borderRadius: "50%",
-                animation: "spin 1s linear infinite",
-              }} />
-              CONNECTING...
-            </span>
-          ) : (
-            <>
-              <span style={{ marginRight: 8 }}>⬡</span>
-              CONNECT WALLET
-            </>
-          )}
-        </button>
-
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
+          <div style={{ fontSize: 64, marginBottom: 16, opacity: 0.9 }}>🛡️</div>
+          <div style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8 }}>
+            <div>36 条 Demo 路由 · 链上报价</div>
+            <div>ALLOW / REJECT / FALLBACK</div>
+            <div>Router 一笔 tx 完成 Vault + Swap</div>
+          </div>
+        </div>
       </div>
     </div>
   );

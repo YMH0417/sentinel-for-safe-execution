@@ -1,119 +1,151 @@
-﻿import { useNavigate } from "react-router-dom";
-import { useToast } from "./Toast";
-
-interface ChainInfo {
-  name: string;
-  score: number;
-  anomalies: number;
-  statusColor: "green" | "yellow" | "red";
-}
-
-const CHAIN_DATA: ChainInfo[] = [
-  { name: "Chain A", score: 92, anomalies: 0, statusColor: "green" },
-  { name: "Chain B", score: 65, anomalies: 2, statusColor: "yellow" },
-  { name: "Chain C", score: 35, anomalies: 5, statusColor: "red" },
-];
-
-const ALERT_DATA = [
-  { time: "2m ago", chain: "Chain B", msg: "报价偏离 2.3%" },
-  { time: "15m ago", chain: "Chain C", msg: "失败率 42%" },
-  { time: "2m ago", chain: "Chain B", msg: "报价偏离 2.3%" },
-  { time: "15m ago", chain: "Chain C", msg: "失败率 42%" },
-];
+﻿import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { api, computeSecurityScore, type PoolsHealthReport } from "../api/client";
+import type { Event } from "../types";
+import { SecurityGauge } from "./shared/SecurityGauge";
+import { AccountCard } from "./shared/AccountCard";
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { showToast } = useToast();
-  const overallScore = Math.round(CHAIN_DATA.reduce((s, c) => s + c.score, 0) / CHAIN_DATA.length);
-  const totalAnomalies = CHAIN_DATA.reduce((s, c) => s + c.anomalies, 0);
-  const totalAlerts = ALERT_DATA.length;
+  const [events, setEvents] = useState<Event[]>([]);
+  const [pools, setPools] = useState<PoolsHealthReport | null>(null);
+  const [score, setScore] = useState(85);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.events().catch(() => [] as Event[]),
+      api.poolsHealth().catch(() => null),
+    ]).then(([ev, ph]) => {
+      setEvents(ev);
+      setPools(ph);
+      setScore(computeSecurityScore(ev, ph ?? undefined));
+      setLoading(false);
+    });
+  }, []);
+
+  const alerts = events
+    .filter(
+      (e) =>
+        e.eventType.includes("Reject") ||
+        e.eventType === "SwapFailed" ||
+        e.decision === "REJECT" ||
+        e.decision === "FALLBACK_TO_SAFE_ROUTE"
+    )
+    .slice(-6)
+    .reverse();
+
+  const poolGroups = pools
+    ? [
+        { name: "SAFE 池", count: pools.pools.filter((p) => p.poolLabel === "SAFE" && p.status === "healthy").length, color: "green" as const },
+        { name: "SHALLOW 池", count: pools.pools.filter((p) => p.poolLabel === "SHALLOW").length, color: "yellow" as const },
+        { name: "TOXIC 池", count: pools.pools.filter((p) => p.poolLabel === "TOXIC").length, color: "red" as const },
+        { name: "异常/空池", count: pools.degraded + pools.empty, color: "red" as const },
+      ]
+    : [];
+
+  const stageCounts = {
+    evaluate: events.filter((e) => e.eventType.includes("Evaluat")).length,
+    decision: events.filter((e) => e.eventType.includes("Decision")).length,
+    fallback: events.filter((e) => e.eventType.includes("Fallback")).length,
+    execute: events.filter((e) => e.eventType.includes("Success") || e.eventType.includes("Swap")).length,
+    fail: events.filter((e) => e.eventType.includes("Fail") || e.eventType.includes("Reject")).length,
+  };
+  const maxStage = Math.max(...Object.values(stageCounts), 1);
+
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>加载仪表盘...</div>;
+  }
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto" }}>
-      {/* --- Overall Security Score --- */}
-      <div style={{
-        background: "#161b22", borderRadius: 12, padding: 20, marginBottom: 20,
-        border: "1px solid #30363d",
-      }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "#8b949e", marginBottom: 12, letterSpacing: 1, textTransform: "uppercase" }}>
-          安全总览
-        </h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="#58a6ff" strokeWidth="2"/>
-            <path d="M12 7v5l3 3" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#e1e4e8" }}>
-            整体安全评分 <span style={{ color: overallScore >= 70 ? "#3fb950" : overallScore >= 40 ? "#d29922" : "#f85149" }}>{overallScore}</span><span style={{ color: "#8b949e", marginLeft: 4 }}> /100</span>
-          </span>
-        </div>
-        <p style={{ fontSize: 13, color: "#8b949e" }}>
-          监控 {CHAIN_DATA.length} 条链 · {totalAnomalies} 条异常 · {totalAlerts} 条告警
-        </p>
-      </div>
+    <div>
+      <AccountCard />
 
-      {/* --- Chain Cards --- */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-        {CHAIN_DATA.map(c => {
-          const dotColor = c.statusColor === "green" ? "#3fb950" : c.statusColor === "yellow" ? "#d29922" : "#f85149";
-          return (
-            <div key={c.name} style={{
-              flex: 1, background: "#161b22", borderRadius: 10, padding: "16px 14px",
-              border: "1px solid #30363d",
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#e1e4e8", marginBottom: 8 }}>{c.name}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor }} />
-                <span style={{ fontSize: 22, fontWeight: 700, color: "#e1e4e8" }}>{c.score}</span>
-              </div>
-              <div style={{ fontSize: 12, color: "#8b949e" }}>
-                {c.anomalies === 0 ? "0 异常" : `${c.anomalies} 异常`}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* --- Recent Alerts --- */}
-      <div style={{
-        background: "#161b22", borderRadius: 12, padding: 20, marginBottom: 24,
-        border: "1px solid #30363d",
-      }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "#8b949e", marginBottom: 12, letterSpacing: 1, textTransform: "uppercase" }}>
-          最近告警
-        </h3>
-        {ALERT_DATA.map((a, i) => (
-          <div key={i} style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "8px 0", borderBottom: i < ALERT_DATA.length - 1 ? "1px solid #21262d" : "none",
-            fontSize: 13, color: "#c9d1d9",
-          }}>
-            <span style={{ fontSize: 14 }}>⏰</span>
-            <span style={{ color: "#484f58", minWidth: 40, fontSize: 12 }}>{a.time}</span>
-            <span style={{ color: "#8b949e", minWidth: 60 }}>{a.chain}</span>
-            <span style={{ color: "#f85149" }}>{a.msg}</span>
+      <div className="sentinel-dash-grid">
+        <div className="sentinel-card">
+          <SecurityGauge score={score} />
+          <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-muted)" }}>
+            <div><span className="status-dot green" />健康池 {pools?.healthy ?? 0}</div>
+            <div style={{ marginTop: 6 }}><span className="status-dot yellow" />降级 {pools?.degraded ?? 0}</div>
+            <div style={{ marginTop: 6 }}><span className="status-dot red" />空池 {pools?.empty ?? 0}</div>
           </div>
-        ))}
+        </div>
+
+        <div className="sentinel-card">
+          <div className="sentinel-label">链 / 池状态</div>
+          <div className="sentinel-grid-2" style={{ marginBottom: 16 }}>
+            {poolGroups.map((g) => (
+              <div key={g.name} style={{ padding: 12, background: "#0d1117", borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{g.name}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{g.count}</div>
+              </div>
+            ))}
+          </div>
+          <div className="sentinel-label">主动警报</div>
+          {alerts.length === 0 ? (
+            <p style={{ color: "var(--text-dim)", fontSize: 13 }}>暂无告警，系统运行正常</p>
+          ) : (
+            alerts.map((a, i) => (
+              <div key={a.id ?? i} style={{ padding: "8px 0", borderBottom: "1px solid #1a2332", fontSize: 13 }}>
+                <span className={`sentinel-badge ${a.decision === "REJECT" ? "sentinel-badge-red" : "sentinel-badge-yellow"}`}>
+                  {a.eventType}
+                </span>
+                <span style={{ marginLeft: 8, color: "var(--text-muted)" }}>{a.message?.slice(0, 60)}</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="sentinel-card">
+          <div className="sentinel-label">统计摘要</div>
+          <StatRow label="事件总数" value={String(events.length)} />
+          <StatRow label="Demo 池数" value={String(pools?.poolCount ?? 0)} />
+          <StatRow label="最近告警" value={String(alerts.length)} accent={alerts.length > 0 ? "var(--red)" : undefined} />
+          <button
+            type="button"
+            className="sentinel-btn sentinel-btn-secondary"
+            style={{ width: "100%", marginTop: 16 }}
+            onClick={() => navigate("/transaction")}
+          >
+            立即处理并进行新交易
+          </button>
+        </div>
       </div>
 
-      {/* --- CTA Button --- */}
-      <button
-        onClick={() => {
-          showToast({ type: "info", message: "正在跳转至交易检测页面..." });
-          navigate("/transaction");
-        }}
-        style={{
-          width: "100%", padding: "14px 24px", fontSize: 15, fontWeight: 600,
-          borderRadius: 8, border: "1px solid #58a6ff44", cursor: "pointer",
-          background: "rgba(88,166,255,0.08)", color: "#58a6ff",
-          letterSpacing: 1, fontFamily: "'Courier New', monospace",
-          transition: "all 0.2s",
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = "rgba(88,166,255,0.15)"; }}
-        onMouseLeave={e => { e.currentTarget.style.background = "rgba(88,166,255,0.08)"; }}
-      >
-        <span style={{ marginRight: 8 }}>🔍</span>发起交易检测
-      </button>
+      <div className="sentinel-card">
+        <div className="sentinel-label">执行阶段分布</div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 120, paddingTop: 8 }}>
+          {[
+            { label: "评估", v: stageCounts.evaluate },
+            { label: "决策", v: stageCounts.decision },
+            { label: "Fallback", v: stageCounts.fallback },
+            { label: "执行", v: stageCounts.execute },
+            { label: "失败", v: stageCounts.fail },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, textAlign: "center" }}>
+              <div
+                style={{
+                  height: `${Math.max(8, (s.v / maxStage) * 80)}px`,
+                  background: "linear-gradient(180deg, var(--green), rgba(0,255,136,0.3))",
+                  borderRadius: "4px 4px 0 0",
+                  marginBottom: 8,
+                }}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a2332", fontSize: 13 }}>
+      <span style={{ color: "var(--text-muted)" }}>{label}</span>
+      <span style={{ fontWeight: 600, color: accent ?? "var(--text)" }}>{value}</span>
     </div>
   );
 }

@@ -1,30 +1,28 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 import { encodeBytes32String, getAddress } from "ethers";
 import { ensureUserTokenReady } from "../lib/demoSwap";
 import { fetchDemoToken, fetchSwapRouterAddress } from "../lib/wallet";
-import { InputPanel } from "./InputPanel";
-import { RouteList } from "./RouteList";
+import { AccountCard } from "./shared/AccountCard";
+import { SecurityGauge } from "./shared/SecurityGauge";
 import { SafetyPanel } from "./SafetyPanel";
-import { ResultPanel } from "./ResultPanel";
-import { Timeline } from "./Timeline";
 import type {
   Route as RouteType,
   Decision,
-  Event,
   ExecutionPermit,
   ContractDecision,
   SwapResult,
 } from "../types";
 
 const API_BASE = "/api";
+const PAGE_SIZE = 5;
 
 interface Props {
   safeMode: boolean;
 }
 
-/** Generate a dummy 65-byte signature (mock mode only). */
 function generateDummySignature(): string {
   return "0x" + "12".repeat(65);
 }
@@ -33,7 +31,14 @@ function buildSafeRouteId(tokenIn: string, tokenOut: string): string {
   return `route-${tokenIn.toLowerCase()}-${tokenOut.toLowerCase()}-safe`;
 }
 
+function riskLevel(score: number): "low" | "moderate" | "high" {
+  if (score > 50) return "high";
+  if (score > 25) return "moderate";
+  return "low";
+}
+
 export function TransactionPage({ safeMode }: Props) {
+  const navigate = useNavigate();
   const { account, connectWallet, isConnecting } = useWallet();
   const { showToast } = useToast();
   const [tokenIn, setTokenIn] = useState("USDC");
@@ -43,12 +48,17 @@ export function TransactionPage({ safeMode }: Props) {
   const [selectedRoute, setSelectedRoute] = useState<string>("route-good-safe");
   const [quoteMeta, setQuoteMeta] = useState<{ referencePrice?: number; recommendedRouteId?: string }>({});
   const [decision, setDecision] = useState<Decision | null>(null);
-  const [resultEvent, setResultEvent] = useState<Event | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState<string>("");
   const [error, setError] = useState<string>("");
-
   const [recommendedRouteId, setRecommendedRouteId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+
+  const selectedRouteData = routes.find((r) => r.routeId === selectedRoute);
+  const gaugeScore = decision
+    ? Math.max(0, 100 - decision.riskScore)
+    : selectedRouteData
+      ? Math.max(0, 100 - selectedRouteData.poolRiskScore)
+      : 72;
 
   const loadRoutes = async () => {
     setLoading("Loading routes...");
@@ -63,9 +73,11 @@ export function TransactionPage({ safeMode }: Props) {
       });
       const recommended = data.recommendedRouteId ?? data.routes[0]?.routeId;
       if (recommended) setSelectedRoute(recommended);
+      setPage(0);
+      setDecision(null);
       setError("");
-    } catch (e: any) {
-      setError(`Failed to load routes: ${e.message}`);
+    } catch (e: unknown) {
+      setError(`Failed to load routes: ${e instanceof Error ? e.message : String(e)}`);
     }
     setLoading("");
   };
@@ -95,8 +107,8 @@ export function TransactionPage({ safeMode }: Props) {
         setRecommendedRouteId(null);
       }
       return data as Decision;
-    } catch (e: any) {
-      setError(`Evaluate failed: ${e.message}`);
+    } catch (e: unknown) {
+      setError(`Evaluate failed: ${e instanceof Error ? e.message : String(e)}`);
       return null;
     } finally {
       setLoading("");
@@ -126,9 +138,7 @@ export function TransactionPage({ safeMode }: Props) {
   };
 
   const executeDemoSwap = async (routeId: string, force: boolean): Promise<SwapResult> => {
-    if (!account) {
-      throw new Error("请先连接 MetaMask 钱包");
-    }
+    if (!account) throw new Error("请先连接 MetaMask 钱包");
     const checksumAddr = getAddress(account);
 
     const [tokenMeta, swapRouter] = await Promise.all([
@@ -167,9 +177,7 @@ export function TransactionPage({ safeMode }: Props) {
   };
 
   const executeMockVault = async (activeDecision: Decision) => {
-    if (!account) {
-      throw new Error("链上执行需要连接 MetaMask 钱包");
-    }
+    if (!account) throw new Error("链上执行需要连接 MetaMask 钱包");
     const effectiveRouteId =
       activeDecision.decision === "FALLBACK_TO_SAFE_ROUTE" && activeDecision.fallbackRouteId
         ? activeDecision.fallbackRouteId
@@ -224,56 +232,6 @@ export function TransactionPage({ safeMode }: Props) {
     return data;
   };
 
-  const buildTimelineFromSwap = (
-    swap: SwapResult,
-    activeDecision: Decision | null,
-    routeId: string
-  ): Event[] => {
-    const now = Date.now();
-    const items: Event[] = [
-      {
-        id: "1",
-        eventType: "RouteEvaluated",
-        timestamp: now - 10000,
-        routeId,
-        message: `Route ${routeId} evaluated`,
-      },
-    ];
-    if (activeDecision) {
-      items.push({
-        id: "2",
-        eventType: "DecisionMade",
-        timestamp: now - 5000,
-        routeId,
-        decision: activeDecision.decision,
-        riskScore: activeDecision.riskScore,
-        message: `${activeDecision.decision} (risk: ${activeDecision.riskScore}/100)`,
-      });
-    }
-    if (
-      swap.requestedRouteId &&
-      swap.executedRouteId &&
-      swap.requestedRouteId !== swap.executedRouteId
-    ) {
-      items.push({
-        id: "3",
-        eventType: "FallbackTriggered",
-        timestamp: now - 2000,
-        routeId: swap.executedRouteId,
-        message: `Fallback ${swap.requestedRouteId} → ${swap.executedRouteId}`,
-      });
-    }
-    items.push({
-      id: "4",
-      eventType: "ExecutionSuccess",
-      timestamp: now,
-      routeId: swap.executedRouteId ?? swap.routeId,
-      message: `Swap ${swap.tokenIn}→${swap.tokenOut} via ${swap.executionMode ?? "demo"} (out: ${swap.actualOut})`,
-      txHash: swap.txHash,
-    });
-    return items;
-  };
-
   const executeRoute = async (activeDecision?: Decision | null) => {
     const evalDecision = activeDecision ?? decision;
     if (!evalDecision && safeMode) return;
@@ -290,7 +248,7 @@ export function TransactionPage({ safeMode }: Props) {
 
       if (chainMode === "demo") {
         const swap = await executeDemoSwap(routeId, !safeMode);
-        setDecision(
+        const finalDecision =
           evalDecision ?? {
             decision: swap.agentDecision ?? "ALLOW",
             riskScore: 0,
@@ -299,45 +257,34 @@ export function TransactionPage({ safeMode }: Props) {
             fallbackRouteId:
               swap.executedRouteId !== swap.requestedRouteId ? swap.executedRouteId ?? null : null,
             flags: [],
-          }
-        );
-        setResultEvent({
-          id: "exec",
-          eventType: "ExecutionSuccess",
-          timestamp: Date.now(),
-          routeId: swap.executedRouteId ?? swap.routeId,
-          message: `Swap ${swap.tokenIn}→${swap.tokenOut} via ${swap.executionMode} (out: ${swap.actualOut})`,
-          txHash: swap.txHash,
-        });
-        setEvents(buildTimelineFromSwap(swap, evalDecision, routeId));
+          };
+        setDecision(finalDecision);
         showToast({ type: "success", message: "Swap executed successfully" });
+        navigate("/execution", { state: { swap, decision: finalDecision } });
         return;
       }
 
       if (!evalDecision) throw new Error("Evaluate the route before executing in mock mode");
       const data = await executeMockVault(evalDecision);
-      setResultEvent(data.event);
-      setEvents([
-        {
-          id: "1",
-          eventType: "RouteEvaluated",
-          timestamp: Date.now() - 10000,
-          routeId: selectedRoute,
-          message: `Route ${selectedRoute} loaded`,
+      showToast({ type: "success", message: "Execution completed" });
+      navigate("/execution", {
+        state: {
+          swap: {
+            success: true,
+            routeId: selectedRoute,
+            tokenIn,
+            tokenOut,
+            amountIn: Number(amount),
+            quotedOut: selectedRouteData?.quotedOut ?? 0,
+            actualOut: selectedRouteData?.quotedOut ?? 0,
+            txHash: data.event?.txHash ?? "",
+            recipient: account,
+          } as SwapResult,
+          decision: evalDecision,
         },
-        {
-          id: "2",
-          eventType: "DecisionMade",
-          timestamp: Date.now() - 5000,
-          routeId: selectedRoute,
-          decision: evalDecision.decision,
-          riskScore: evalDecision.riskScore,
-          message: `${evalDecision.decision} (risk: ${evalDecision.riskScore}/100)`,
-        },
-        data.event,
-      ]);
-    } catch (e: any) {
-      const msg = e.message || "Execute failed";
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Execute failed";
       setError(`Execute failed: ${msg}`);
       showToast({ type: "error", message: `Execution failed: ${msg}` });
     } finally {
@@ -348,8 +295,6 @@ export function TransactionPage({ safeMode }: Props) {
   const runFullFlow = async () => {
     setLoading("Running full flow...");
     setError("");
-    setResultEvent(null);
-    setEvents([]);
 
     await loadRoutes();
     await new Promise((r) => setTimeout(r, 300));
@@ -382,142 +327,234 @@ export function TransactionPage({ safeMode }: Props) {
     }
   };
 
+  const pageCount = Math.max(1, Math.ceil(routes.length / PAGE_SIZE));
+  const pagedRoutes = routes.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div>
+      <AccountCard />
 
       {!account && (
-        <div style={{
-          marginBottom: 16,
-          padding: "14px 18px",
-          borderRadius: 8,
-          background: "#1f6feb22",
-          border: "1px solid #1f6feb55",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}>
-          <span style={{ color: "#c9d1d9", fontSize: 14 }}>
+        <div
+          className="sentinel-card"
+          style={{
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            borderColor: "rgba(88, 166, 255, 0.35)",
+            background: "rgba(88, 166, 255, 0.06)",
+          }}
+        >
+          <span style={{ color: "var(--text-muted)", fontSize: 14 }}>
             执行链上 swap 需先用 MetaMask 连接钱包（将自动切换到 Anvil 本地链）
           </span>
           <button
+            type="button"
+            className="sentinel-btn sentinel-btn-primary"
             onClick={handleConnectWallet}
             disabled={isConnecting}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              border: "none",
-              background: "#238636",
-              color: "#fff",
-              fontWeight: 600,
-              cursor: isConnecting ? "not-allowed" : "pointer",
-            }}
           >
             {isConnecting ? "连接中..." : "连接 MetaMask"}
           </button>
         </div>
       )}
 
-      {/* Input */}
-      <InputPanel
-        tokenIn={tokenIn}
-        tokenOut={tokenOut}
-        amount={amount}
-        onTokenInChange={setTokenIn}
-        onTokenOutChange={setTokenOut}
-        onAmountChange={setAmount}
-        onLoad={loadRoutes}
-        loading={loading}
-      />
+      <div className="sentinel-tx-grid">
+        <div className="sentinel-card">
+          <div className="sentinel-label">Swap 参数</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Token In</label>
+              <select className="sentinel-select" value={tokenIn} onChange={(e) => setTokenIn(e.target.value)}>
+                {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
+                  <option key={t} value={t} disabled={t === tokenOut}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Token Out</label>
+              <select className="sentinel-select" value={tokenOut} onChange={(e) => setTokenOut(e.target.value)}>
+                {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
+                  <option key={t} value={t} disabled={t === tokenIn}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Amount</label>
+              <input className="sentinel-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <button type="button" className="sentinel-btn sentinel-btn-secondary" onClick={loadRoutes} disabled={!!loading}>
+              {loading === "Loading routes..." ? "加载中..." : "获取报价"}
+            </button>
+          </div>
+        </div>
 
-      {routes.length > 0 && (
-        <>
+        <div className="sentinel-card">
+          <div className="sentinel-label">风险指标</div>
+          <div className="sentinel-grid-2" style={{ marginBottom: 16 }}>
+            <RiskIndicator
+              label="池子风险"
+              value={selectedRouteData?.poolRiskScore ?? "—"}
+              level={selectedRouteData ? riskLevel(selectedRouteData.poolRiskScore) : "low"}
+            />
+            <RiskIndicator
+              label="报价偏差"
+              value={selectedRouteData?.warningFlags.includes("quote_deviation") ? "高" : "低"}
+              level={selectedRouteData?.warningFlags.includes("quote_deviation") ? "high" : "low"}
+            />
+            <RiskIndicator
+              label="Agent 决策"
+              value={decision?.decision ?? "待评估"}
+              level={
+                decision?.decision === "REJECT"
+                  ? "high"
+                  : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
+                    ? "moderate"
+                    : "low"
+              }
+            />
+            <RiskIndicator
+              label="安全模式"
+              value={safeMode ? "开启" : "关闭"}
+              level={safeMode ? "low" : "high"}
+            />
+          </div>
+          <SafetyPanel decision={decision} onSwitchToFallback={switchToFallbackRoute} />
+        </div>
+
+        <div className="sentinel-card">
+          <SecurityGauge score={gaugeScore} size={120} label="路由安全分" />
           {quoteMeta.referencePrice !== undefined && (
-            <div style={{
-              background: "#161b22",
-              borderRadius: 12,
-              padding: "12px 20px",
-              marginBottom: 16,
-              border: "1px solid #30363d",
-              color: "#8b949e",
-              fontSize: 14,
-            }}>
-              Reference Price (SAFE pool): <strong style={{ color: "#e1e4e8" }}>{quoteMeta.referencePrice}</strong>
-              {quoteMeta.recommendedRouteId && (
-                <span style={{ marginLeft: 16 }}>
-                  Recommended: <strong style={{ color: "#3fb950" }}>{quoteMeta.recommendedRouteId}</strong>
-                </span>
-              )}
+            <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-muted)" }}>
+              参考价: <strong style={{ color: "var(--text)" }}>{quoteMeta.referencePrice}</strong>
             </div>
           )}
-          <RouteList
-            routes={routes}
-            selected={selectedRoute}
-            onSelect={(id) => {
-              setSelectedRoute(id);
-              setRecommendedRouteId(null);
-            }}
-            recommendedRouteId={recommendedRouteId ?? quoteMeta.recommendedRouteId ?? null}
-          />
-          <SafetyPanel decision={decision} onSwitchToFallback={switchToFallbackRoute} />
+        </div>
+      </div>
 
-          <div style={{ display: "flex", gap: 12, marginTop: 16, marginBottom: 24, flexWrap: "wrap" }}>
+      {routes.length > 0 && (
+        <div className="sentinel-card" style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+            <div className="sentinel-label" style={{ margin: 0 }}>路由分析</div>
+            {quoteMeta.recommendedRouteId && (
+              <span className="sentinel-badge sentinel-badge-green">推荐: {quoteMeta.recommendedRouteId}</span>
+            )}
+          </div>
+          <table className="sentinel-table">
+            <thead>
+              <tr>
+                <th>路由</th>
+                <th>输出</th>
+                <th>预期</th>
+                <th>风险分</th>
+                <th>标记</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedRoutes.map((route) => {
+                const isSelected = route.routeId === selectedRoute;
+                const isRecommended = (recommendedRouteId ?? quoteMeta.recommendedRouteId) === route.routeId;
+                const rl = riskLevel(route.poolRiskScore);
+                return (
+                  <tr
+                    key={route.routeId}
+                    className={isSelected ? "selected" : undefined}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => {
+                      setSelectedRoute(route.routeId);
+                      setRecommendedRouteId(null);
+                    }}
+                  >
+                    <td>
+                      <strong>{route.label}</strong>
+                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{route.routeId}</div>
+                      {isRecommended && <span className="sentinel-badge sentinel-badge-green" style={{ marginTop: 4 }}>推荐</span>}
+                    </td>
+                    <td>{route.quotedOut}</td>
+                    <td>{route.expectedOut}</td>
+                    <td>
+                      <span className={`sentinel-badge ${rl === "high" ? "sentinel-badge-red" : rl === "moderate" ? "sentinel-badge-yellow" : "sentinel-badge-green"}`}>
+                        {route.poolRiskScore}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: "var(--red)" }}>
+                      {route.warningFlags.length > 0 ? route.warningFlags.join(", ") : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {pageCount > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
+              <button type="button" className="sentinel-btn sentinel-btn-ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 12px", fontSize: 12 }}>
+                上一页
+              </button>
+              <span style={{ fontSize: 13, color: "var(--text-muted)", alignSelf: "center" }}>
+                {page + 1} / {pageCount}
+              </span>
+              <button type="button" className="sentinel-btn sentinel-btn-ghost" disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 12px", fontSize: 12 }}>
+                下一页
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
             <button
+              type="button"
+              className="sentinel-btn sentinel-btn-ghost"
               onClick={() => evaluateRoute()}
               disabled={!!loading || !selectedRoute}
-              style={{
-                padding: "12px 20px",
-                fontSize: 14,
-                fontWeight: 600,
-                borderRadius: 8,
-                border: "1px solid #30363d",
-                cursor: loading ? "not-allowed" : "pointer",
-                background: "#21262d",
-                color: "#e1e4e8",
-              }}
             >
               {loading === "Evaluating route with Safety Agent..." ? "评估中..." : "风险评估"}
             </button>
             <button
+              type="button"
+              className="sentinel-btn sentinel-btn-primary"
               onClick={runFullFlow}
               disabled={!!loading}
-              style={{
-                flex: 1,
-                minWidth: 200,
-                padding: "12px 24px",
-                fontSize: 15,
-                fontWeight: 600,
-                borderRadius: 8,
-                border: "none",
-                cursor: loading ? "not-allowed" : "pointer",
-                background: safeMode ? "#238636" : "#1f6feb",
-                color: "white",
-              }}
+              style={{ flex: 1, minWidth: 200 }}
             >
               {loading && loading !== "Evaluating route with Safety Agent..." ? "Running..." : safeMode ? "一键完整流程（含执行）" : "无安全模式执行"}
             </button>
           </div>
-
-          {resultEvent && <ResultPanel event={resultEvent} decision={decision} />}
-          {events.length > 0 && <Timeline events={events} />}
-        </>
+        </div>
       )}
 
       {error && (
         <div
+          className="sentinel-card"
           style={{
             marginTop: 16,
-            padding: 16,
-            borderRadius: 8,
-            background: "#f8514922",
-            border: "1px solid #f85149",
-            color: "#f85149",
+            borderColor: "var(--red)",
+            background: "rgba(248, 81, 73, 0.08)",
+            color: "var(--red)",
           }}
         >
           {error}
         </div>
       )}
+    </div>
+  );
+}
+
+function RiskIndicator({
+  label,
+  value,
+  level,
+}: {
+  label: string;
+  value: string | number;
+  level: "low" | "moderate" | "high";
+}) {
+  const color = level === "high" ? "var(--red)" : level === "moderate" ? "var(--yellow)" : "var(--green)";
+  return (
+    <div style={{ padding: 12, background: "#0d1117", borderRadius: 8, border: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color }}>{value}</div>
     </div>
   );
 }

@@ -4,9 +4,12 @@ import { LandingPage } from './components/LandingPage';
 import { DashboardPage } from './components/DashboardPage';
 import { TransactionPage } from './components/TransactionPage';
 import { UserProfilePage } from './components/UserProfilePage';
+import { ExecutionResultPage } from './components/ExecutionResultPage';
+import { RiskRulesPage } from './components/RiskRulesPage';
+import { SettingsPage } from './components/SettingsPage';
 import { ToastProvider } from './components/Toast';
 import { AuthRoute } from './components/AuthRoute';
-import { AppHeader } from './components/AppHeader';
+import { AppLayout } from './components/layout/AppLayout';
 import { SafeUnsafeToggle } from './components/SafeUnsafeToggle';
 import { WalletProvider } from './contexts/WalletContext';
 
@@ -15,63 +18,58 @@ export default function App() {
     <WalletProvider>
       <ToastProvider>
         <BrowserRouter>
-          <div style={{ padding: '0 24px', maxWidth: 1200, margin: '0 auto' }}>
-            <AppHeader />
-            <Routes>
-              <Route path='/' element={<LandingPage />} />
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<LandingPage />} />
               <Route
-                path='/dashboard'
+                path="/dashboard"
                 element={
                   <AuthRoute>
-                    <DashboardRouter />
+                    <DashboardPage />
                   </AuthRoute>
                 }
               />
+              <Route path="/transaction" element={<TransactionRouter />} />
+              <Route path="/execution" element={<ExecutionResultPage />} />
+              <Route path="/risk-rules" element={<RiskRulesPage />} />
               <Route
-                path='/transaction'
-                element={<TransactionRouter />}
-              />
-              <Route
-                path='/profile'
+                path="/profile"
                 element={
                   <AuthRoute>
                     <UserProfilePage />
                   </AuthRoute>
                 }
               />
-              <Route path='*' element={<Navigate to='/' replace />} />
-            </Routes>
-          </div>
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
         </BrowserRouter>
       </ToastProvider>
     </WalletProvider>
   );
 }
 
-/** DashboardRouter */
-function DashboardRouter() {
-  return <DashboardPage />;
-}
-
-/** TransactionRouter — safeMode toggle only appears here */
 function TransactionRouter() {
   const [safeMode, setSafeMode] = useState(true);
   return (
     <>
-      <div style={{
-        marginBottom: 16,
-        padding: "10px 16px",
-        borderRadius: 8,
-        background: "#d2992211",
-        border: "1px solid #d2992244",
-        fontSize: 13,
-        color: "#d29922",
-        lineHeight: 1.5,
-      }}>
+      <div
+        className="sentinel-card"
+        style={{
+          marginBottom: 20,
+          padding: "12px 16px",
+          borderColor: "rgba(210, 153, 34, 0.35)",
+          background: "rgba(210, 153, 34, 0.06)",
+          fontSize: 13,
+          color: "var(--yellow)",
+          lineHeight: 1.5,
+        }}
+      >
         <strong>Demo 链模式</strong> — 请用 MetaMask 连接钱包并切换到 Anvil Local（Chain ID 31337）。执行 swap 时会弹出授权（Approve）确认；代币从您连接的钱包扣除。
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e1e4e8' }}>交易检测</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <h2 className="sentinel-title" style={{ margin: 0 }}>交易检测</h2>
         <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />
       </div>
       <TransactionPage safeMode={safeMode} />
