@@ -1,28 +1,36 @@
-﻿import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, computeSecurityScore, type PoolsHealthReport } from "../api/client";
+﻿import { useNavigate } from "react-router-dom";
+import { getAddress } from "ethers";
+import {
+  buildAlertSummary,
+  computePoolChainStatus,
+  computeScoreLegend,
+  computeUserStats,
+  computeWorkflowStages,
+} from "../api/client";
 import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
-import { AccountCard } from "./shared/AccountCard";
+import { useWallet } from "../contexts/WalletContext";
+import { useDashboardData } from "../hooks/useDashboardData";
+
+const DOT_CLASS = {
+  purple: "dashboard-dot-purple",
+  cyan: "dashboard-dot-cyan",
+  yellow: "dashboard-dot-yellow",
+  red: "dashboard-dot-red",
+} as const;
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [events, setEvents] = useState<Event[]>([]);
-  const [pools, setPools] = useState<PoolsHealthReport | null>(null);
-  const [score, setScore] = useState(85);
-  const [loading, setLoading] = useState(true);
+  const { account } = useWallet();
+  const { events, pools, status, balances, score, refreshing, poolsPending, refresh } = useDashboardData(account);
 
-  useEffect(() => {
-    Promise.all([
-      api.events().catch(() => [] as Event[]),
-      api.poolsHealth().catch(() => null),
-    ]).then(([ev, ph]) => {
-      setEvents(ev);
-      setPools(ph);
-      setScore(computeSecurityScore(ev, ph ?? undefined));
-      setLoading(false);
-    });
-  }, []);
+  const handleRefresh = () => void refresh();
+
+  const legend = computeScoreLegend(events, pools ?? undefined);
+  const chainRows = computePoolChainStatus(pools ?? undefined);
+  const stats = computeUserStats(events);
+  const workflow = computeWorkflowStages(events);
+  const maxStage = Math.max(...workflow.map((s) => s.count), 1);
 
   const alerts = events
     .filter(
@@ -30,122 +38,275 @@ export function DashboardPage() {
         e.eventType.includes("Reject") ||
         e.eventType === "SwapFailed" ||
         e.decision === "REJECT" ||
-        e.decision === "FALLBACK_TO_SAFE_ROUTE"
+        e.decision === "FALLBACK_TO_SAFE_ROUTE" ||
+        (e.riskScore ?? 0) >= 50
     )
-    .slice(-6)
+    .slice(-20)
+    .reverse()
+    .slice(0, 4);
+
+  const decisionChips = events
+    .filter((e) => e.decision || e.eventType.includes("Decision"))
+    .slice(-4)
     .reverse();
 
-  const poolGroups = pools
-    ? [
-        { name: "SAFE 池", count: pools.pools.filter((p) => p.poolLabel === "SAFE" && p.status === "healthy").length, color: "green" as const },
-        { name: "SHALLOW 池", count: pools.pools.filter((p) => p.poolLabel === "SHALLOW").length, color: "yellow" as const },
-        { name: "TOXIC 池", count: pools.pools.filter((p) => p.poolLabel === "TOXIC").length, color: "red" as const },
-        { name: "异常/空池", count: pools.degraded + pools.empty, color: "red" as const },
-      ]
-    : [];
-
-  const stageCounts = {
-    evaluate: events.filter((e) => e.eventType.includes("Evaluat")).length,
-    decision: events.filter((e) => e.eventType.includes("Decision")).length,
-    fallback: events.filter((e) => e.eventType.includes("Fallback")).length,
-    execute: events.filter((e) => e.eventType.includes("Success") || e.eventType.includes("Swap")).length,
-    fail: events.filter((e) => e.eventType.includes("Fail") || e.eventType.includes("Reject")).length,
-  };
-  const maxStage = Math.max(...Object.values(stageCounts), 1);
-
-  if (loading) {
-    return <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>加载仪表盘...</div>;
-  }
+  const summary = buildAlertSummary(alerts, score);
+  const usdc = balances.USDC?.human ?? 0;
+  const shortAddr = account
+    ? `${getAddress(account).slice(0, 7)}...${getAddress(account).slice(-5)}`
+    : "未连接钱包";
 
   return (
-    <div>
-      <AccountCard />
-
-      <div className="sentinel-dash-grid">
-        <div className="sentinel-card">
-          <SecurityGauge score={score} />
-          <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-muted)" }}>
-            <div><span className="status-dot green" />健康池 {pools?.healthy ?? 0}</div>
-            <div style={{ marginTop: 6 }}><span className="status-dot yellow" />降级 {pools?.degraded ?? 0}</div>
-            <div style={{ marginTop: 6 }}><span className="status-dot red" />空池 {pools?.empty ?? 0}</div>
+    <div className="dashboard-cockpit">
+      {refreshing && (
+        <div className="dashboard-sync-bar">数据同步中…</div>
+      )}
+      <div className="dashboard-grid">
+        {/* 左上：安全评分 */}
+        <div className="dashboard-card dashboard-score-cell">
+          <div className="dashboard-card-title">
+            <span>🛡️ 安全性评分</span>
+          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <SecurityGauge score={score} size={150} label="" />
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -8 }}>综合评估分数</div>
+          </div>
+          <div className="dashboard-legend-row">
+            <LegendBar label="高风险组" pct={legend.highRisk} color="var(--red)" />
+            <LegendBar label="策略组" pct={legend.strategy} color="var(--cyan)" />
+            <LegendBar label="风险警报" pct={legend.warning} color="var(--yellow)" />
           </div>
         </div>
 
-        <div className="sentinel-card">
-          <div className="sentinel-label">链 / 池状态</div>
-          <div className="sentinel-grid-2" style={{ marginBottom: 16 }}>
-            {poolGroups.map((g) => (
-              <div key={g.name} style={{ padding: 12, background: "#0d1117", borderRadius: 8 }}>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{g.name}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{g.count}</div>
+        {/* 中上：链条状态 + 主动警报 */}
+        <div className="dashboard-middle">
+          <div className="dashboard-card">
+            <div className="dashboard-card-title">
+              <span>🔗 链条状态{poolsPending ? " · 同步池数据" : ""}</span>
+              <button
+                type="button"
+                className="sentinel-btn sentinel-btn-ghost"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                style={{ padding: "4px 10px", fontSize: 11 }}
+              >
+                {refreshing ? "刷新中" : "↻ 刷新"}
+              </button>
+            </div>
+            <div className="dashboard-chain-list">
+              {chainRows.map((row) => (
+                <div key={row.label} className="dashboard-chain-row">
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className={`dashboard-dot ${DOT_CLASS[row.dot]}`} />
+                    {row.label}
+                  </span>
+                  <span className="dashboard-chain-score">{row.score.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="dashboard-status-strip">
+              {(decisionChips.length > 0 ? decisionChips : placeholderChips()).map((chip, i) => (
+                <div key={chip.id ?? i} className="dashboard-status-chip">
+                  <div style={{ fontWeight: 600, color: chipColor(chip.decision), marginBottom: 4 }}>
+                    {chipLabel(chip.decision)}
+                  </div>
+                  <div style={{ color: "var(--text-dim)" }}>{formatDate(chip.timestamp)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="dashboard-card">
+            <div className="dashboard-card-title">
+              <span>🔔 主动警报</span>
+              {alerts.length > 0 && (
+                <span className="sentinel-badge sentinel-badge-red">{alerts.length} News</span>
+              )}
+            </div>
+            <div className="dashboard-alert-list">
+              {alerts.length === 0 ? (
+                <div className="dashboard-alert-item info" style={{ borderLeftColor: "var(--green)" }}>
+                  <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>Normal</div>
+                  <div style={{ color: "var(--text-muted)" }}>暂无告警，系统运行正常</div>
+                </div>
+              ) : (
+                alerts.map((a, i) => (
+                  <div key={a.id ?? i} className={`dashboard-alert-item ${alertLevel(a)}`}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      {alertLevel(a) === "critical" ? "Critical" : alertLevel(a) === "warn" ? "Warn" : "Info"}
+                      {a.routeId ? `: ${a.routeId}` : ""}
+                    </div>
+                    <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+                      {a.message?.slice(0, 80)}
+                    </div>
+                    <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 4 }}>
+                      {formatDate(a.timestamp)}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="dashboard-ai-box">
+              <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 6 }}>AI 警报分析</div>
+              {summary}
+            </div>
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-primary"
+              style={{ width: "100%", marginTop: 10, padding: "10px 12px", fontSize: 13 }}
+              onClick={() => navigate("/transaction")}
+            >
+              立即处理并进行新交易 ↗
+            </button>
+          </div>
+        </div>
+
+        {/* 右侧栏 */}
+        <div className="dashboard-sidebar">
+          <div className="dashboard-sidebar-scroll">
+            <div className="dashboard-stat-card" style={{ background: "linear-gradient(135deg, #121820, #1a1030)" }}>
+              <div className="sentinel-label" style={{ marginBottom: 8 }}>Account Key</div>
+              <div style={{ fontFamily: "monospace", fontSize: 14, color: "var(--cyan)", wordBreak: "break-all" }}>
+                {shortAddr}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <span className="sentinel-badge sentinel-badge-green">Sentinel Premium</span>
+              </div>
+            </div>
+
+            <SidebarStat
+              label="累计 Swap 量"
+              value={`$${stats.safeVolumeUsd.toLocaleString()}`}
+              hint="Demo 估算"
+            />
+            <SidebarStat
+              label="拦截 / 失败"
+              value={String(stats.rejectCount)}
+              accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
+            />
+            <SidebarStat
+              label="USDC 余额"
+              value={usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              accent="var(--green)"
+            />
+
+            <div className="dashboard-stat-card" style={{ flex: 1, minHeight: 100 }}>
+              <div className="sentinel-label">最新状态 / 公告栏</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div>链模式：{status?.chainName ?? status?.chainMode ?? "—"}</div>
+                <div>Demo 池数：{pools?.poolCount ?? status?.demoPoolCount ?? "—"}</div>
+                <div>健康 / 降级 / 空池：{pools ? `${pools.healthy} / ${pools.degraded} / ${pools.empty}` : "—"}</div>
+                <div>事件总数：{events.length}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 底部柱状图 */}
+        <div className="dashboard-card dashboard-chart-cell">
+          <div className="dashboard-card-title">
+            <span>📊 主动警报状态</span>
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-ghost"
+              style={{ padding: "4px 10px", fontSize: 11 }}
+              onClick={() => navigate("/execution")}
+            >
+              View More
+            </button>
+          </div>
+          <div className="dashboard-bars">
+            {workflow.map((s) => (
+              <div key={s.label} className="dashboard-bar-col">
+                <div
+                  className="dashboard-bar"
+                  style={{
+                    height: `${Math.max(12, (s.count / maxStage) * 100)}px`,
+                    width: "100%",
+                  }}
+                />
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{s.count}</div>
               </div>
             ))}
           </div>
-          <div className="sentinel-label">主动警报</div>
-          {alerts.length === 0 ? (
-            <p style={{ color: "var(--text-dim)", fontSize: 13 }}>暂无告警，系统运行正常</p>
-          ) : (
-            alerts.map((a, i) => (
-              <div key={a.id ?? i} style={{ padding: "8px 0", borderBottom: "1px solid #1a2332", fontSize: 13 }}>
-                <span className={`sentinel-badge ${a.decision === "REJECT" ? "sentinel-badge-red" : "sentinel-badge-yellow"}`}>
-                  {a.eventType}
-                </span>
-                <span style={{ marginLeft: 8, color: "var(--text-muted)" }}>{a.message?.slice(0, 60)}</span>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="sentinel-card">
-          <div className="sentinel-label">统计摘要</div>
-          <StatRow label="事件总数" value={String(events.length)} />
-          <StatRow label="Demo 池数" value={String(pools?.poolCount ?? 0)} />
-          <StatRow label="最近告警" value={String(alerts.length)} accent={alerts.length > 0 ? "var(--red)" : undefined} />
-          <button
-            type="button"
-            className="sentinel-btn sentinel-btn-secondary"
-            style={{ width: "100%", marginTop: 16 }}
-            onClick={() => navigate("/transaction")}
-          >
-            立即处理并进行新交易
-          </button>
-        </div>
-      </div>
-
-      <div className="sentinel-card">
-        <div className="sentinel-label">执行阶段分布</div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 120, paddingTop: 8 }}>
-          {[
-            { label: "评估", v: stageCounts.evaluate },
-            { label: "决策", v: stageCounts.decision },
-            { label: "Fallback", v: stageCounts.fallback },
-            { label: "执行", v: stageCounts.execute },
-            { label: "失败", v: stageCounts.fail },
-          ].map((s) => (
-            <div key={s.label} style={{ flex: 1, textAlign: "center" }}>
-              <div
-                style={{
-                  height: `${Math.max(8, (s.v / maxStage) * 80)}px`,
-                  background: "linear-gradient(180deg, var(--green), rgba(0,255,136,0.3))",
-                  borderRadius: "4px 4px 0 0",
-                  marginBottom: 8,
-                }}
-              />
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{s.v}</div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
   );
 }
 
-function StatRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+function LegendBar({ label, pct, color }: { label: string; pct: number; color: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a2332", fontSize: 13 }}>
-      <span style={{ color: "var(--text-muted)" }}>{label}</span>
-      <span style={{ fontWeight: 600, color: accent ?? "var(--text)" }}>{value}</span>
+    <div className="dashboard-legend-item">
+      <span style={{ width: 56 }}>{label}</span>
+      <div className="dashboard-legend-bar">
+        <div className="dashboard-legend-fill" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span style={{ width: 32, textAlign: "right" }}>{pct}%</span>
     </div>
   );
+}
+
+function SidebarStat({
+  label,
+  value,
+  hint,
+  accent,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  accent?: string;
+}) {
+  return (
+    <div className="dashboard-stat-card">
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        {label}
+        {hint && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-dim)" }}>({hint})</span>}
+      </div>
+      <div className="dashboard-stat-value" style={{ color: accent ?? "var(--text)" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function formatDate(ts?: number) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return d.toISOString().slice(0, 10);
+}
+
+function alertLevel(e: Event): "critical" | "warn" | "info" {
+  if (e.decision === "REJECT" || e.eventType.includes("Reject") || e.eventType === "SwapFailed") {
+    return "critical";
+  }
+  if (e.decision === "FALLBACK_TO_SAFE_ROUTE" || e.eventType.includes("Fallback")) {
+    return "warn";
+  }
+  return "info";
+}
+
+function chipLabel(decision?: string) {
+  if (decision === "REJECT") return "High Risk";
+  if (decision === "FALLBACK_TO_SAFE_ROUTE") return "Fallback";
+  if (decision === "ALLOW") return "High Safety";
+  return "Pending";
+}
+
+function chipColor(decision?: string) {
+  if (decision === "REJECT") return "var(--red)";
+  if (decision === "FALLBACK_TO_SAFE_ROUTE") return "var(--yellow)";
+  if (decision === "ALLOW") return "var(--green)";
+  return "var(--text-muted)";
+}
+
+function placeholderChips(): Event[] {
+  return [
+    { id: "p1", eventType: "DecisionMade", timestamp: Date.now(), decision: "ALLOW", message: "System ready" },
+    { id: "p2", eventType: "DecisionMade", timestamp: Date.now() - 86400000, decision: "ALLOW", message: "Pools healthy" },
+    { id: "p3", eventType: "DecisionMade", timestamp: Date.now() - 172800000, message: "Awaiting activity" },
+    { id: "p4", eventType: "DecisionMade", timestamp: Date.now() - 259200000, message: "Demo chain online" },
+  ];
 }

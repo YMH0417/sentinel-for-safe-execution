@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { useWallet } from "../../contexts/WalletContext";
 import { useToast } from "../Toast";
 import { getAddress } from "ethers";
+import { api } from "../../api/client";
 
 const NAV = [
   { to: "/", label: "首页", end: true },
@@ -20,6 +22,10 @@ export function AppLayout() {
   const location = useLocation();
   const isLanding = location.pathname === "/";
 
+  useEffect(() => {
+    void api.warmCache().catch(() => undefined);
+  }, []);
+
   const handleConnect = async () => {
     try {
       await connectWallet();
@@ -35,44 +41,21 @@ export function AppLayout() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-deep)" }}>
-      <header
-        style={{
-          borderBottom: "1px solid var(--border)",
-          background: "rgba(10, 14, 23, 0.95)",
-          backdropFilter: "blur(8px)",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "12px 24px",
-            display: "flex",
-            alignItems: "center",
-            gap: 24,
-          }}
-        >
-          <NavLink to="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 22, color: "var(--cyan)" }}>⬡</span>
-            <span style={{ fontWeight: 700, fontSize: 18, color: "var(--text)", fontFamily: "var(--font-display)" }}>
-              Sentinel
-            </span>
+      <header className="app-header">
+        <div className="app-header-inner">
+          <NavLink to="/" className="app-header-brand">
+            <span className="app-header-logo">⬡</span>
+            <span className="app-header-title">Sentinel</span>
           </NavLink>
 
-          <nav style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1 }}>
+          <nav className="app-header-nav">
             {NAV.map((item) => (
               <NavLink
                 key={`${item.to}-${item.label}`}
                 to={item.to}
                 end={item.end}
+                className="app-header-nav-link"
                 style={({ isActive }) => ({
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  fontSize: 13,
-                  textDecoration: "none",
                   color: isActive ? "var(--cyan)" : "var(--text-muted)",
                   background: isActive ? "rgba(0, 255, 255, 0.08)" : "transparent",
                   fontWeight: isActive ? 600 : 400,
@@ -83,11 +66,16 @@ export function AppLayout() {
             ))}
           </nav>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="app-header-actions">
             {account ? (
               <>
-                <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--green)" }}>{shortAddr}</span>
-                <button type="button" className="sentinel-btn sentinel-btn-ghost" onClick={disconnectWallet} style={{ padding: "6px 12px", fontSize: 12 }}>
+                <span className="app-header-wallet">{shortAddr}</span>
+                <button
+                  type="button"
+                  className="sentinel-btn sentinel-btn-ghost"
+                  onClick={disconnectWallet}
+                  style={{ padding: "9px 14px", fontSize: 13 }}
+                >
                   断开
                 </button>
               </>
@@ -97,17 +85,17 @@ export function AppLayout() {
                 className="sentinel-btn sentinel-btn-primary"
                 onClick={handleConnect}
                 disabled={isConnecting}
-                style={{ padding: "8px 16px", fontSize: 13 }}
+                style={{ padding: "12px 18px", fontSize: 14 }}
               >
                 {isConnecting ? "连接中..." : "Connect Wallet"}
               </button>
             )}
           </div>
         </div>
-        <div style={{ height: 2, background: "var(--gradient-brand)", opacity: 0.6 }} />
+        <div className="app-header-accent" />
       </header>
 
-      <main className={isLanding ? "" : "sentinel-page"}>
+      <main className={isLanding ? "" : location.pathname === "/dashboard" ? "sentinel-page-dashboard" : "sentinel-page"}>
         <Outlet />
       </main>
     </div>

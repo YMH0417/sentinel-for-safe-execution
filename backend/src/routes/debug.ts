@@ -10,7 +10,7 @@ import { loadRiskConfig } from "../services/agentService.js";
 import { getEvents } from "../services/eventService.js";
 import { assertSwapConfigured, isRouterSwapAvailable } from "../services/swapService.js";
 import { getEventsFilePath } from "../services/eventService.js";
-import { getPoolsHealth } from "../services/poolHealthService.js";
+import { getPoolsHealthCacheMeta, getCachedPoolsHealth, warmPoolsHealthCache } from "../services/poolHealthCacheService.js";
 
 const router = Router();
 
@@ -91,6 +91,7 @@ router.get("/status", async (_req: Request, res: Response) => {
     routeCount,
     routesVersion,
     eventCount: getEvents().length,
+    poolsHealthCache: getPoolsHealthCacheMeta(),
     endpoints: [
       "GET /api/health",
       "GET /api/quote",
@@ -109,21 +110,40 @@ router.get("/status", async (_req: Request, res: Response) => {
       "GET /api/swap/wallet",
       "GET /api/swap/balances",
       "GET /api/debug/pools-health",
+      "POST /api/debug/warm-cache",
       "GET /api/debug/status",
     ],
   });
 });
 
-router.get("/pools-health", async (_req: Request, res: Response) => {
+router.get("/pools-health", async (req: Request, res: Response) => {
   if (!isDemoChainMode()) {
     return res.status(404).json({ error: "pools-health requires demo chain mode" });
   }
   try {
-    const report = await getPoolsHealth();
-    res.json(report);
+    const force = req.query.refresh === "true" || req.query.force === "true";
+    const report = await getCachedPoolsHealth({ force });
+    res.json({ ...report, cache: getPoolsHealthCacheMeta() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Health check failed";
-    res.status(503).json({ error: message });
+    res.status(503).json({ error: message, cache: getPoolsHealthCacheMeta() });
+  }
+});
+
+router.post("/warm-cache", async (_req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.json({ warmed: false, reason: "not demo mode", cache: getPoolsHealthCacheMeta() });
+  }
+  try {
+    const meta = getPoolsHealthCacheMeta();
+    if (meta.ready && !meta.warming && (meta.ageMs ?? Infinity) < meta.ttlMs) {
+      return res.json({ warmed: true, skipped: true, cache: meta });
+    }
+    await warmPoolsHealthCache(3);
+    res.json({ warmed: getPoolsHealthCacheMeta().ready, cache: getPoolsHealthCacheMeta() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Warm cache failed";
+    res.status(503).json({ warmed: false, error: message, cache: getPoolsHealthCacheMeta() });
   }
 });
 

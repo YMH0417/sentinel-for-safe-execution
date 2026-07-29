@@ -60,59 +60,65 @@ export async function getPoolsHealth(): Promise<PoolsHealthReport> {
   let degraded = 0;
   let empty = 0;
 
-  for (const pool of config.pools) {
-    const parsed = parseRouteName(pool.routeName);
-    const tokenIn = parsed ? tokenSymbolFromKey(parsed.tokenInKey)! : "?";
-    const tokenOut = parsed ? tokenSymbolFromKey(parsed.tokenOutKey)! : "?";
-    const decIn = decimalsForSymbol(tokenIn as DemoTokenSymbol);
-    const decOut = decimalsForSymbol(tokenOut as DemoTokenSymbol);
+  const entries = await Promise.all(
+    config.pools.map(async (pool) => {
+      const parsed = parseRouteName(pool.routeName);
+      const tokenIn = parsed ? tokenSymbolFromKey(parsed.tokenInKey)! : "?";
+      const tokenOut = parsed ? tokenSymbolFromKey(parsed.tokenOutKey)! : "?";
+      const decIn = decimalsForSymbol(tokenIn as DemoTokenSymbol);
+      const decOut = decimalsForSymbol(tokenOut as DemoTokenSymbol);
 
-    let status: PoolHealthEntry["status"] = "healthy";
-    let reserveInHuman = 0;
-    let reserveOutHuman = 0;
-    let spotPrice = 0;
-    let canSwap1Unit = false;
-    let priceImpactBps1Unit = 0;
+      let status: PoolHealthEntry["status"] = "healthy";
+      let reserveInHuman = 0;
+      let reserveOutHuman = 0;
+      let spotPrice = 0;
+      let canSwap1Unit = false;
+      let priceImpactBps1Unit = 0;
 
-    try {
-      const { reserveIn, reserveOut } = await readReserves(provider, pool.pair, pool.tokenIn);
-      reserveInHuman = toHumanAmount(reserveIn, decIn);
-      reserveOutHuman = toHumanAmount(reserveOut, decOut);
-      spotPrice = getSpotPriceHuman(reserveIn, reserveOut, decIn, decOut);
+      try {
+        const { reserveIn, reserveOut } = await readReserves(provider, pool.pair, pool.tokenIn);
+        reserveInHuman = toHumanAmount(reserveIn, decIn);
+        reserveOutHuman = toHumanAmount(reserveOut, decOut);
+        spotPrice = getSpotPriceHuman(reserveIn, reserveOut, decIn, decOut);
 
-      const amountInRaw = amountInRawForSymbol(tokenIn);
-      const quotedOut = getAmountOut(amountInRaw, reserveIn, reserveOut);
-      canSwap1Unit = quotedOut > 0n;
-      priceImpactBps1Unit = getPriceImpactBps(amountInRaw, reserveIn, reserveOut);
+        const amountInRaw = amountInRawForSymbol(tokenIn);
+        const quotedOut = getAmountOut(amountInRaw, reserveIn, reserveOut);
+        canSwap1Unit = quotedOut > 0n;
+        priceImpactBps1Unit = getPriceImpactBps(amountInRaw, reserveIn, reserveOut);
 
-      if (!canSwap1Unit || reserveInHuman === 0 || reserveOutHuman === 0) {
+        if (!canSwap1Unit || reserveInHuman === 0 || reserveOutHuman === 0) {
+          status = "empty";
+        } else if (priceImpactBps1Unit > 500 || labelFromNumber(pool.label) !== "SAFE") {
+          status = "degraded";
+        } else {
+          status = "healthy";
+        }
+      } catch {
         status = "empty";
-        empty++;
-      } else if (priceImpactBps1Unit > 500 || labelFromNumber(pool.label) !== "SAFE") {
-        status = "degraded";
-        degraded++;
-      } else {
-        healthy++;
       }
-    } catch {
-      status = "empty";
-      empty++;
-    }
 
-    pools.push({
-      routeId: pool.routeName,
-      routeName: pool.routeName,
-      pair: pool.pair,
-      tokenIn,
-      tokenOut,
-      poolLabel: labelFromNumber(pool.label),
-      reserveInHuman,
-      reserveOutHuman,
-      spotPrice,
-      canSwap1Unit,
-      priceImpactBps1Unit,
-      status,
-    });
+      return {
+        routeId: pool.routeName,
+        routeName: pool.routeName,
+        pair: pool.pair,
+        tokenIn,
+        tokenOut,
+        poolLabel: labelFromNumber(pool.label),
+        reserveInHuman,
+        reserveOutHuman,
+        spotPrice,
+        canSwap1Unit,
+        priceImpactBps1Unit,
+        status,
+      } satisfies PoolHealthEntry;
+    })
+  );
+
+  for (const entry of entries) {
+    pools.push(entry);
+    if (entry.status === "healthy") healthy++;
+    else if (entry.status === "degraded") degraded++;
+    else empty++;
   }
 
   return {

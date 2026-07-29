@@ -16,6 +16,8 @@ import debugRouter from "./routes/debug.js";
 import demoRouter from "./routes/demo.js";
 import swapRouter from "./routes/swap.js";
 import { isMockChainMode } from "./config/chainConfig.js";
+import { isDemoChainMode } from "./config/demoConfig.js";
+import { warmPoolsHealthCache } from "./services/poolHealthCacheService.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -65,10 +67,15 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
   console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
   console.log(`    POST /api/swap/verify-all — Batch 36 (default force; ?safe=true)`);
-  console.log(`    GET  /api/debug/pools-health — 36 池健康检查`);
+  console.log(`    GET  /api/debug/pools-health — 36 池健康检查（带缓存）`);
+  console.log(`    POST /api/debug/warm-cache   — 预热 pools-health 缓存`);
   console.log(`    GET  /api/swap/wallet     — Swap 钱包地址`);
   console.log(`    GET  /api/swap/balances   — Swap 钱包余额`);
   console.log(`    GET  /api/health         — 健康检查\n`);
+
+  if (isDemoChainMode()) {
+    void warmPoolsHealthCache();
+  }
 });
 
 export default app;

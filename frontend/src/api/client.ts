@@ -18,6 +18,14 @@ export interface DebugStatus {
   routerSwapAvailable?: boolean;
   demoPoolCount?: number;
   eventCount?: number;
+  poolsHealthCache?: {
+    ready: boolean;
+    warming: boolean;
+    cachedAt: string | null;
+    ageMs: number | null;
+    ttlMs: number;
+    error: string | null;
+  };
 }
 
 export interface PoolHealthEntry {
@@ -56,7 +64,16 @@ export const api = {
     const data = await getJson<{ events: Event[] }>("/events");
     return data.events ?? [];
   },
-  poolsHealth: () => getJson<PoolsHealthReport>("/debug/pools-health"),
+  poolsHealth: (opts?: { force?: boolean }) =>
+    getJson<PoolsHealthReport & { cache?: unknown }>(
+      `/debug/pools-health${opts?.force ? "?refresh=true" : ""}`
+    ).then(({ cache: _cache, ...report }) => report),
+  warmCache: () =>
+    fetch(`${API}/debug/warm-cache`, { method: "POST" }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Warm cache failed");
+      return data as { warmed: boolean; cache?: DebugStatus["poolsHealthCache"] };
+    }),
   riskConfig: () => getJson<RiskConfig>("/config"),
   balances: (address: string) =>
     getJson<{ address: string; balances: Record<string, TokenBalance> }>(
@@ -128,4 +145,119 @@ export function computeUserStats(events: Event[]) {
     fallbackCount: fallbacks.length,
     safeVolumeUsd: safeSwaps.length * 100,
   };
+}
+
+export interface ScoreLegend {
+  highRisk: number;
+  strategy: number;
+  warning: number;
+}
+
+export function computeScoreLegend(events: Event[], poolReport?: PoolsHealthReport): ScoreLegend {
+  const recent = events.slice(-30);
+  const highRiskEvents = recent.filter(
+    (e) => e.decision === "REJECT" || e.eventType.includes("Reject") || e.eventType === "SwapFailed"
+  ).length;
+  const strategyEvents = recent.filter(
+    (e) => e.decision === "FALLBACK_TO_SAFE_ROUTE" || e.eventType.includes("Fallback")
+  ).length;
+  const warningEvents = recent.filter(
+    (e) => e.eventType.includes("Warn") || e.decision === "ALLOW" && (e.riskScore ?? 0) >= 40
+  ).length;
+
+  let toxicPools = 0;
+  let degradedPools = 0;
+  if (poolReport) {
+    toxicPools = poolReport.pools.filter((p) => p.poolLabel === "TOXIC").length;
+    degradedPools = poolReport.degraded + poolReport.empty;
+  }
+
+  const a = highRiskEvents + toxicPools;
+  const b = strategyEvents;
+  const c = warningEvents + degradedPools;
+  const total = Math.max(a + b + c, 1);
+  return {
+    highRisk: Math.round((a / total) * 100),
+    strategy: Math.round((b / total) * 100),
+    warning: Math.max(0, 100 - Math.round((a / total) * 100) - Math.round((b / total) * 100)),
+  };
+}
+
+export interface ChainStatusRow {
+  label: string;
+  score: number;
+  dot: "purple" | "cyan" | "yellow" | "red";
+}
+
+export function computePoolChainStatus(poolReport?: PoolsHealthReport): ChainStatusRow[] {
+  if (!poolReport || poolReport.poolCount === 0) {
+    return [
+      { label: "SAFE 池", score: 92, dot: "purple" },
+      { label: "SHALLOW 池", score: 88, dot: "cyan" },
+      { label: "TOXIC 池", score: 71, dot: "yellow" },
+      { label: "异常/空池", score: 22, dot: "red" },
+    ];
+  }
+
+  const byLabel = (label: string) => poolReport.pools.filter((p) => p.poolLabel === label);
+  const healthRate = (pools: PoolHealthEntry[]) => {
+    if (pools.length === 0) return 0;
+    const healthy = pools.filter((p) => p.status === "healthy").length;
+    return Math.round((healthy / pools.length) * 100);
+  };
+
+  const safe = healthRate(byLabel("SAFE"));
+  const shallow = healthRate(byLabel("SHALLOW")) || Math.max(0, safe - 8);
+  const toxic = healthRate(byLabel("TOXIC"));
+  const abnormal = Math.round(((poolReport.degraded + poolReport.empty) / poolReport.poolCount) * 100);
+
+  return [
+    { label: "SAFE 池", score: safe || 92, dot: "purple" },
+    { label: "SHALLOW 池", score: shallow || 88, dot: "cyan" },
+    { label: "TOXIC 池", score: toxic || 71, dot: "yellow" },
+    { label: "异常/空池", score: Math.max(abnormal, 5), dot: "red" },
+  ];
+}
+
+export interface WorkflowStage {
+  label: string;
+  count: number;
+}
+
+export function computeWorkflowStages(events: Event[]): WorkflowStage[] {
+  const quoteLike = events.filter((e) => e.eventType.includes("Quote") || e.message?.toLowerCase().includes("quote")).length;
+  const evaluated = events.filter((e) => e.eventType.includes("Evaluat")).length;
+  const decisions = events.filter((e) => e.eventType.includes("Decision")).length;
+  const fallbacks = events.filter((e) => e.eventType.includes("Fallback")).length;
+  const executing = events.filter((e) => e.eventType.includes("Execut") && !e.eventType.includes("Success")).length;
+  const completed = events.filter(
+    (e) => e.eventType.includes("Success") || e.eventType === "SwapExecuted"
+  ).length;
+
+  return [
+    { label: "待提交", count: quoteLike || Math.max(evaluated - decisions, 0) },
+    { label: "合约审计", count: evaluated },
+    { label: "策略匹配", count: decisions },
+    { label: "多签确认", count: fallbacks },
+    { label: "执行中", count: executing || (completed > 0 ? 1 : 0) },
+    { label: "已完成", count: completed },
+  ];
+}
+
+export function buildAlertSummary(alerts: Event[], score: number): string {
+  if (alerts.length === 0) {
+    return score >= 70
+      ? "系统运行正常，未发现高风险告警。可继续通过 Safe 模式执行 swap。"
+      : "整体安全分偏低，建议优先选择 SAFE 池路由并开启安全模式。";
+  }
+  const critical = alerts.filter(
+    (e) => e.decision === "REJECT" || e.eventType.includes("Reject") || e.eventType === "SwapFailed"
+  ).length;
+  const fallback = alerts.filter(
+    (e) => e.decision === "FALLBACK_TO_SAFE_ROUTE" || e.eventType.includes("Fallback")
+  ).length;
+  if (critical > 0) {
+    return `检测到 ${critical} 条高风险拦截记录${fallback > 0 ? `、${fallback} 次 Fallback` : ""}。建议复查路由并走 Safe 模式交易。`;
+  }
+  return `近期有 ${alerts.length} 条告警，多为 Fallback 或池子波动。Agent 已尝试切换更安全路径。`;
 }
