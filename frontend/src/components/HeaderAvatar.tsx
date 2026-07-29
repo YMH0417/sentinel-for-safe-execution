@@ -6,7 +6,7 @@ import { getAddress } from "ethers";
 
 export function HeaderAvatar() {
   const navigate = useNavigate();
-  const { account, setAccount } = useWallet();
+  const { account, connectWallet, disconnectWallet, isConnecting } = useWallet();
   const { showToast } = useToast();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -22,14 +22,43 @@ export function HeaderAvatar() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [account]);
 
-  if (!account) return null;
+  if (!account) {
+    return (
+      <button
+        onClick={async () => {
+          try {
+            await connectWallet();
+            showToast({ type: "success", message: "MetaMask 已连接" });
+          } catch (e: unknown) {
+            showToast({
+              type: "error",
+              message: e instanceof Error ? e.message : "连接失败",
+            });
+          }
+        }}
+        disabled={isConnecting}
+        style={{
+          padding: "8px 14px",
+          borderRadius: 8,
+          border: "1px solid #238636",
+          background: "#23863622",
+          color: "#3fb950",
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: isConnecting ? "not-allowed" : "pointer",
+        }}
+      >
+        {isConnecting ? "连接中..." : "连接 MetaMask"}
+      </button>
+    );
+  }
 
   const checksumAddr = getAddress(account);
   const shortAddr = `${checksumAddr.slice(0, 6)}...${checksumAddr.slice(-4)}`;
 
   const handleDisconnect = () => {
     setShowDropdown(false);
-    setAccount(null);
+    disconnectWallet();
     navigate("/", { replace: true });
     showToast({ type: "info", message: "Wallet disconnected." });
   };

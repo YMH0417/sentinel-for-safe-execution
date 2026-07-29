@@ -1,8 +1,16 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from "react";
+import { getAddress } from "ethers";
+import { connectMetaMaskWallet } from "../lib/wallet";
 
 const STORE_KEY = "__sentinel_account__";
 
-function getAccount(): string | null {
+function getStoredAccount(): string | null {
   try {
     return localStorage.getItem(STORE_KEY);
   } catch {
@@ -10,7 +18,7 @@ function getAccount(): string | null {
   }
 }
 
-function setAccountRaw(account: string | null) {
+function setStoredAccount(account: string | null) {
   try {
     if (account) {
       localStorage.setItem(STORE_KEY, account);
@@ -24,58 +32,94 @@ function setAccountRaw(account: string | null) {
 
 interface WalletContextValue {
   account: string | null;
-  /** Set the connected wallet address (persists to localStorage) */
+  isConnecting: boolean;
   setAccount: (account: string | null) => void;
+  /** MetaMask eth_requestAccounts + switch/add Anvil when in demo mode */
+  connectWallet: () => Promise<string>;
+  disconnectWallet: () => void;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
-/**
- * WalletProvider — single source of truth for the wallet account.
- *
- * Sync strategy:
- *   - Initializes from localStorage (so a refresh keeps the same account)
- *   - setAccount() updates state + localStorage
- *   - Listens to "storage" events (cross-tab sync) + polls every 3s
- *     to catch MetaMask extension changes within the same tab
- */
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [account, setAccountState] = useState<string | null>(getAccount);
+  const [account, setAccountState] = useState<string | null>(getStoredAccount);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const setAccount = useCallback((a: string | null) => {
     setAccountState(a);
-    setAccountRaw(a);
-    // Also fire a custom event for components that listen locally
+    setStoredAccount(a);
     window.dispatchEvent(new CustomEvent("sentinel:wallet:change"));
   }, []);
 
-  // Cross-tab sync via storage event
+  const connectWallet = useCallback(async () => {
+    setIsConnecting(true);
+    try {
+      const address = await connectMetaMaskWallet();
+      setAccount(address);
+      return address;
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [setAccount]);
+
+  const disconnectWallet = useCallback(() => {
+    setAccount(null);
+  }, [setAccount]);
+
+  useEffect(() => {
+    const eth = window.ethereum;
+    if (!eth) return;
+
+    const onAccountsChanged = (accounts: unknown) => {
+      const list = accounts as string[];
+      if (!list?.length) {
+        setAccount(null);
+        return;
+      }
+      try {
+        setAccount(getAddress(list[0]));
+      } catch {
+        setAccount(list[0] ?? null);
+      }
+    };
+
+    const onChainChanged = () => {
+      window.location.reload();
+    };
+
+    eth.on?.("accountsChanged", onAccountsChanged);
+    eth.on?.("chainChanged", onChainChanged);
+
+    return () => {
+      eth.removeListener?.("accountsChanged", onAccountsChanged);
+      eth.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [setAccount]);
+
   useEffect(() => {
     const handler = () => {
-      const val = getAccount();
+      const val = getStoredAccount();
       if (val !== account) setAccountState(val);
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, [account]);
 
-  // Poll for MetaMask extension changes (same tab)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const val = getAccount();
-      if (val !== account) setAccountState(val);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [account]);
-
   return (
-    <WalletContext.Provider value={{ account, setAccount }}>
+    <WalletContext.Provider
+      value={{
+        account,
+        isConnecting,
+        setAccount,
+        connectWallet,
+        disconnectWallet,
+      }}
+    >
       {children}
     </WalletContext.Provider>
   );
 }
 
-/** Hook to access wallet account from any component inside WalletProvider. */
 export function useWallet(): WalletContextValue {
   const ctx = useContext(WalletContext);
   if (!ctx) throw new Error("useWallet must be used within <WalletProvider>");

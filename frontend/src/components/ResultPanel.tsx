@@ -11,7 +11,11 @@ interface Props {
 }
 
 export function ResultPanel({ event, decision }: Props) {
-  const isSuccess = event.eventType === "ExecutionSuccess" || event.message.includes("Executed");
+  const isSuccess =
+    event.eventType === "ExecutionSuccess" ||
+    event.eventType === "SwapExecuted" ||
+    event.message.includes("Executed") ||
+    event.message.includes("Swap ");
 
   return (
     <div style={{

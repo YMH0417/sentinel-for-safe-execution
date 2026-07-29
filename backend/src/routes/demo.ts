@@ -3,7 +3,7 @@ import { Contract, JsonRpcProvider } from "ethers";
 import { isDemoChainMode } from "../config/demoConfig.js";
 import { decimalsForSymbol } from "../config/demoRoutes.js";
 import { demoPoolRegistryAbi } from "../abi/demoAbis.js";
-import { getRpcUrl } from "../config/chainConfig.js";
+import { getRpcUrl, getOptionalSwapRouterAddress } from "../config/chainConfig.js";
 import { getLiveDemoConfig } from "../services/demoRegistryService.js";
 import type { DemoTokenSymbol } from "../config/demoConfig.js";
 
@@ -121,6 +121,7 @@ router.get("/status", async (_req: Request, res: Response) => {
       registry: config.registry,
       poolCount: config.pools.length,
       tokens: config.tokens,
+      swapRouter: getOptionalSwapRouterAddress() ?? null,
       priceRatio: "USDC:GOOD:BAD:BAIT = 1:20:100:1",
       swapReady,
       swapWallet,

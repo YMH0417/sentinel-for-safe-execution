@@ -1,46 +1,24 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 
 export function LandingPage() {
-  const [connecting, setConnecting] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const { setAccount } = useWallet();
+  const { connectWallet, isConnecting } = useWallet();
 
   const handleConnect = async () => {
-    if (!window.ethereum) {
-      showToast({ type: "error", message: "MetaMask not installed. Please install MetaMask." });
-      return;
-    }
-
-    setConnecting(true);
-
-    let accounts: string[] = [];
     try {
-      accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      const address = await connectWallet();
+      showToast({
+        type: "success",
+        message: `钱包已连接：${address.slice(0, 6)}...${address.slice(-4)}`,
+      });
+      navigate("/dashboard", { replace: true });
     } catch (e: unknown) {
-      const err = e as { reason?: string; code?: number; message?: string };
-      const msg = err.reason || err.message || "Connection rejected by user";
-      showToast({ type: "error", message: msg });
-      setConnecting(false);
-      return;
+      const err = e as { message?: string };
+      showToast({ type: "error", message: err.message ?? "连接钱包失败" });
     }
-
-    if (!accounts.length) {
-      showToast({ type: "error", message: "No accounts found." });
-      setConnecting(false);
-      return;
-    }
-
-    const checksumAddr = accounts[0].replace(/^0x/i, "0x");
-
-    setAccount(checksumAddr);
-
-    showToast({ type: "success", message: `Wallet connected: ${checksumAddr.slice(0, 8)}...` });
-    navigate("/dashboard", { replace: true });
-    setConnecting(false);
   };
 
   return (
@@ -150,7 +128,7 @@ export function LandingPage() {
         {/* Connect Wallet Button */}
         <button
           onClick={handleConnect}
-          disabled={connecting}
+          disabled={isConnecting}
           style={{
             width: "100%",
             padding: "16px 24px",
@@ -158,28 +136,28 @@ export function LandingPage() {
             fontWeight: 600,
             letterSpacing: 3,
             fontFamily: "'Courier New', monospace",
-            color: connecting ? "#484f58" : "#00ffff",
-            background: connecting ? "transparent" : "rgba(0,255,255,0.06)",
-            border: `1px solid ${connecting ? "#30363d" : "#00ffff44"}`,
+            color: isConnecting ? "#484f58" : "#00ffff",
+            background: isConnecting ? "transparent" : "rgba(0,255,255,0.06)",
+            border: `1px solid ${isConnecting ? "#30363d" : "#00ffff44"}`,
             borderRadius: 4,
-            cursor: connecting ? "not-allowed" : "pointer",
+            cursor: isConnecting ? "not-allowed" : "pointer",
             transition: "all 0.3s ease",
-            boxShadow: connecting ? "none" : "0 0 20px rgba(0,255,255,0.1), inset 0 0 20px rgba(0,255,255,0.03)",
+            boxShadow: isConnecting ? "none" : "0 0 20px rgba(0,255,255,0.1), inset 0 0 20px rgba(0,255,255,0.03)",
           }}
           onMouseEnter={(e) => {
-            if (!connecting) {
+            if (!isConnecting) {
               e.currentTarget.style.background = "rgba(0,255,255,0.12)";
               e.currentTarget.style.boxShadow = "0 0 30px rgba(0,255,255,0.2), inset 0 0 30px rgba(0,255,255,0.05)";
             }
           }}
           onMouseLeave={(e) => {
-            if (!connecting) {
+            if (!isConnecting) {
               e.currentTarget.style.background = "rgba(0,255,255,0.06)";
               e.currentTarget.style.boxShadow = "0 0 20px rgba(0,255,255,0.1), inset 0 0 20px rgba(0,255,255,0.03)";
             }
           }}
         >
-          {connecting ? (
+          {isConnecting ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
               <span style={{
                 display: "inline-block",

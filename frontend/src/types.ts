@@ -72,3 +72,19 @@ export interface ExecuteRequest {
   permit: ExecutionPermit;
   signature: string;
 }
+
+export interface SwapResult {
+  success: boolean;
+  routeId: string;
+  requestedRouteId?: string;
+  executedRouteId?: string;
+  agentDecision?: DecisionType;
+  executionMode?: "router" | "direct";
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: number;
+  quotedOut: number;
+  actualOut: number;
+  txHash: string;
+  recipient: string;
+}

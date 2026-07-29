@@ -27,6 +27,7 @@ contract DemoSwapRouterTest is Test {
         vault = new VaultExecution(100, address(this), agent);
         router = new DemoSwapRouter(address(vault), address(scenario.registry), address(scenarioDeployer));
         scenarioDeployer.authorizeFunder(address(router), true);
+        scenarioDeployer.authorizeFunder(address(this), true);
     }
 
     function test_swapWithPermit_executesVaultAndSwap() public {
@@ -38,6 +39,10 @@ contract DemoSwapRouterTest is Test {
         uint256 amountOutQuoted = 1e6; // loss bps check passes when quoted >= out for vault
         uint256 deadline = block.timestamp + 1 hours;
         uint256 nonce = 0;
+
+        scenarioDeployer.fundSwapper(pool.tokenIn, user, amountIn);
+        vm.prank(user);
+        DemoERC20(pool.tokenIn).approve(address(router), amountIn);
 
         bytes memory sig = _signPermit(
             user,
@@ -51,8 +56,8 @@ contract DemoSwapRouterTest is Test {
         );
 
         uint256 goodBefore = DemoERC20(pool.tokenOut).balanceOf(user);
+        uint256 usdcBefore = DemoERC20(pool.tokenIn).balanceOf(user);
 
-        vm.prank(user);
         uint256 amountOut = router.swapWithPermit(
             user,
             pool.routeId,
@@ -68,6 +73,7 @@ contract DemoSwapRouterTest is Test {
         );
 
         assertGt(amountOut, 0);
+        assertEq(DemoERC20(pool.tokenIn).balanceOf(user), usdcBefore - amountIn);
         assertGt(DemoERC20(pool.tokenOut).balanceOf(user) - goodBefore, 0);
         assertEq(vault.nonces(user), 1);
     }

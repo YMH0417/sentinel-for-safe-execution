@@ -68,7 +68,7 @@ function TransactionRouter() {
         color: "#d29922",
         lineHeight: 1.5,
       }}>
-        <strong>Demo 模式</strong> — 当前使用模拟路由数据，无需真实资金。连接钱包仅在实际执行（Execute）时需要；获取报价和风险评估可游客预览。
+        <strong>Demo 链模式</strong> — 请用 MetaMask 连接钱包并切换到 Anvil Local（Chain ID 31337）。执行 swap 时会弹出授权（Approve）确认；代币从您连接的钱包扣除。
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e1e4e8' }}>交易检测</h2>

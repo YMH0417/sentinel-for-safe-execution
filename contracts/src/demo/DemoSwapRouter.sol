@@ -35,7 +35,7 @@ contract DemoSwapRouter {
         scenarioDeployer = DemoScenarioDeployer(scenarioDeployer_);
     }
 
-    /// @notice Validate permit via Vault, then fund + swap on the registered demo pair.
+    /// @notice Validate permit via Vault, then pull tokenIn from user and swap on the demo pair.
     function swapWithPermit(
         address user,
         bytes32 routeId,
@@ -66,8 +66,7 @@ contract DemoSwapRouter {
 
         DemoPoolRegistry.PoolEntry memory pool = registry.getPoolByRouteId(routeId);
 
-        scenarioDeployer.fundSwapper(pool.tokenIn, address(this), amountIn);
-        DemoERC20(pool.tokenIn).transfer(pool.pair, amountIn);
+        if (!DemoERC20(pool.tokenIn).transferFrom(user, pool.pair, amountIn)) revert SwapFailed();
 
         IDemoPair pair = IDemoPair(pool.pair);
         address token0 = pair.token0();

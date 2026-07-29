@@ -3,7 +3,7 @@ import { Router, Request, Response } from "express";
 import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as path from "path";
-import { isMockChainMode, getOptionalVaultAddress, getSwapWallet } from "../config/chainConfig.js";
+import { isMockChainMode, getOptionalVaultAddress, getSwapWallet, getOptionalSwapRouterAddress } from "../config/chainConfig.js";
 import { isDemoChainMode, loadDemoConfig } from "../config/demoConfig.js";
 import { getLiveDemoConfig } from "../services/demoRegistryService.js";
 import { loadRiskConfig } from "../services/agentService.js";
@@ -57,12 +57,14 @@ router.get("/status", async (_req: Request, res: Response) => {
   let swapWallet: string | null = null;
   let swapConfigured = false;
   let routerSwapAvailable = false;
+  let swapRouter: string | null = null;
   if (isDemoChainMode() && rpcConfigured) {
     try {
       assertSwapConfigured();
       swapWallet = getSwapWallet().address;
       swapConfigured = true;
       routerSwapAvailable = isRouterSwapAvailable();
+      swapRouter = getOptionalSwapRouterAddress() ?? null;
     } catch {
       swapConfigured = false;
     }
@@ -72,10 +74,14 @@ router.get("/status", async (_req: Request, res: Response) => {
     service: "sentinel-backend",
     version: "0.1.0",
     chainMode,
+    expectedChainId: isDemoChainMode() ? 31337 : null,
+    chainName: isDemoChainMode() ? "Anvil Local" : null,
+    anvilRpcUrl: isDemoChainMode() ? (process.env.RPC_URL?.trim() || "http://127.0.0.1:8545") : null,
     rpcConfigured,
     vaultConfigured,
     swapConfigured,
     routerSwapAvailable,
+    swapRouter,
     swapWallet,
     eventsPersistPath: getEventsFilePath(),
     demoRegistry,

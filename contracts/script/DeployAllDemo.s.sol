@@ -17,6 +17,12 @@ contract DeployAllDemo is Script {
     uint256 internal constant ANVIL_DEFAULT_KEY =
         0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
 
+    address internal constant DEFAULT_TEST_USER = 0x881915BE66Be800Cc180b6244809A1D188Bc1b2c;
+
+    uint256 internal constant TEST_USER_USDC = 100_000 * 1e6;
+    uint256 internal constant TEST_USER_TOKEN = 10_000 ether;
+    uint256 internal constant TEST_USER_ETH = 10 ether;
+
     struct DeploymentArtifacts {
         DemoScenarioDeployer.Scenario scenario;
         address vaultExecution;
@@ -49,10 +55,34 @@ contract DeployAllDemo is Script {
         scenarioDeployer.authorizeFunder(address(router), true);
         scenarioDeployer.authorizeFunder(deployer, true);
 
+        address testUser = vm.envOr("TEST_USER_ADDRESS", DEFAULT_TEST_USER);
+        _fundTestUser(scenarioDeployer, artifacts.scenario, testUser);
+
         vm.stopBroadcast();
 
         _writeDeploymentJson(artifacts, agentSigner);
         _logSummary(artifacts);
+    }
+
+    function _fundTestUser(
+        DemoScenarioDeployer scenarioDeployer,
+        DemoScenarioDeployer.Scenario memory scenario,
+        address testUser
+    ) private {
+        if (testUser == address(0)) return;
+
+        scenarioDeployer.fundSwapper(address(scenario.tokens.usdc), testUser, TEST_USER_USDC);
+        scenarioDeployer.fundSwapper(address(scenario.tokens.good), testUser, TEST_USER_TOKEN);
+        scenarioDeployer.fundSwapper(address(scenario.tokens.bad), testUser, TEST_USER_TOKEN);
+        scenarioDeployer.fundSwapper(address(scenario.tokens.bait), testUser, TEST_USER_TOKEN);
+
+        (bool sent,) = testUser.call{value: TEST_USER_ETH}("");
+        require(sent, "test user ETH transfer failed");
+
+        console2.log("Funded test user:", testUser);
+        console2.log("  ETH:", TEST_USER_ETH);
+        console2.log("  USDC:", TEST_USER_USDC);
+        console2.log("  GOOD/BAD/BAIT:", TEST_USER_TOKEN);
     }
 
     function _writeDeploymentJson(DeploymentArtifacts memory artifacts, address agentSigner) private {
