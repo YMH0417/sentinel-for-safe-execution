@@ -5,7 +5,7 @@ import img from "../imgs/lock.png"
 
 export function LandingPage() {
   const navigate = useNavigate();
-  const { connectWallet, isConnecting } = useWallet();
+  const { connectWallet, isConnecting, account } = useWallet();
   const { showToast } = useToast();
 
   const handleConnect = async () => {
@@ -33,7 +33,16 @@ export function LandingPage() {
             <p>Every contract scored.</p>
           </div>
 
-          <button
+          {account ? (
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-primary landing-cta"
+              onClick={() => navigate("/dashboard")}
+            >
+              进入仪表盘 →
+            </button>
+          ) : (
+            <button
               type="button"
               className="sentinel-btn sentinel-btn-primary landing-cta"
               onClick={handleConnect}
@@ -41,6 +50,7 @@ export function LandingPage() {
             >
               ⬡ {isConnecting ? "CONNECTING..." : "CONNECT WALLET"}
             </button>
+          )}
         </div>
 
         <div>

@@ -1088,6 +1088,19 @@ body {
   box-sizing: border-box;
 }
 
+.app-header-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.app-header-brand img {
+  display: block;
+  height: 36px;
+  width: auto;
+}
+
 .app-header-nav {
   display: flex;
   gap: 6px;

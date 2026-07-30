@@ -43,7 +43,9 @@ export function AppLayout() {
     <div style={{ minHeight: "100vh", background: "var(--bg-deep)" }}>
       <header className="app-header">
         <div className="app-header-inner">
-          <img src={logo} alt="" />
+          <NavLink to="/" className="app-header-brand" aria-label="返回首页">
+            <img src={logo} alt="Sentinel" />
+          </NavLink>
           {account && (
             <nav className="app-header-nav">
               {NAV.map((item) => (
