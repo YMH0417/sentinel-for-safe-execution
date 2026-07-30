@@ -1,11 +1,12 @@
 import type { Decision, Event, SwapResult } from "../types";
+import { parseApiError } from "../lib/apiError";
 
 const API = "/api";
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API}${path}`);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message ?? data.error ?? "Request failed");
+  if (!res.ok) throw new Error(parseApiError(data.error, "Request failed"));
   return data as T;
 }
 
@@ -55,6 +56,7 @@ export interface RiskConfig {
   defaultProfile: string;
   paused: boolean;
   maxSlippageBps?: number;
+  maxUnsafeSlippageBps?: number;
   profiles?: Record<string, unknown>;
 }
 
@@ -191,7 +193,7 @@ export const api = {
   warmCache: () =>
     fetch(`${API}/debug/warm-cache`, { method: "POST" }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Warm cache failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Warm cache failed"));
       return data as { warmed: boolean; cache?: DebugStatus["poolsHealthCache"] };
     }),
   riskConfig: () => getJson<RiskConfig>("/config"),
@@ -210,7 +212,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Evaluate failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Evaluate failed"));
       return data as Decision;
     }),
   swapSafe: (body: object) =>
@@ -220,7 +222,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message ?? data.error ?? "Swap failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Swap failed"));
       return data as SwapResult;
     }),
   swapForce: (body: object) =>
@@ -230,7 +232,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message ?? data.error ?? "Swap failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Swap failed"));
       return data as SwapResult;
     }),
 };

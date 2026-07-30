@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { isAddress, getAddress } from "ethers";
 
 import { isDemoChainMode } from "../config/demoConfig.js";
+import { loadRiskConfig } from "../services/agentService.js";
 
 import { getSwapWallet, ChainConfigurationError } from "../config/chainConfig.js";
 
@@ -137,7 +138,10 @@ router.get("/balances", async (_req: Request, res: Response) => {
 
 
 
-function parseSwapBody(body: Partial<SwapRequest>): SwapRequest | { error: string } {
+function parseSwapBody(
+  body: Partial<SwapRequest>,
+  safetyMode: "safe" | "force" = "safe"
+): SwapRequest | { error: string } {
 
   if (!body.routeId) return { error: "routeId is required" };
 
@@ -151,6 +155,14 @@ function parseSwapBody(body: Partial<SwapRequest>): SwapRequest | { error: strin
 
     return { error: "recipient must be a valid address" };
 
+  }
+
+  if (body.slippageBps !== undefined && safetyMode === "force") {
+    const bps = Number(body.slippageBps);
+    const configMax = loadRiskConfig().maxUnsafeSlippageBps ?? 10_000;
+    if (!Number.isInteger(bps) || bps < 0 || bps > configMax) {
+      return { error: `slippageBps must be an integer from 0 to ${configMax}` };
+    }
   }
 
   return {
@@ -167,11 +179,16 @@ function parseSwapBody(body: Partial<SwapRequest>): SwapRequest | { error: strin
 
     skipEvaluate: body.skipEvaluate,
 
-    force: body.force,
-
     configProfile: body.configProfile,
 
     useRouter: body.useRouter,
+
+    slippageBps:
+      safetyMode === "force" && body.slippageBps !== undefined
+        ? Number(body.slippageBps)
+        : undefined,
+
+    force: safetyMode === "force" ? true : body.force,
 
   };
 
@@ -186,7 +203,7 @@ async function handleSwap(
   safetyMode: "safe" | "force"
 ) {
 
-  const parsed = parseSwapBody(req.body as Partial<SwapRequest>);
+  const parsed = parseSwapBody(req.body as Partial<SwapRequest>, safetyMode);
 
   if ("error" in parsed) {
 
@@ -203,20 +220,14 @@ async function handleSwap(
 
     const result = await executor({ ...parsed, correlationId });
 
-
-
     addEvent({
-
-      eventType: "SwapExecuted",
-
+      eventType: result.success ? "SwapExecuted" : "SwapFailed",
       routeId: result.executedRouteId ?? result.routeId,
-
       decision: result.agentDecision,
-
-      message: `Swap ${result.tokenIn}→${result.tokenOut} mode=${result.executionMode} out=${result.actualOut}`,
-
+      message: result.success
+        ? `Swap ${result.tokenIn}→${result.tokenOut} mode=${result.executionMode} out=${result.actualOut}`
+        : result.failureMessage ?? `Swap settlement failed ${result.tokenIn}→${result.tokenOut}`,
       txHash: result.txHash,
-
       context: {
         correlationId,
         account: result.recipient,
@@ -224,8 +235,10 @@ async function handleSwap(
         tokenOut: result.tokenOut,
         amountIn: result.amountIn,
         quotedOut: result.quotedOut,
+        expectedOut: result.expectedOut,
         actualOut: result.actualOut,
         amountOutMin: result.amountOutMin,
+        amountOutMax: result.amountOutMax,
         slippageBps: result.slippageBps,
         gasUsed: result.gasUsed,
         blockNumber: result.blockNumber,
@@ -235,11 +248,11 @@ async function handleSwap(
         executedRouteId: result.executedRouteId,
         pairAddress: result.pairAddress,
         configProfile: parsed.configProfile ?? "normal",
+        errorCode: result.failureCode,
+        poolLabel: result.poolLabel,
+        agentBypassed: result.agentBypassed,
       },
-
     });
-
-
 
     res.json(result);
 
@@ -271,6 +284,7 @@ async function handleSwap(
         requestedRouteId: parsed.routeId,
         configProfile: parsed.configProfile ?? "normal",
         errorCode,
+        ...(err instanceof SwapExecutionError ? err.details : undefined),
         ...failure,
       },
 
@@ -281,8 +295,11 @@ async function handleSwap(
     if (err instanceof SwapExecutionError) {
 
       const status =
-
-        err.code === "SWAP_REJECTED_BY_AGENT" ? 422 : err.code === "SLIPPAGE_EXCEEDED" ? 409 : 400;
+        err.code === "SWAP_REJECTED_BY_AGENT" || err.code === "SWAP_FALLBACK_REQUIRED"
+          ? 422
+          : err.code === "SLIPPAGE_EXCEEDED" || err.code === "QUOTE_DEVIATION_EXCEEDED"
+            ? 409
+            : 400;
 
       return res.status(status).json({
 

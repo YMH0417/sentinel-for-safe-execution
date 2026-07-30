@@ -21,5 +21,6 @@
   },
   "defaultProfile": "normal",
   "paused": false,
-  "maxSlippageBps": 100
+  "maxSlippageBps": 100,
+  "maxUnsafeSlippageBps": 10000
 }

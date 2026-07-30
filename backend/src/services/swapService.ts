@@ -23,6 +23,7 @@ import {
 import {
   DemoDeploymentConfig,
   DemoTokenSymbol,
+  labelFromNumber,
   resolveTokenSymbol,
 } from "../config/demoConfig.js";
 import {
@@ -38,18 +39,34 @@ import {
 } from "./poolQuoteMath.js";
 import type { Decision, DecisionType, SwapRequest, SwapResult } from "../types.js";
 import { evaluateRoute, loadRiskConfig } from "./agentService.js";
+import { getChainRouteById } from "./chainQuoteService.js";
 import {
   defaultSwapDeadline,
   isAgentSigningConfigured,
   signExecutionPermit,
 } from "./agentSignService.js";
 import { addEvent } from "./eventService.js";
+import { withTimeout, waitForReceipt } from "../utils/withTimeout.js";
 
 /** Serialize on-chain swaps — shared wallet nonce must not race */
 let swapChain = Promise.resolve();
+const SWAP_LOCK_TIMEOUT_MS = 90_000;
 
 function withSwapLock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = swapChain.then(fn, fn);
+  const run = swapChain.then(
+    () =>
+      withTimeout(
+        fn(),
+        SWAP_LOCK_TIMEOUT_MS,
+        "Swap queue timed out — a prior on-chain swap may still be pending"
+      ),
+    () =>
+      withTimeout(
+        fn(),
+        SWAP_LOCK_TIMEOUT_MS,
+        "Swap queue timed out — a prior on-chain swap may still be pending"
+      )
+  );
   swapChain = run.then(
     () => undefined,
     () => undefined
@@ -96,7 +113,7 @@ export function classifySwapFailure(
     return { failureStage: "configuration", prevented: false };
   }
   if (error instanceof SwapExecutionError) {
-    if (error.code === "SWAP_REJECTED_BY_AGENT") {
+    if (error.code === "SWAP_REJECTED_BY_AGENT" || error.code === "SWAP_FALLBACK_REQUIRED") {
       return { failureStage: "evaluation", prevented: true };
     }
     if (PRECONDITION_ERROR_CODES.has(error.code)) {
@@ -111,8 +128,106 @@ function getMaxSlippageBps(): number {
   return config.maxSlippageBps ?? 100;
 }
 
-function applyMinOut(quotedOutRaw: bigint, slippageBps: number): bigint {
-  return (quotedOutRaw * BigInt(10_000 - slippageBps)) / 10_000n;
+function getMaxUnsafeSlippageBps(): number {
+  const config = loadRiskConfig() as { maxUnsafeSlippageBps?: number };
+  return config.maxUnsafeSlippageBps ?? 10_000;
+}
+
+function resolveSlippageBps(params: SwapRequest): number {
+  const configMax = getMaxUnsafeSlippageBps();
+  const defaultBps = getMaxSlippageBps();
+  if (params.slippageBps === undefined) return defaultBps;
+  return Math.min(params.slippageBps, configMax);
+}
+
+function applyMinOut(referenceOutRaw: bigint, slippageBps: number): bigint {
+  return (referenceOutRaw * BigInt(10_000 - slippageBps)) / 10_000n;
+}
+
+function applyMaxOut(referenceOutRaw: bigint, slippageBps: number): bigint {
+  return (referenceOutRaw * BigInt(10_000 + slippageBps)) / 10_000n;
+}
+
+function assertQuoteWithinSlippageBand(
+  quotedOutRaw: bigint,
+  expectedOutRaw: bigint,
+  slippageBps: number,
+  decOut: number
+): { amountOutMinRaw: bigint; amountOutMaxRaw: bigint } {
+  const amountOutMinRaw = applyMinOut(expectedOutRaw, slippageBps);
+  const amountOutMaxRaw = applyMaxOut(expectedOutRaw, slippageBps);
+
+  if (quotedOutRaw < amountOutMinRaw) {
+    throw new SwapExecutionError("SLIPPAGE_EXCEEDED", "Quoted output below minimum (fair price − slippage)", {
+      quotedOut: toHumanAmount(quotedOutRaw, decOut),
+      expectedOut: toHumanAmount(expectedOutRaw, decOut),
+      amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
+      amountOutMax: toHumanAmount(amountOutMaxRaw, decOut),
+      slippageBps,
+    });
+  }
+
+  if (quotedOutRaw > amountOutMaxRaw) {
+    throw new SwapExecutionError(
+      "QUOTE_DEVIATION_EXCEEDED",
+      "Quoted output above maximum (fair price + slippage)",
+      {
+        quotedOut: toHumanAmount(quotedOutRaw, decOut),
+        expectedOut: toHumanAmount(expectedOutRaw, decOut),
+        amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
+        amountOutMax: toHumanAmount(amountOutMaxRaw, decOut),
+        slippageBps,
+      }
+    );
+  }
+
+  return { amountOutMinRaw, amountOutMaxRaw };
+}
+
+function validateSafeSettlement(
+  actualOutRaw: bigint,
+  decOut: number
+): { ok: boolean; failureCode?: string; failureMessage?: string } {
+  if (actualOutRaw <= 0n) {
+    return {
+      ok: false,
+      failureCode: "NO_OUTPUT_RECEIVED",
+      failureMessage: "On-chain swap produced zero tokenOut balance change",
+    };
+  }
+  return { ok: true };
+}
+
+function validateOnChainSettlement(
+  actualOutRaw: bigint,
+  expectedOutRaw: bigint,
+  amountOutMinRaw: bigint,
+  amountOutMaxRaw: bigint,
+  slippageBps: number,
+  decOut: number
+): { ok: boolean; failureCode?: string; failureMessage?: string } {
+  if (actualOutRaw <= 0n) {
+    return {
+      ok: false,
+      failureCode: "NO_OUTPUT_RECEIVED",
+      failureMessage: "On-chain swap produced zero tokenOut balance change",
+    };
+  }
+  if (actualOutRaw < amountOutMinRaw) {
+    return {
+      ok: false,
+      failureCode: "SETTLEMENT_BELOW_MIN",
+      failureMessage: `Actual output ${toHumanAmount(actualOutRaw, decOut)} below minimum ${toHumanAmount(amountOutMinRaw, decOut)}`,
+    };
+  }
+  if (actualOutRaw > amountOutMaxRaw) {
+    return {
+      ok: false,
+      failureCode: "SUSPICIOUS_SETTLEMENT",
+      failureMessage: `Actual output ${toHumanAmount(actualOutRaw, decOut)} exceeds fair price + slippage (${toHumanAmount(amountOutMaxRaw, decOut)})`,
+    };
+  }
+  return { ok: true };
 }
 
 async function assertUserCanPay(
@@ -221,20 +336,28 @@ async function resolveExecutionPlan(
   executedRouteId: string;
   agentDecision: Decision;
   executionDecision: Decision;
+  agentBypassed?: boolean;
 }> {
   if (params.skipEvaluate || params.force) {
-    const decision: Decision = {
-      decision: "ALLOW",
-      riskScore: 0,
-      reason: params.force ? "Force swap (evaluate skipped)" : "Evaluate skipped",
-      routeId: params.routeId,
-      fallbackRouteId: null,
-      flags: [],
-    };
     return {
       executedRouteId: params.routeId,
-      agentDecision: decision,
-      executionDecision: decision,
+      agentDecision: {
+        decision: "ALLOW",
+        riskScore: 0,
+        reason: params.force ? "Force swap (Agent bypassed)" : "Evaluate skipped",
+        routeId: params.routeId,
+        fallbackRouteId: null,
+        flags: params.force ? ["agent_bypassed"] : [],
+      },
+      executionDecision: {
+        decision: "ALLOW",
+        riskScore: 0,
+        reason: "Execution permit for on-chain router gate",
+        routeId: params.routeId,
+        fallbackRouteId: null,
+        flags: [],
+      },
+      agentBypassed: Boolean(params.force),
     };
   }
 
@@ -284,39 +407,31 @@ async function resolveExecutionPlan(
     throw new SwapExecutionError("SWAP_REJECTED_BY_AGENT", decision.reason, { decision });
   }
 
-  let executedRouteId = params.routeId;
-  if (decision.decision === "FALLBACK_TO_SAFE_ROUTE" && decision.fallbackRouteId) {
-    executedRouteId = decision.fallbackRouteId;
-    decision = await evaluateRoute(executedRouteId, params.configProfile ?? "normal", {
-      tokenIn,
-      tokenOut,
-      amountIn: params.amountIn,
-    });
-    if (decision.decision === "REJECT") {
-      throw new SwapExecutionError("SWAP_REJECTED_BY_AGENT", decision.reason, {
-        decision,
-        fallbackFrom: params.routeId,
-      });
-    }
+  if (decision.decision === "FALLBACK_TO_SAFE_ROUTE") {
     addEvent({
       eventType: "FallbackRequired",
       routeId: params.routeId,
-      fallbackRouteId: executedRouteId,
+      fallbackRouteId: decision.fallbackRouteId ?? undefined,
       decision: "FALLBACK_TO_SAFE_ROUTE",
       riskScore: requestedDecision.riskScore,
-      message: `Fallback to ${executedRouteId}`,
+      message: `Agent recommends ${decision.fallbackRouteId ?? "safe route"} (manual switch required)`,
       context: {
         ...eventContext,
-        executedRouteId,
         flags: requestedDecision.flags,
       },
     });
+    throw new SwapExecutionError(
+      "SWAP_FALLBACK_REQUIRED",
+      decision.reason,
+      { decision: requestedDecision }
+    );
   }
 
   return {
-    executedRouteId,
+    executedRouteId: params.routeId,
     agentDecision: requestedDecision,
     executionDecision: decision,
+    agentBypassed: false,
   };
 }
 
@@ -375,8 +490,10 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
     executedRouteId,
     agentDecision,
     executionDecision,
+    agentBypassed,
   } = await resolveExecutionPlan(params, tokenIn, tokenOut);
   const pool = findPool(config, executedRouteId);
+  const poolLabel = labelFromNumber(pool.label);
 
   const wallet = getSwapWallet();
   const signer = getSwapSigner();
@@ -386,7 +503,8 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
   const decIn = decimalsForSymbol(tokenIn);
   const decOut = decimalsForSymbol(tokenOut);
   const amountInRaw = toRawAmount(params.amountIn, decIn);
-  const slippageBps = getMaxSlippageBps();
+  const slippageEnforced = params.force === true;
+  const slippageBps = slippageEnforced ? resolveSlippageBps(params) : 0;
 
   const balancesBefore = await getTokenBalances(recipient, config);
 
@@ -399,7 +517,29 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
   if (quotedOutRaw <= 0n) {
     throw new SwapExecutionError("INSUFFICIENT_LIQUIDITY", "Quoted output is zero");
   }
-  const amountOutMinRaw = applyMinOut(quotedOutRaw, slippageBps);
+
+  const routeQuote = await getChainRouteById(executedRouteId, {
+    tokenIn,
+    tokenOut,
+    amountIn: params.amountIn,
+  });
+  const expectedOutHuman = routeQuote?.expectedOut ?? toHumanAmount(quotedOutRaw, decOut);
+  const expectedOutRaw = toRawAmount(expectedOutHuman, decOut);
+
+  let amountOutMinRaw: bigint;
+  let amountOutMaxRaw: bigint;
+  if (slippageEnforced) {
+    ({ amountOutMinRaw, amountOutMaxRaw } = assertQuoteWithinSlippageBand(
+      quotedOutRaw,
+      expectedOutRaw,
+      slippageBps,
+      decOut
+    ));
+  } else {
+    // Safe mode: Agent owns routing policy; router minOut=0 so only on-chain liquidity applies.
+    amountOutMinRaw = 0n;
+    amountOutMaxRaw = expectedOutRaw;
+  }
 
   const routerAddress = getOptionalSwapRouterAddress();
   const payerIsUser = recipient.toLowerCase() !== wallet.address.toLowerCase();
@@ -407,7 +547,7 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
     params.useRouter !== false &&
     Boolean(routerAddress) &&
     isAgentSigningConfigured() &&
-    (!params.force || payerIsUser);
+    payerIsUser;
 
   addEvent({
     eventType: "ExecutionAttempted",
@@ -423,13 +563,16 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
       tokenOut,
       amountIn: params.amountIn,
       quotedOut: toHumanAmount(quotedOutRaw, decOut),
-      amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
-      slippageBps,
+      expectedOut: expectedOutHuman,
+      amountOutMin: slippageEnforced ? toHumanAmount(amountOutMinRaw, decOut) : undefined,
+      amountOutMax: slippageEnforced ? toHumanAmount(amountOutMaxRaw, decOut) : undefined,
+      slippageBps: slippageEnforced ? slippageBps : undefined,
       executionMode: useRouter ? "router" : "direct",
       safetyMode: params.force ? "force" : "safe",
       requestedRouteId,
       executedRouteId,
       pairAddress: pool.pair,
+      poolLabel,
       configProfile: params.configProfile ?? "normal",
       flags: agentDecision.flags,
     },
@@ -437,7 +580,6 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
 
   let receipt: ContractTransactionReceipt | null;
   let executionMode: "router" | "direct" = "direct";
-  let actualOutRaw = quotedOutRaw;
 
   if (useRouter && routerAddress) {
     executionMode = "router";
@@ -479,9 +621,15 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
       signature,
       recipient
     );
-    receipt = (await tx.wait()) as ContractTransactionReceipt | null;
+    receipt = (await waitForReceipt(tx)) as ContractTransactionReceipt | null;
     if (!receipt) {
       throw new SwapExecutionError("SWAP_FAILED", "Router swap produced no receipt");
+    }
+    if (receipt.status === 0) {
+      throw new SwapExecutionError("SWAP_REVERTED", "Router swap reverted on-chain", {
+        txHash: receipt.hash,
+        gasUsed: receipt.gasUsed.toString(),
+      });
     }
   } else {
     if (payerIsUser) {
@@ -496,7 +644,7 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
       .then((a: string) => getAddress(a));
     const deployerContract = new Contract(scenarioDeployerAddr, demoScenarioDeployerAbi, signer);
     const fundTx = await deployerContract.fundSwapper(pool.tokenIn, wallet.address, amountInRaw);
-    await fundTx.wait();
+    await waitForReceipt(fundTx);
 
     const { reserveIn: rIn2, reserveOut: rOut2, token0: t0 } = await readSwapReserves(
       provider,
@@ -504,26 +652,39 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
       pool.tokenIn
     );
     const freshQuotedOut = getAmountOut(amountInRaw, rIn2, rOut2);
-    const freshMinOut = applyMinOut(freshQuotedOut, slippageBps);
-    if (freshQuotedOut < amountOutMinRaw) {
-      throw new SwapExecutionError("SLIPPAGE_EXCEEDED", "Output below minimum after re-quote", {
-        quotedOut: toHumanAmount(freshQuotedOut, decOut),
-        amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
-      });
+    if (slippageEnforced && (freshQuotedOut < amountOutMinRaw || freshQuotedOut > amountOutMaxRaw)) {
+      throw new SwapExecutionError(
+        freshQuotedOut < amountOutMinRaw ? "SLIPPAGE_EXCEEDED" : "QUOTE_DEVIATION_EXCEEDED",
+        freshQuotedOut < amountOutMinRaw
+          ? "Output below minimum after re-quote"
+          : "Output above maximum after re-quote",
+        {
+          quotedOut: toHumanAmount(freshQuotedOut, decOut),
+          expectedOut: expectedOutHuman,
+          amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
+          amountOutMax: toHumanAmount(amountOutMaxRaw, decOut),
+          slippageBps,
+        }
+      );
     }
 
-    actualOutRaw = freshQuotedOut;
     const amount0Out = pool.tokenOut.toLowerCase() === t0.toLowerCase() ? freshQuotedOut : 0n;
     const amount1Out = pool.tokenOut.toLowerCase() === t0.toLowerCase() ? 0n : freshQuotedOut;
 
     const tokenInContract = new Contract(pool.tokenIn, demoErc20Abi, signer);
-    await (await tokenInContract.transfer(pool.pair, amountInRaw)).wait();
+    await waitForReceipt(await tokenInContract.transfer(pool.pair, amountInRaw));
 
     const pair = new Contract(pool.pair, demoPairAbi, signer);
     const swapTx = await pair.swap(amount0Out, amount1Out, recipient);
-    receipt = (await swapTx.wait()) as ContractTransactionReceipt | null;
+    receipt = (await waitForReceipt(swapTx)) as ContractTransactionReceipt | null;
     if (!receipt) {
       throw new SwapExecutionError("SWAP_FAILED", "Swap transaction produced no receipt");
+    }
+    if (receipt.status === 0) {
+      throw new SwapExecutionError("SWAP_REVERTED", "Direct swap reverted on-chain", {
+        txHash: receipt.hash,
+        gasUsed: receipt.gasUsed.toString(),
+      });
     }
   }
 
@@ -532,21 +693,41 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
   const afterOut = balancesAfter[tokenOut]?.human ?? 0;
   const beforeIn = balancesBefore[tokenIn]?.human ?? 0;
   const afterIn = balancesAfter[tokenIn]?.human ?? 0;
+  const actualOutHuman = afterOut - beforeOut;
+  const actualOutRaw = toRawAmount(actualOutHuman, decOut);
+
+  const settlement = slippageEnforced
+    ? validateOnChainSettlement(
+        actualOutRaw,
+        expectedOutRaw,
+        amountOutMinRaw,
+        amountOutMaxRaw,
+        slippageBps,
+        decOut
+      )
+    : validateSafeSettlement(actualOutRaw, decOut);
 
   return {
-    success: true,
+    success: settlement.ok,
     routeId: executedRouteId,
     requestedRouteId,
     executedRouteId,
-    agentDecision: agentDecision.decision,
+    agentDecision: agentBypassed ? undefined : agentDecision.decision,
+    agentBypassed,
+    safetyMode: params.force ? "force" : "safe",
+    poolLabel,
     executionMode,
     tokenIn,
     tokenOut,
     amountIn: params.amountIn,
     quotedOut: toHumanAmount(quotedOutRaw, decOut),
-    actualOut: afterOut - beforeOut,
-    amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
-    slippageBps,
+    expectedOut: expectedOutHuman,
+    actualOut: actualOutHuman,
+    amountOutMin: slippageEnforced ? toHumanAmount(amountOutMinRaw, decOut) : undefined,
+    amountOutMax: slippageEnforced ? toHumanAmount(amountOutMaxRaw, decOut) : undefined,
+    slippageBps: slippageEnforced ? slippageBps : undefined,
+    failureCode: settlement.failureCode,
+    failureMessage: settlement.failureMessage,
     recipient,
     pairAddress: pool.pair,
     txHash: receipt.hash,
@@ -556,7 +737,7 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
     balancesAfter,
     balanceDelta: {
       [tokenIn]: afterIn - beforeIn,
-      [tokenOut]: afterOut - beforeOut,
+      [tokenOut]: actualOutHuman,
     },
   };
 }

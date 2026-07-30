@@ -1,7 +1,5 @@
 ﻿import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
-import { getAddress } from "ethers";
 import { api, computeUserStats } from "../api/client";
 import { AccountCard } from "./shared/AccountCard";
 
@@ -60,7 +58,6 @@ const BADGES: BadgeData[] = [
 const TOP_THRESHOLD = 1000000;
 
 export function UserProfilePage() {
-  const navigate = useNavigate();
   const { account } = useWallet();
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -82,70 +79,62 @@ export function UserProfilePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const checksumAddr = account ? getAddress(account) : "0x0000000000000000000000000000000000000000";
   const unlockedBadges = BADGES.filter((b) => safeVolume >= b.threshold);
   const lockedBadges = BADGES.filter((b) => safeVolume < b.threshold);
   const nextTier = BADGES.find((b) => safeVolume < b.threshold)?.threshold ?? TOP_THRESHOLD;
 
   return (
     <div>
-      <AccountCard />
-
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="sentinel-btn sentinel-btn-ghost"
-          style={{ padding: "4px 8px", fontSize: 13 }}
-        >
-          ← 返回
-        </button>
-        <h2 className="sentinel-title" style={{ margin: 0 }}>账户 · 勋章墙</h2>
+      <div style={{ marginBottom: 24 }}>
+        <h2 className="sentinel-title" style={{ margin: "0 0 8px" }}>账户与勋章</h2>
+        <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
+          查看钱包概览、交易统计，以及基于安全交易量的成就勋章
+        </p>
       </div>
 
+      <AccountCard />
+
+      <div className="sentinel-label" style={{ marginTop: 24, marginBottom: 12 }}>交易概览</div>
       <div className="sentinel-grid-2" style={{ marginBottom: 24 }}>
         <div className="sentinel-card">
-          <div className="sentinel-label">Connected Wallet</div>
-          <div style={{ fontFamily: "monospace", fontSize: 14, color: "var(--cyan)", wordBreak: "break-all" }}>
-            {checksumAddr}
-          </div>
-        </div>
-        <div className="sentinel-card">
-          <div className="sentinel-label">交易统计</div>
+          <div className="sentinel-label">活动统计</div>
           {loading ? (
             <p style={{ color: "var(--text-muted)", fontSize: 13 }}>加载中...</p>
-          ) : (
+          ) : account ? (
             <>
               <StatRow label="成功 Swap" value={String(stats.swapCount)} />
               <StatRow label="拒绝 / 失败" value={String(stats.rejectCount)} accent={stats.rejectCount > 0 ? "var(--red)" : undefined} />
               <StatRow label="Fallback 次数" value={String(stats.fallbackCount)} />
             </>
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+              连接 MetaMask 后可在此查看与您钱包相关的链上活动
+            </p>
           )}
         </div>
+        <div className="sentinel-card">
+          <div className="sentinel-label">累计安全交易量</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)", marginBottom: 8 }}>
+            ${safeVolume.toLocaleString()}
+          </div>
+          <div style={{ height: 8, background: "#21262d", borderRadius: 4, overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min((safeVolume / TOP_THRESHOLD) * 100, 100)}%`,
+                background: "var(--gradient-brand)",
+                borderRadius: 4,
+                transition: "width 0.5s ease",
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            下一等级: ${nextTier.toLocaleString()} · 已解锁 {unlockedBadges.length}/{BADGES.length} 枚勋章
+          </div>
+        </div>
       </div>
 
-      <div className="sentinel-card" style={{ marginBottom: 24 }}>
-        <div className="sentinel-label">Cumulative Safe Trading Volume</div>
-        <div style={{ fontSize: 32, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)", marginBottom: 8 }}>
-          ${safeVolume.toLocaleString()}
-        </div>
-        <div style={{ height: 8, background: "#21262d", borderRadius: 4, overflow: "hidden" }}>
-          <div
-            style={{
-              height: "100%",
-              width: `${Math.min((safeVolume / TOP_THRESHOLD) * 100, 100)}%`,
-              background: "var(--gradient-brand)",
-              borderRadius: 4,
-              transition: "width 0.5s ease",
-            }}
-          />
-        </div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-          下一等级: ${nextTier.toLocaleString()}
-        </div>
-      </div>
-
-      <div className="sentinel-label">NFT Achievement Badges</div>
+      <div className="sentinel-label" style={{ marginBottom: 12 }}>勋章墙</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16, marginBottom: 32 }}>
         {[...unlockedBadges, ...lockedBadges].map((badge) => {
           const isUnlocked = safeVolume >= badge.threshold;

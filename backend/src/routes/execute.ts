@@ -136,12 +136,15 @@ async function validateExecuteRequest(
   const permitError = validatePermitFields(permit);
   if (permitError) return { error: permitError };
 
-  const effectiveRouteId =
-    evaluation.decision === "FALLBACK_TO_SAFE_ROUTE"
-      ? evaluation.fallbackRouteId
-      : evaluation.routeId;
+  const effectiveRouteId = evaluation.routeId;
   if (!effectiveRouteId) {
-    return { error: "evaluation.fallbackRouteId is required for fallback" };
+    return { error: "evaluation.routeId is required" };
+  }
+  if (evaluation.decision === "FALLBACK_TO_SAFE_ROUTE") {
+    return {
+      error:
+        "Agent recommends switching routes manually; automatic fallback execution is disabled",
+    };
   }
 
   let encodedRouteId: string;
@@ -291,14 +294,15 @@ async function handleMockPermitBody(
     return { error: "evaluation.decision is invalid", status: 400 };
   }
 
-  const effectiveRouteId =
-    evaluation.decision === "FALLBACK_TO_SAFE_ROUTE"
-      ? evaluation.fallbackRouteId
-      : evaluation.routeId;
+  const effectiveRouteId = evaluation.routeId;
   if (!effectiveRouteId) {
+    return { error: "evaluation.routeId is required", status: 400 };
+  }
+  if (evaluation.decision === "FALLBACK_TO_SAFE_ROUTE") {
     return {
-      error: "evaluation.fallbackRouteId is required for fallback",
-      status: 400,
+      error:
+        "Agent recommends switching routes manually; automatic fallback execution is disabled",
+      status: 422,
     };
   }
 

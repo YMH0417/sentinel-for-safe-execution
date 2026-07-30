@@ -9,11 +9,10 @@ const NAV = [
   { to: "/", label: "首页", end: true },
   { to: "/dashboard", label: "仪表盘" },
   { to: "/analysis", label: "Analysis" },
-  { to: "/profile", label: "账户" },
+  { to: "/profile", label: "账户与勋章" },
   { to: "/transaction", label: "交易" },
   { to: "/execution", label: "执行结果" },
   { to: "/risk-rules", label: "风控规则" },
-  { to: "/profile", label: "勋章墙" },
   { to: "/settings", label: "设置" },
 ];
 

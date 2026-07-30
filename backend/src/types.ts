@@ -173,6 +173,8 @@ export interface RiskConfig {
   defaultProfile: string;
   paused: boolean;
   maxSlippageBps?: number;
+  /** Unsafe / force swap slippage ceiling (10000 = 100%). */
+  maxUnsafeSlippageBps?: number;
 }
 
 export interface TokenBalance {
@@ -192,6 +194,8 @@ export interface SwapRequest {
   force?: boolean;
   configProfile?: "normal" | "conservative" | "aggressive";
   useRouter?: boolean;
+  /** Slippage tolerance in basis points (100 = 1%). Defaults to risk-config maxSlippageBps. */
+  slippageBps?: number;
   /** Server-generated identifier used to join events from one operation. */
   correlationId?: string;
 }
@@ -202,14 +206,22 @@ export interface SwapResult {
   requestedRouteId?: string;
   executedRouteId?: string;
   agentDecision?: DecisionType;
+  agentBypassed?: boolean;
+  safetyMode?: "safe" | "force";
+  poolLabel?: string;
   executionMode?: "router" | "direct";
   tokenIn: string;
   tokenOut: string;
   amountIn: number;
   quotedOut: number;
+  /** On-chain balance delta for tokenOut (source of truth). */
   actualOut: number;
+  expectedOut?: number;
   amountOutMin?: number;
+  amountOutMax?: number;
   slippageBps?: number;
+  failureCode?: string;
+  failureMessage?: string;
   recipient: string;
   pairAddress: string;
   txHash: string;

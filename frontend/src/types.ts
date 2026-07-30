@@ -123,14 +123,25 @@ export interface SwapResult {
   requestedRouteId?: string;
   executedRouteId?: string;
   agentDecision?: DecisionType;
+  agentBypassed?: boolean;
+  safetyMode?: "safe" | "force";
+  poolLabel?: string;
   executionMode?: "router" | "direct";
   tokenIn: string;
   tokenOut: string;
   amountIn: number;
   quotedOut: number;
+  expectedOut?: number;
   actualOut: number;
   txHash: string;
   recipient: string;
   gasUsed?: string;
   balanceDelta?: Partial<Record<string, number>>;
+  failureCode?: string;
+  failureMessage?: string;
+  amountOutMin?: number;
+  amountOutMax?: number;
+  slippageBps?: number;
+  /** true = reverted on-chain (gas spent); false/undefined = blocked before broadcast */
+  onChainFailure?: boolean;
 }

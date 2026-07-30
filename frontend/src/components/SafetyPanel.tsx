@@ -56,7 +56,7 @@ export function SafetyPanel({ decision, onSwitchToFallback }: Props) {
   const statusLabel =
     decision.decision === "ALLOW" ? "✅ 放行 ALLOW"
     : decision.decision === "REJECT" ? "🚫 拒绝 REJECT"
-    : "⚠️ 切换备用路由 FALLBACK";
+    : "⚠️ 建议切换路由（需手动操作）";
 
   const safetyLevel = getSafetyLevel(decision.riskScore);
 
@@ -139,7 +139,10 @@ export function SafetyPanel({ decision, onSwitchToFallback }: Props) {
           border: "1px solid #d2992244",
         }}>
           <div style={{ fontSize: 13, color: "#d29922", marginBottom: 10 }}>
-            当前路由风险偏高，系统建议切换到更安全的 <strong>{decision.fallbackRouteId}</strong>
+            当前路由风险偏高，Agent 建议切换到更安全的 <strong>{decision.fallbackRouteId}</strong>。
+            <span style={{ display: "block", marginTop: 6, color: "#8b949e" }}>
+              不会自动改路由 — 请点击下方按钮手动切换后再执行。
+            </span>
           </div>
           {onSwitchToFallback && (
             <button
