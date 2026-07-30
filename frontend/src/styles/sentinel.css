@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg-deep: #0a0e17;
   --bg-card: #121820;
   --bg-card-hover: #161f2a;
@@ -386,51 +386,41 @@ body {
   }
 }
 
-.landing-grid {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 64px;
-  align-items: center;
-}
 
-.landing-hero {
-  position: relative;
-  overflow: hidden;
-  min-height: calc(100vh - var(--header-height));
-  display: flex;
-  align-items: center;
-}
-
-.landing-hero-inner {
-  width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 80px 48px 100px;
-  position: relative;
-}
 
 .landing-kicker {
-  font-family: var(--font-display);
-  font-size: 15px;
-  letter-spacing: 5px;
-  color: var(--cyan);
-  margin-bottom: 20px;
+  color: rgba(220, 229, 239, 1);
+  font-family: "Noto Sans SC";
+  font-style: Bold;
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 2px;
+  text-align: justify;
 }
 
 .landing-title {
-  font-family: var(--font-display);
-  font-size: clamp(56px, 7vw, 88px);
+  color: rgba(220, 229, 239, 1);
+  font-family: "Noto Sans SC";
+  font-style: Bold;
+  font-size: 136px;
   font-weight: 700;
-  letter-spacing: 6px;
-  margin-bottom: 24px;
-  line-height: 1.05;
+  line-height: 1;
+  letter-spacing: 2px;
+  text-align: justify;
+  margin-bottom: 20px;
 }
 
 .landing-tagline {
-  font-size: clamp(24px, 3vw, 34px);
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  font-family: var(--font-display);
+  color: rgba(0, 229, 204, 0.6);
+  font-family: "Noto Sans SC";
+  font-style: Regular;
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 50px;
+  letter-spacing: 2px;
+  text-align: justify;
+  margin: 40px 0;
 }
 
 .landing-desc {
@@ -447,41 +437,6 @@ body {
   letter-spacing: 0.5px;
 }
 
-.landing-feature-card {
-  border-radius: 28px;
-  border: 2px solid rgba(0, 255, 136, 0.28);
-  background: linear-gradient(145deg, rgba(0, 255, 136, 0.08), rgba(0, 255, 255, 0.05));
-  padding: 56px 48px;
-  min-height: 420px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.landing-feature-icon {
-  font-size: 96px;
-  margin-bottom: 28px;
-  opacity: 0.95;
-}
-
-.landing-feature-text {
-  font-size: 18px;
-  color: var(--text-muted);
-  line-height: 2;
-}
-
-@media (max-width: 960px) {
-  .landing-hero-inner {
-    padding: 48px 24px 64px;
-  }
-
-  .landing-feature-card {
-    min-height: 320px;
-    padding: 40px 28px;
-  }
-}
 
 .sentinel-btn {
   display: inline-flex;
@@ -616,35 +571,14 @@ body {
 }
 
 .app-header-inner {
-  max-width: 1280px;
   margin: 0 auto;
-  padding: 18px 24px;
+  padding: 0 5%;
   min-height: calc(var(--header-height) - 3px);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 24px;
   box-sizing: border-box;
-}
-
-.app-header-brand {
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.app-header-logo {
-  font-size: 33px;
-  color: var(--cyan);
-  line-height: 1;
-}
-
-.app-header-title {
-  font-weight: 700;
-  font-size: 27px;
-  color: var(--text);
-  font-family: var(--font-display);
-  line-height: 1;
 }
 
 .app-header-nav {
@@ -652,12 +586,13 @@ body {
   gap: 6px;
   flex-wrap: wrap;
   flex: 1;
+  padding: 18px 0;
 }
 
 .app-header-nav-link {
   padding: 9px 14px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 22px;
   text-decoration: none;
   line-height: 1.2;
 }
@@ -674,8 +609,45 @@ body {
   color: var(--green);
 }
 
-.app-header-accent {
-  height: 3px;
-  background: var(--gradient-brand);
-  opacity: 0.6;
+/* Layout ensuring header and main take full viewport height */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.app-header {
+  height: var(--header-height);
+  flex-shrink: 0;
+}
+
+.app-header-inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+main {
+  flex: 1;
+  min-height: 0; /* Allow children to shrink */
+}
+
+/* Layout wrapper for header + main to fill viewport */
+.layout-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.layout-wrapper > header,
+.layout-wrapper > main {
+  flex-shrink: 0;
+}
+
+
+.landing-hero {
+  min-height: calc(100vh - var(--header-height));
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
