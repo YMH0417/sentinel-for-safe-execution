@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { randomUUID } from "crypto";
 
 import { isAddress, getAddress } from "ethers";
 
@@ -19,6 +20,8 @@ import {
   getTokenBalances,
 
   isRouterSwapAvailable,
+
+  classifySwapFailure,
 
   SwapExecutionError,
 
@@ -176,7 +179,12 @@ function parseSwapBody(body: Partial<SwapRequest>): SwapRequest | { error: strin
 
 
 
-async function handleSwap(req: Request, res: Response, executor: (r: SwapRequest) => Promise<import("../types.js").SwapResult>) {
+async function handleSwap(
+  req: Request,
+  res: Response,
+  executor: (request: SwapRequest) => Promise<import("../types.js").SwapResult>,
+  safetyMode: "safe" | "force"
+) {
 
   const parsed = parseSwapBody(req.body as Partial<SwapRequest>);
 
@@ -186,13 +194,14 @@ async function handleSwap(req: Request, res: Response, executor: (r: SwapRequest
 
   }
 
+  const correlationId = randomUUID();
 
 
   try {
 
     assertSwapConfigured();
 
-    const result = await executor(parsed);
+    const result = await executor({ ...parsed, correlationId });
 
 
 
@@ -202,9 +211,31 @@ async function handleSwap(req: Request, res: Response, executor: (r: SwapRequest
 
       routeId: result.executedRouteId ?? result.routeId,
 
+      decision: result.agentDecision,
+
       message: `Swap ${result.tokenIn}→${result.tokenOut} mode=${result.executionMode} out=${result.actualOut}`,
 
       txHash: result.txHash,
+
+      context: {
+        correlationId,
+        account: result.recipient,
+        tokenIn: result.tokenIn,
+        tokenOut: result.tokenOut,
+        amountIn: result.amountIn,
+        quotedOut: result.quotedOut,
+        actualOut: result.actualOut,
+        amountOutMin: result.amountOutMin,
+        slippageBps: result.slippageBps,
+        gasUsed: result.gasUsed,
+        blockNumber: result.blockNumber,
+        executionMode: result.executionMode,
+        safetyMode,
+        requestedRouteId: result.requestedRouteId,
+        executedRouteId: result.executedRouteId,
+        pairAddress: result.pairAddress,
+        configProfile: parsed.configProfile ?? "normal",
+      },
 
     });
 
@@ -213,6 +244,14 @@ async function handleSwap(req: Request, res: Response, executor: (r: SwapRequest
     res.json(result);
 
   } catch (err) {
+    const failure = classifySwapFailure(err);
+
+    const errorCode =
+      err instanceof SwapExecutionError
+        ? err.code
+        : err instanceof ChainConfigurationError
+          ? err.name
+          : "SWAP_FAILED";
 
     addEvent({
 
@@ -221,6 +260,19 @@ async function handleSwap(req: Request, res: Response, executor: (r: SwapRequest
       routeId: parsed.routeId,
 
       message: err instanceof Error ? err.message : "Swap failed",
+
+      context: {
+        correlationId,
+        tokenIn: parsed.tokenIn,
+        tokenOut: parsed.tokenOut,
+        amountIn: parsed.amountIn,
+        account: parsed.recipient,
+        safetyMode,
+        requestedRouteId: parsed.routeId,
+        configProfile: parsed.configProfile ?? "normal",
+        errorCode,
+        ...failure,
+      },
 
     });
 
@@ -258,19 +310,25 @@ async function handleSwap(req: Request, res: Response, executor: (r: SwapRequest
 
 /** Default: evaluate + fallback + slippage; uses router one-tx when configured */
 
-router.post("/safe", (req, res) => handleSwap(req, res, executeSafeSwap));
+router.post("/safe", (req, res) =>
+  handleSwap(req, res, executeSafeSwap, "safe")
+);
 
 
 
 /** Dev: bypass Agent (was skipEvaluate) */
 
-router.post("/force", (req, res) => handleSwap(req, res, executeForceSwap));
+router.post("/force", (req, res) =>
+  handleSwap(req, res, executeForceSwap, "force")
+);
 
 
 
 /** Alias: safe swap is the default product path */
 
-router.post("/", (req, res) => handleSwap(req, res, executeSafeSwap));
+router.post("/", (req, res) =>
+  handleSwap(req, res, executeSafeSwap, "safe")
+);
 
 
 
@@ -311,6 +369,15 @@ router.post("/verify-all", async (req: Request, res: Response) => {
       eventType: "SwapBatchCompleted",
 
       message: `36-route verify (${useSafe ? "safe" : "force"}): ${batch.passed} passed, ${batch.failed} failed`,
+
+      context: {
+        account: recipient ?? getSwapWallet().address,
+        amountIn,
+        safetyMode: useSafe ? "safe" : "force",
+        batchPassed: batch.passed,
+        batchFailed: batch.failed,
+        batchTotal: batch.passed + batch.failed,
+      },
 
     });
 
@@ -367,5 +434,3 @@ router.post("/verify-all", async (req: Request, res: Response) => {
 
 
 export default router;
-
-

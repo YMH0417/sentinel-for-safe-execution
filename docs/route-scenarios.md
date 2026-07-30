@@ -132,11 +132,11 @@ route-{tokenIn}-{tokenOut}-{pool}
 | 场景 | Agent 决策 | 实际执行 |
 |------|-----------|----------|
 | `route-usdc-good-safe` | ALLOW | 原路由 |
-| `route-usdc-good-toxic` | FALLBACK 或 REJECT* | 同币对 `route-usdc-good-safe` |
+| `route-usdc-good-toxic` | REJECT | 422，不 swap |
 | `route-usdc-bad-safe` | REJECT | 422，不 swap |
-| `route-usdc-good-shallow` | 视评分 | 可能 FALLBACK 到 safe |
+| `route-usdc-good-shallow`（amount 100） | FALLBACK | 同币对 `route-usdc-good-safe` |
 
-\* TOXIC 池高 pool risk 通常触发 FALLBACK；若评分达 REJECT 阈值则直接拒绝。
+SHALLOW fallback 与交易量有关；normal profile 下 amount 100 是可复现示例。
 
 额外保护：`maxSlippageBps`（默认 100 = 1%）在 swap 前二次报价校验。
 
@@ -149,7 +149,7 @@ route-{tokenIn}-{tokenOut}-{pool}
 | routeId | 预期 | 原因 |
 |---------|------|------|
 | `route-usdc-good-safe` | ALLOW | 低偏差、SAFE 池 |
-| `route-usdc-good-toxic` | REJECT 或 FALLBACK | 高 pool risk + toxic flags |
+| `route-usdc-good-toxic` | REJECT | 高 pool risk + toxic flags |
 | `route-usdc-bad-safe` | REJECT | tokenOut=BAD 硬规则 |
 | `route-good-bait-shallow` | REJECT | tokenOut=BAIT 硬规则 |
 | `route-bad-usdc-safe` | ALLOW* | BAD 作 tokenIn 允许；*仅评分规则 |

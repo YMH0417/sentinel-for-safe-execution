@@ -64,6 +64,15 @@ export function executeMockPermit(
         ? "Executed successfully in local mock chain mode"
         : "Execution rejected by Safety Agent in local mock chain mode",
       txHash: mockTransactionHash(routeId, current.nonce),
+      context: {
+        account: permit.user,
+        amountInRaw: permit.amountIn,
+        quotedOutRaw: permit.amountOutQuoted,
+        executionMode: "mock",
+        safetyMode: "vault",
+        requestedRouteId: routeId,
+        executedRouteId: success ? routeId : undefined,
+      },
     },
   };
 }

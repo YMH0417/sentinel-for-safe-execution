@@ -68,6 +68,44 @@ export class SwapExecutionError extends Error {
   }
 }
 
+export type SwapFailureStage =
+  | "evaluation"
+  | "precondition"
+  | "execution"
+  | "configuration";
+
+export interface SwapFailureClassification {
+  failureStage: SwapFailureStage;
+  prevented: boolean;
+}
+
+const PRECONDITION_ERROR_CODES = new Set([
+  "INVALID_REQUEST",
+  "ROUTE_NOT_FOUND",
+  "INVALID_ROUTE",
+  "INSUFFICIENT_BALANCE",
+  "INSUFFICIENT_ALLOWANCE",
+  "INSUFFICIENT_LIQUIDITY",
+  "USER_PAYER_REQUIRES_ROUTER",
+]);
+
+export function classifySwapFailure(
+  error: unknown
+): SwapFailureClassification {
+  if (error instanceof ChainConfigurationError) {
+    return { failureStage: "configuration", prevented: false };
+  }
+  if (error instanceof SwapExecutionError) {
+    if (error.code === "SWAP_REJECTED_BY_AGENT") {
+      return { failureStage: "evaluation", prevented: true };
+    }
+    if (PRECONDITION_ERROR_CODES.has(error.code)) {
+      return { failureStage: "precondition", prevented: false };
+    }
+  }
+  return { failureStage: "execution", prevented: false };
+}
+
 function getMaxSlippageBps(): number {
   const config = loadRiskConfig() as { maxSlippageBps?: number };
   return config.maxSlippageBps ?? 100;
@@ -179,18 +217,24 @@ async function resolveExecutionPlan(
   params: SwapRequest,
   tokenIn: DemoTokenSymbol,
   tokenOut: DemoTokenSymbol
-): Promise<{ executedRouteId: string; agentDecision: Decision }> {
+): Promise<{
+  executedRouteId: string;
+  agentDecision: Decision;
+  executionDecision: Decision;
+}> {
   if (params.skipEvaluate || params.force) {
+    const decision: Decision = {
+      decision: "ALLOW",
+      riskScore: 0,
+      reason: params.force ? "Force swap (evaluate skipped)" : "Evaluate skipped",
+      routeId: params.routeId,
+      fallbackRouteId: null,
+      flags: [],
+    };
     return {
       executedRouteId: params.routeId,
-      agentDecision: {
-        decision: "ALLOW",
-        riskScore: 0,
-        reason: params.force ? "Force swap (evaluate skipped)" : "Evaluate skipped",
-        routeId: params.routeId,
-        fallbackRouteId: null,
-        flags: [],
-      },
+      agentDecision: decision,
+      executionDecision: decision,
     };
   }
 
@@ -199,18 +243,41 @@ async function resolveExecutionPlan(
     tokenOut,
     amountIn: params.amountIn,
   });
+  const requestedDecision = decision;
+  const eventContext = {
+    correlationId: params.correlationId,
+    tokenIn,
+    tokenOut,
+    amountIn: params.amountIn,
+    requestedRouteId: params.routeId,
+    configProfile: params.configProfile ?? "normal",
+    safetyMode: "safe" as const,
+  };
 
   addEvent({
     eventType: "RouteEvaluated",
     routeId: params.routeId,
     message: `Safe swap evaluate ${params.routeId}`,
+    context: eventContext,
   });
   addEvent({
     eventType: "DecisionMade",
     routeId: params.routeId,
     decision: decision.decision,
     riskScore: decision.riskScore,
+    fallbackRouteId: decision.fallbackRouteId ?? undefined,
     message: decision.reason,
+    context: {
+      ...eventContext,
+      flags: decision.flags,
+      quotedOut: decision.evidence?.quotedOut,
+      expectedOut: decision.evidence?.expectedOut,
+      quoteDeviation: decision.evidence?.quoteDeviation,
+      historicalFailureRate: decision.evidence?.historicalFailureRate,
+      poolRiskScore: decision.evidence?.poolRiskScore,
+      priceImpactBps: decision.evidence?.priceImpactBps,
+      poolLabel: decision.evidence?.poolLabel,
+    },
   });
 
   if (decision.decision === "REJECT") {
@@ -236,12 +303,21 @@ async function resolveExecutionPlan(
       routeId: params.routeId,
       fallbackRouteId: executedRouteId,
       decision: "FALLBACK_TO_SAFE_ROUTE",
-      riskScore: decision.riskScore,
+      riskScore: requestedDecision.riskScore,
       message: `Fallback to ${executedRouteId}`,
+      context: {
+        ...eventContext,
+        executedRouteId,
+        flags: requestedDecision.flags,
+      },
     });
   }
 
-  return { executedRouteId, agentDecision: decision };
+  return {
+    executedRouteId,
+    agentDecision: requestedDecision,
+    executionDecision: decision,
+  };
 }
 
 export async function getTokenBalances(
@@ -295,7 +371,11 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
   const draftPool = findPool(config, requestedRouteId);
   const { tokenIn, tokenOut } = resolveSymbols(requestedRouteId, draftPool, config, params);
 
-  const { executedRouteId, agentDecision } = await resolveExecutionPlan(params, tokenIn, tokenOut);
+  const {
+    executedRouteId,
+    agentDecision,
+    executionDecision,
+  } = await resolveExecutionPlan(params, tokenIn, tokenOut);
   const pool = findPool(config, executedRouteId);
 
   const wallet = getSwapWallet();
@@ -329,6 +409,32 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
     isAgentSigningConfigured() &&
     (!params.force || payerIsUser);
 
+  addEvent({
+    eventType: "ExecutionAttempted",
+    routeId: executedRouteId,
+    decision: agentDecision.decision,
+    riskScore: agentDecision.riskScore,
+    fallbackRouteId: agentDecision.fallbackRouteId ?? undefined,
+    message: `Swap execution attempted through ${useRouter ? "router" : "direct"} mode`,
+    context: {
+      correlationId: params.correlationId,
+      account: recipient,
+      tokenIn,
+      tokenOut,
+      amountIn: params.amountIn,
+      quotedOut: toHumanAmount(quotedOutRaw, decOut),
+      amountOutMin: toHumanAmount(amountOutMinRaw, decOut),
+      slippageBps,
+      executionMode: useRouter ? "router" : "direct",
+      safetyMode: params.force ? "force" : "safe",
+      requestedRouteId,
+      executedRouteId,
+      pairAddress: pool.pair,
+      configProfile: params.configProfile ?? "normal",
+      flags: agentDecision.flags,
+    },
+  });
+
   let receipt: ContractTransactionReceipt | null;
   let executionMode: "router" | "direct" = "direct";
   let actualOutRaw = quotedOutRaw;
@@ -346,7 +452,7 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
       );
     }
     const permitDecision: Decision = {
-      ...agentDecision,
+      ...executionDecision,
       decision: "ALLOW" as DecisionType,
       routeId: executedRouteId,
     };
@@ -465,6 +571,7 @@ export async function executeAll36Swaps(
   const errors: Array<{ routeId: string; error: string }> = [];
 
   for (const pool of config.pools) {
+    const correlationId = `batch-${Date.now()}-${pool.routeName}`;
     try {
       const parsed = parseRouteName(pool.routeName);
       if (!parsed) continue;
@@ -477,12 +584,55 @@ export async function executeAll36Swaps(
         tokenIn,
         tokenOut,
         recipient,
+        correlationId,
       });
       results.push(result);
+      addEvent({
+        eventType: "SwapExecuted",
+        routeId: result.executedRouteId ?? result.routeId,
+        decision: result.agentDecision,
+        message: `Batch swap ${result.tokenIn}→${result.tokenOut} mode=${result.executionMode} out=${result.actualOut}`,
+        txHash: result.txHash,
+        context: {
+          correlationId,
+          account: result.recipient,
+          tokenIn: result.tokenIn,
+          tokenOut: result.tokenOut,
+          amountIn: result.amountIn,
+          quotedOut: result.quotedOut,
+          actualOut: result.actualOut,
+          amountOutMin: result.amountOutMin,
+          slippageBps: result.slippageBps,
+          gasUsed: result.gasUsed,
+          blockNumber: result.blockNumber,
+          executionMode: result.executionMode,
+          safetyMode: skipEvaluate ? "force" : "safe",
+          requestedRouteId: result.requestedRouteId,
+          executedRouteId: result.executedRouteId,
+          pairAddress: result.pairAddress,
+        },
+      });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const failure = classifySwapFailure(err);
       errors.push({
         routeId: pool.routeName,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
+      });
+      addEvent({
+        eventType: "SwapFailed",
+        routeId: pool.routeName,
+        message,
+        context: {
+          correlationId,
+          amountIn,
+          account: recipient,
+          safetyMode: skipEvaluate ? "force" : "safe",
+          requestedRouteId: pool.routeName,
+          errorCode:
+            err instanceof SwapExecutionError ? err.code : "SWAP_FAILED",
+          ...failure,
+        },
       });
     }
   }
@@ -509,4 +659,3 @@ export function assertSwapConfigured(): void {
 export function isRouterSwapAvailable(): boolean {
   return Boolean(getOptionalSwapRouterAddress()) && isAgentSigningConfigured();
 }
-

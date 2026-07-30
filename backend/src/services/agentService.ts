@@ -1,7 +1,7 @@
 // backend/src/services/agentService.ts — Dev E: Execution Safety Agent
 
 import { fileURLToPath } from "url";
-import { Decision, Route, RiskConfig } from "../types.js";
+import { Decision, DecisionEvidence, Route, RiskConfig } from "../types.js";
 import * as path from "path";
 import * as fs from "fs";
 import { isDemoChainMode } from "../config/demoConfig.js";
@@ -53,12 +53,28 @@ function calculateRiskScore(
     score += Math.round(route.poolRiskScore / 3);
   }
 
-  if (route.priceImpactBps && route.priceImpactBps > 1000 && !flags.includes("high_price_impact")) {
+  if (route.priceImpactBps && route.priceImpactBps > 500 && !flags.includes("high_price_impact")) {
     flags.push("high_price_impact");
-    score += Math.min(20, Math.round(route.priceImpactBps / 100));
   }
 
   return { score: Math.min(100, score), flags: [...new Set(flags)] };
+}
+
+function decisionEvidence(route: Route): DecisionEvidence {
+  return {
+    quotedOut: route.quotedOut,
+    expectedOut: route.expectedOut,
+    quoteDeviation:
+      route.expectedOut === 0
+        ? 0
+        : Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut,
+    historicalFailureRate: route.historicalFailureRate,
+    poolRiskScore: route.poolRiskScore,
+    ...(route.priceImpactBps !== undefined
+      ? { priceImpactBps: route.priceImpactBps }
+      : {}),
+    ...(route.poolLabel ? { poolLabel: route.poolLabel } : {}),
+  };
 }
 
 function loadMockRoute(routeId: string): Route | undefined {
@@ -159,6 +175,7 @@ export async function evaluateRoute(
         routeId: route.routeId,
         fallbackRouteId: null,
         flags: [tokenFlag, ...route.warningFlags],
+        evidence: decisionEvidence(route),
       };
     }
   }
@@ -200,5 +217,6 @@ export async function evaluateRoute(
     routeId: route.routeId,
     fallbackRouteId: route.fallbackRouteId,
     flags,
+    evidence: decisionEvidence(route),
   };
 }

@@ -150,6 +150,16 @@ export async function executeSignedPermit(
           riskScore: Number(permit.riskScore),
           message: `VaultExecuted on-chain in block ${receipt.blockNumber}`,
           txHash,
+          context: {
+            account: permit.user,
+            amountInRaw: permit.amountIn,
+            quotedOutRaw: permit.amountOutQuoted,
+            blockNumber: receipt.blockNumber,
+            gasUsed: receipt.gasUsed.toString(),
+            executionMode: "vault",
+            safetyMode: "vault",
+            executedRouteId: routeId,
+          },
         },
       };
     }
@@ -168,6 +178,16 @@ export async function executeSignedPermit(
           riskScore: Number(permit.riskScore),
           message: reason,
           txHash,
+          context: {
+            account: permit.user,
+            amountInRaw: permit.amountIn,
+            quotedOutRaw: permit.amountOutQuoted,
+            blockNumber: receipt.blockNumber,
+            gasUsed: receipt.gasUsed.toString(),
+            executionMode: "vault",
+            safetyMode: "vault",
+            requestedRouteId: routeId,
+          },
         },
       };
     }

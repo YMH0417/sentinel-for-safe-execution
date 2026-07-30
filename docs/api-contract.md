@@ -1,7 +1,7 @@
-# API Contract — Sentinel for Safe Execution v0.3
+# API Contract — Sentinel for Safe Execution v0.4
 
-> **Last updated**: 2026-07-28  
-> Safe swap (evaluate + fallback + slippage), `/swap/force`, DemoSwapRouter, pools-health, JSONL events.  
+> **Last updated**: 2026-07-30
+> Safe swap, structured JSONL evidence, and reusable data-analysis API.
 > Legacy mock routes (`route-a/b/c`) unchanged in mock mode.
 
 ## Base URL
@@ -33,6 +33,100 @@ Backend loads `.env` via dotenv on startup. Fallback: `DEMO_DEPLOYMENT_PATH` →
 Required for swap: `RPC_URL`, `DEMO_REGISTRY_ADDRESS` (or valid deployment file), `SWAP_PRIVATE_KEY` or Anvil #0 default.
 
 Router one-tx swap additionally requires: `DEMO_SWAP_ROUTER_ADDRESS`, `VAULT_EXECUTION_ADDRESS`, `AGENT_PRIVATE_KEY` (must match Vault `agentSigner`).
+
+---
+
+## 0.1 Data Analysis
+
+### GET /analysis
+
+Analyzes `backend/data/events.jsonl` and returns:
+
+```json
+{
+  "metadata": {
+    "context": "sentinel-events",
+    "definitionVersion": "1.0.0",
+    "generatedAt": "2026-07-30T00:00:00.000Z",
+    "sources": ["backend/data/events.jsonl"]
+  },
+  "quality": {
+    "receivedRows": 100,
+    "parsedRows": 99,
+    "validRows": 97,
+    "invalidRows": 2,
+    "duplicateRows": 1,
+    "validRate": 0.97,
+    "issues": [],
+    "coverage": {}
+  },
+  "summary": {
+    "timeRange": null,
+    "categoryCounts": {},
+    "outcomeCounts": {},
+    "uniqueEntities": 0,
+    "uniqueActors": 0,
+    "dimensionCounts": {},
+    "metrics": {}
+  },
+  "trends": [],
+  "entities": [],
+  "insights": {
+    "decisions": {},
+    "fallback": {},
+    "execution": {},
+    "realizedSlippageBps": null,
+    "evidence": {
+      "readinessCriteria": {},
+      "sufficientForHistoricalClaims": false,
+      "assessment": "prototype-evidence-only"
+    }
+  }
+}
+```
+
+Malformed JSONL lines appear in `quality.issues`; they are not silently
+converted into valid records.
+
+Operational decisions exclude standalone preview evaluations. Swap failure
+insights separate Agent prevention, precondition failures, configuration
+failures, and actual execution failures. Historical readiness requires safe
+RPC activity; forced and demo events never qualify.
+
+### GET /analysis/definition
+
+Returns Sentinel's declarative field, dimension, and metric mapping.
+
+### POST /analysis/run
+
+Runs the reusable engine on caller-supplied records. It does not persist them.
+
+```json
+{
+  "records": [
+    {
+      "id": "evt-1",
+      "timestamp": 1785373200000,
+      "eventType": "DecisionMade",
+      "decision": "ALLOW"
+    }
+  ],
+  "includeRecords": false
+}
+```
+
+An optional `definition` object can map another project's field names. Maximum:
+10,000 records. Every definition maps `id`, `timestamp`, and `category`;
+`required` may add canonical fields but cannot remove those three.
+
+Errors:
+
+- invalid request → `400 INVALID_ANALYSIS_REQUEST`;
+- invalid definition → `400 INVALID_ANALYSIS_DEFINITION`;
+- too many records → `413 ANALYSIS_LIMIT_EXCEEDED`.
+
+Full configuration and CLI documentation:
+[`analysis-pipeline.md`](analysis-pipeline.md).
 
 ---
 
@@ -167,9 +261,9 @@ GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100
       "tokenIn": "USDC",
       "tokenOut": "GOOD",
       "amountIn": 100,
-      "quotedOut": 4.984995,
+      "quotedOut": 4.9845,
       "expectedOut": 5.0,
-      "poolRiskScore": 12,
+      "poolRiskScore": 15,
       "historicalFailureRate": 0.02,
       "supportsFallback": false,
       "fallbackRouteId": null,
@@ -178,13 +272,13 @@ GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100
     {
       "routeId": "route-usdc-good-shallow",
       "label": "USDC → GOOD @ SHALLOW Pool",
-      "quotedOut": 4.97508,
+      "quotedOut": 4.1562,
       "expectedOut": 5.0,
-      "poolRiskScore": 55,
+      "poolRiskScore": 72,
       "historicalFailureRate": 0.25,
       "supportsFallback": true,
       "fallbackRouteId": "route-usdc-good-safe",
-      "warningFlags": ["high_price_impact"]
+      "warningFlags": ["shallow_pool", "high_price_impact"]
     }
   ]
 }
@@ -243,7 +337,8 @@ Content-Type: application/json
   "reasonTechnical": "allow: score=0, flags=[]",
   "routeId": "route-usdc-good-safe",
   "fallbackRouteId": null,
-  "flags": []
+  "flags": [],
+  "correlationId": "18fe0daf-a760-4d75-a75e-80e907e77d69"
 }
 ```
 
@@ -262,6 +357,9 @@ Content-Type: application/json
 ```
 
 Side effect: emits `RouteEvaluated` and `DecisionMade` events (persisted to JSONL).
+Pass the returned `correlationId` back inside `evaluation` when calling
+`POST /execute`; the execute endpoint reuses valid UUIDs so the two phases join
+into one analyzed operation.
 
 **Legacy mock examples:**
 
@@ -290,7 +388,8 @@ Content-Type: application/json
     "reason": "Route is safe to execute.",
     "routeId": "route-a",
     "fallbackRouteId": null,
-    "flags": []
+    "flags": [],
+    "correlationId": "18fe0daf-a760-4d75-a75e-80e907e77d69"
   },
   "permit": {
     "user": "0x1111111111111111111111111111111111111111",
@@ -417,8 +516,8 @@ POST /api/swap/safe
 Content-Type: application/json
 
 {
-  "routeId": "route-usdc-good-toxic",
-  "amountIn": 1,
+  "routeId": "route-usdc-good-shallow",
+  "amountIn": 100,
   "recipient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   "configProfile": "normal"
 }
@@ -446,17 +545,17 @@ Content-Type: application/json
 {
   "success": true,
   "routeId": "route-usdc-good-safe",
-  "requestedRouteId": "route-usdc-good-toxic",
+  "requestedRouteId": "route-usdc-good-shallow",
   "executedRouteId": "route-usdc-good-safe",
   "agentDecision": "FALLBACK_TO_SAFE_ROUTE",
   "executionMode": "router",
   "tokenIn": "USDC",
   "tokenOut": "GOOD",
-  "amountIn": 1,
-  "quotedOut": 0.04984995029959955,
-  "amountOutMin": 0.04935145079660356,
+  "amountIn": 100,
+  "quotedOut": 4.9845,
+  "amountOutMin": 4.934655,
   "slippageBps": 100,
-  "actualOut": 0.04984995029959955,
+  "actualOut": 4.9845,
   "recipient": "0xf39F...",
   "pairAddress": "0x8633...",
   "txHash": "0x75f7...",
@@ -464,7 +563,7 @@ Content-Type: application/json
   "gasUsed": "74473",
   "balancesBefore": { "USDC": { "human": 3, "raw": "...", "symbol": "USDC", "address": "0x..." } },
   "balancesAfter": { "GOOD": { "human": 0.0498, "...": "..." } },
-  "balanceDelta": { "USDC": 0, "GOOD": 0.04984995029959955 }
+  "balanceDelta": { "USDC": 0, "GOOD": 4.9845 }
 }
 ```
 
@@ -582,7 +681,7 @@ Events are **persisted** to `backend/data/events.jsonl` and loaded into memory o
       "id": "evt_2",
       "eventType": "FallbackRequired",
       "timestamp": 1721659195000,
-      "routeId": "route-usdc-good-toxic",
+      "routeId": "route-usdc-good-shallow",
       "fallbackRouteId": "route-usdc-good-safe",
       "message": "Fallback to route-usdc-good-safe"
     },
@@ -591,7 +690,7 @@ Events are **persisted** to `backend/data/events.jsonl` and loaded into memory o
       "eventType": "SwapExecuted",
       "timestamp": 1721659200000,
       "routeId": "route-usdc-good-safe",
-      "message": "Swap USDC→GOOD mode=router out=0.0498",
+      "message": "Swap USDC→GOOD mode=router out=4.9845",
       "txHash": "0x75f7..."
     }
   ]
@@ -620,6 +719,10 @@ Clears **both** in-memory log and JSONL file (development).
 ```text
 RouteEvaluated → DecisionMade → [FallbackRequired] → SwapExecuted | SwapFailed
 ```
+
+`SwapFailed.context.failureStage` is one of `evaluation`, `precondition`,
+`configuration`, or `execution`. Agent rejection also sets
+`context.prevented=true`; it is not counted as a failed on-chain execution.
 
 ### Vault timeline (standalone execute)
 
@@ -712,7 +815,7 @@ Swap rejection example:
 | historicalFailureRate | number | 0–1 |
 | supportsFallback | boolean | Has SAFE fallback route |
 | fallbackRouteId | string \| null | e.g. `route-usdc-good-safe` |
-| warningFlags | string[] | e.g. `toxic_pool`, `high_price_impact` |
+| warningFlags | string[] | e.g. `toxic_pool`, `shallow_pool`, `high_price_impact` |
 
 ### Decision
 

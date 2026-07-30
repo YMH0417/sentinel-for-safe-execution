@@ -1,0 +1,133 @@
+{
+  "name": "sentinel-events",
+  "version": "1.0.0",
+  "fields": {
+    "id": "id",
+    "timestamp": "timestamp",
+    "category": "eventType",
+    "outcome": "decision",
+    "score": "riskScore",
+    "entityId": [
+      "context.requestedRouteId",
+      "routeId"
+    ],
+    "actorId": "context.account"
+  },
+  "dimensions": {
+    "routeId": "routeId",
+    "requestedRouteId": "context.requestedRouteId",
+    "executedRouteId": "context.executedRouteId",
+    "correlationId": "context.correlationId",
+    "tokenIn": "context.tokenIn",
+    "tokenOut": "context.tokenOut",
+    "executionMode": "context.executionMode",
+    "safetyMode": "context.safetyMode",
+    "configProfile": "context.configProfile",
+    "errorCode": "context.errorCode",
+    "poolLabel": "context.poolLabel",
+    "pairAddress": "context.pairAddress",
+    "txHash": "txHash",
+    "source": "source",
+    "schemaVersion": "schemaVersion",
+    "flags": "context.flags",
+    "amountInRaw": "context.amountInRaw",
+    "quotedOutRaw": "context.quotedOutRaw",
+    "failureStage": "context.failureStage",
+    "prevented": "context.prevented",
+    "chainMode": "context.chainMode"
+  },
+  "metrics": {
+    "amountIn": "context.amountIn",
+    "quotedOut": "context.quotedOut",
+    "actualOut": "context.actualOut",
+    "amountOutMin": "context.amountOutMin",
+    "slippageBps": "context.slippageBps",
+    "expectedOut": "context.expectedOut",
+    "quoteDeviation": "context.quoteDeviation",
+    "historicalFailureRate": "context.historicalFailureRate",
+    "poolRiskScore": "context.poolRiskScore",
+    "priceImpactBps": "context.priceImpactBps",
+    "gasUsed": "context.gasUsed",
+    "blockNumber": "context.blockNumber",
+    "batchPassed": "context.batchPassed",
+    "batchFailed": "context.batchFailed",
+    "batchTotal": "context.batchTotal"
+  },
+  "required": [
+    "id",
+    "timestamp",
+    "category"
+  ],
+  "allowedCategories": [
+    "RouteEvaluated",
+    "DecisionMade",
+    "ExecutionAttempted",
+    "ExecutionSuccess",
+    "ExecutionRejected",
+    "FallbackRequired",
+    "SwapExecuted",
+    "SwapFailed",
+    "SwapBatchCompleted"
+  ],
+  "allowedOutcomes": [
+    "ALLOW",
+    "REJECT",
+    "FALLBACK_TO_SAFE_ROUTE"
+  ],
+  "ranges": {
+    "score": {
+      "min": 0,
+      "max": 100
+    },
+    "metrics": {
+      "amountIn": {
+        "min": 0
+      },
+      "quotedOut": {
+        "min": 0
+      },
+      "actualOut": {
+        "min": 0
+      },
+      "amountOutMin": {
+        "min": 0
+      },
+      "slippageBps": {
+        "min": 0,
+        "max": 10000
+      },
+      "expectedOut": {
+        "min": 0
+      },
+      "quoteDeviation": {
+        "min": 0
+      },
+      "historicalFailureRate": {
+        "min": 0,
+        "max": 1
+      },
+      "poolRiskScore": {
+        "min": 0,
+        "max": 100
+      },
+      "priceImpactBps": {
+        "min": 0
+      },
+      "gasUsed": {
+        "min": 0
+      },
+      "blockNumber": {
+        "min": 0
+      },
+      "batchPassed": {
+        "min": 0
+      },
+      "batchFailed": {
+        "min": 0
+      },
+      "batchTotal": {
+        "min": 0
+      }
+    }
+  }
+}

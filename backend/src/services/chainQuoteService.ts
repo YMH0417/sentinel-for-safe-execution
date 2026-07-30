@@ -55,14 +55,17 @@ function fallbackRouteId(routeName: string): string | null {
   return buildSafeRouteName(parsed.tokenInKey, parsed.tokenOutKey);
 }
 
-function deriveWarningFlags(
+export function deriveWarningFlags(
   poolLabel: DemoPoolLabel,
   quotedOut: number,
   expectedOut: number,
   priceImpactBps: number
 ): string[] {
   const flags: string[] = [];
-  if (poolLabel === "SHALLOW" || priceImpactBps > 500) {
+  if (poolLabel === "SHALLOW") {
+    flags.push("shallow_pool");
+  }
+  if (priceImpactBps > 500) {
     flags.push("high_price_impact");
   }
   if (poolLabel === "TOXIC") {

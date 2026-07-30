@@ -1,6 +1,6 @@
 # Demo Script — Sentinel for Safe Execution
 
-> **Last updated**: 2026-07-28 — safe swap, fallback, DemoSwapRouter, one-click deploy.
+> **Last updated**: 2026-07-30 — safe swap, fallback, DemoSwapRouter, one-click deploy.
 
 ---
 
@@ -48,10 +48,10 @@ Invoke-RestMethod http://127.0.0.1:8080/api/debug/status
 
 Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8080/api/swap/safe `
   -ContentType "application/json" `
-  -Body '{"routeId":"route-usdc-good-toxic","amountIn":1}'
+  -Body '{"routeId":"route-usdc-good-shallow","amountIn":100}'
 ```
 
-> "User asked for the TOXIC pool, but Sentinel evaluated the risk and **fell back** to the SAFE pool automatically. One API call — evaluate, fallback, slippage check, swap. With DemoSwapRouter, Vault gate and DEX swap happen in **one transaction**."
+> "User asked for the SHALLOW pool with a large trade, but Sentinel evaluated the risk and **fell back** to the SAFE pool automatically. One API call — evaluate, fallback, slippage check, swap. With DemoSwapRouter, Vault gate and DEX swap happen in **one transaction**."
 
 Show response fields: `requestedRouteId`, `executedRouteId`, `agentDecision`, `executionMode`.
 
@@ -121,7 +121,7 @@ For `CHAIN_MODE=mock` without Anvil.
 | Show 3 pool quotes | `GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100` |
 | BAD token reject | `POST /api/evaluate` `route-usdc-bad-safe` |
 | SAFE allow | `POST /api/evaluate` `route-usdc-good-safe` |
-| Safe swap + fallback | `POST /api/swap/safe` `route-usdc-good-toxic` |
+| Safe swap + fallback | `POST /api/swap/safe` `route-usdc-good-shallow`, amount 100 |
 | Force swap (dev) | `POST /api/swap/force` |
 | 36/36 proof | `POST /api/swap/verify-all` |
 | Pool health | `GET /api/debug/pools-health` |

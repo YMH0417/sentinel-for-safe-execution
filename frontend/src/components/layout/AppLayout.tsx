@@ -8,6 +8,7 @@ import { api } from "../../api/client";
 const NAV = [
   { to: "/", label: "首页", end: true },
   { to: "/dashboard", label: "仪表盘" },
+  { to: "/analysis", label: "Analysis" },
   { to: "/profile", label: "账户" },
   { to: "/transaction", label: "交易" },
   { to: "/execution", label: "执行结果" },
