@@ -37,10 +37,22 @@ export interface Decision {
   routeId: string;
   fallbackRouteId: string | null;
   flags: string[];
+  correlationId?: string;
+  evidence?: {
+    quotedOut: number;
+    expectedOut: number;
+    quoteDeviation: number;
+    historicalFailureRate: number;
+    poolRiskScore: number;
+    priceImpactBps?: number;
+    poolLabel?: string;
+  };
 }
 
 export interface Event {
   id: string;
+  schemaVersion?: number;
+  source?: string;
   eventType: string;
   timestamp: number;
   routeId?: string;
@@ -49,6 +61,38 @@ export interface Event {
   message: string;
   txHash?: string;
   fallbackRouteId?: string;
+  context?: {
+    correlationId?: string;
+    account?: string;
+    tokenIn?: string;
+    tokenOut?: string;
+    amountIn?: number;
+    quotedOut?: number;
+    actualOut?: number;
+    amountOutMin?: number;
+    slippageBps?: number;
+    expectedOut?: number;
+    quoteDeviation?: number;
+    historicalFailureRate?: number;
+    poolRiskScore?: number;
+    priceImpactBps?: number;
+    gasUsed?: string;
+    blockNumber?: number;
+    executionMode?: "router" | "direct" | "vault" | "mock";
+    safetyMode?: "safe" | "force" | "evaluate" | "vault";
+    requestedRouteId?: string;
+    executedRouteId?: string;
+    poolLabel?: string;
+    errorCode?: string;
+    failureStage?:
+      | "evaluation"
+      | "precondition"
+      | "execution"
+      | "configuration";
+    prevented?: boolean;
+    chainMode?: "mock" | "demo" | "rpc";
+    [key: string]: unknown;
+  };
 }
 
 export interface EvaluateRequest {
@@ -79,14 +123,25 @@ export interface SwapResult {
   requestedRouteId?: string;
   executedRouteId?: string;
   agentDecision?: DecisionType;
+  agentBypassed?: boolean;
+  safetyMode?: "safe" | "force";
+  poolLabel?: string;
   executionMode?: "router" | "direct";
   tokenIn: string;
   tokenOut: string;
   amountIn: number;
   quotedOut: number;
+  expectedOut?: number;
   actualOut: number;
   txHash: string;
   recipient: string;
   gasUsed?: string;
   balanceDelta?: Partial<Record<string, number>>;
+  failureCode?: string;
+  failureMessage?: string;
+  amountOutMin?: number;
+  amountOutMax?: number;
+  slippageBps?: number;
+  /** true = reverted on-chain (gas spent); false/undefined = blocked before broadcast */
+  onChainFailure?: boolean;
 }

@@ -7,6 +7,7 @@ import { UserProfilePage } from './components/UserProfilePage';
 import { ExecutionResultPage } from './components/ExecutionResultPage';
 import { RiskRulesPage } from './components/RiskRulesPage';
 import { SettingsPage } from './components/SettingsPage';
+import { AnalysisPage } from './components/AnalysisPage';
 import { ToastProvider } from './components/Toast';
 import { AuthRoute } from './components/AuthRoute';
 import { AppLayout } from './components/layout/AppLayout';
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/transaction" element={<TransactionRouter />} />
               <Route path="/execution" element={<ExecutionResultPage />} />
               <Route path="/risk-rules" element={<RiskRulesPage />} />
+              <Route path="/analysis" element={<AnalysisPage />} />
               <Route
                 path="/profile"
                 element={

@@ -113,7 +113,7 @@ export function HeaderAvatar() {
           >
             <span style={{ fontSize: 16 }}>馃懁</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#e1e4e8" }}>User Profile</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#e1e4e8" }}>账户与勋章</div>
               <div style={{ fontSize: 11, color: "#8b949e", fontFamily: "monospace", marginTop: 2 }}>{shortAddr}</div>
             </div>
           </div>

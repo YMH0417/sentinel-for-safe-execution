@@ -1,5 +1,6 @@
 // backend/src/routes/evaluate.ts — POST /evaluate
 import { Router, Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { evaluateRoute } from "../services/agentService.js";
 import { addEvent } from "../services/eventService.js";
 
@@ -43,18 +44,43 @@ router.post("/", async (req: Request, res: Response) => {
       },
     });
   }
+  const normalizedAmount =
+    amountIn === undefined ? undefined : Number(amountIn);
+  if (
+    normalizedAmount !== undefined &&
+    (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0)
+  ) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_EVALUATE_REQUEST",
+        message: "amountIn must be a positive finite number",
+      },
+    });
+  }
+
+  const correlationId = randomUUID();
+  const context = {
+    correlationId,
+    tokenIn: typeof tokenIn === "string" ? tokenIn : undefined,
+    tokenOut: typeof tokenOut === "string" ? tokenOut : undefined,
+    amountIn: normalizedAmount,
+    requestedRouteId: routeId,
+    configProfile: configProfile as "normal" | "conservative" | "aggressive",
+    safetyMode: "evaluate" as const,
+  };
 
   addEvent({
     eventType: "RouteEvaluated",
     routeId,
     message: `Route ${routeId} submitted for safety evaluation`,
+    context,
   });
 
   try {
     const decision = await evaluateRoute(routeId, configProfile, {
       tokenIn: typeof tokenIn === "string" ? tokenIn : undefined,
       tokenOut: typeof tokenOut === "string" ? tokenOut : undefined,
-      amountIn: amountIn !== undefined ? Number(amountIn) : undefined,
+      amountIn: normalizedAmount,
     });
 
     addEvent({
@@ -62,10 +88,22 @@ router.post("/", async (req: Request, res: Response) => {
       routeId,
       decision: decision.decision,
       riskScore: decision.riskScore,
+      fallbackRouteId: decision.fallbackRouteId ?? undefined,
       message: `Decision: ${decision.decision} (riskScore=${decision.riskScore}). ${decision.reason}`,
+      context: {
+        ...context,
+        flags: decision.flags,
+        quotedOut: decision.evidence?.quotedOut,
+        expectedOut: decision.evidence?.expectedOut,
+        quoteDeviation: decision.evidence?.quoteDeviation,
+        historicalFailureRate: decision.evidence?.historicalFailureRate,
+        poolRiskScore: decision.evidence?.poolRiskScore,
+        priceImpactBps: decision.evidence?.priceImpactBps,
+        poolLabel: decision.evidence?.poolLabel,
+      },
     });
 
-    return res.json(decision);
+    return res.json({ ...decision, correlationId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Evaluate failed";
     return res.status(503).json({

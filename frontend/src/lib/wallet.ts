@@ -1,4 +1,5 @@
 import { BrowserProvider, getAddress } from "ethers";
+import { parseApiError } from "./apiError";
 
 export interface DemoChainConfig {
   chainId: number;
@@ -90,7 +91,7 @@ export async function fetchDemoToken(symbol: string): Promise<DemoTokenMeta> {
   const res = await fetch(`${API_BASE}/demo/tokens`);
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error ?? "无法加载 demo 代币配置");
+    throw new Error(parseApiError(data.error, "无法加载 demo 代币配置"));
   }
 
   const token = (data.tokens as DemoTokenMeta[] | undefined)?.find(

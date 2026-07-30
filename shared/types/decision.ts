@@ -11,6 +11,16 @@ export interface Decision {
   routeId: string;
   fallbackRouteId: string | null;
   flags: string[];
+  correlationId?: string;
+  evidence?: {
+    quotedOut: number;
+    expectedOut: number;
+    quoteDeviation: number;
+    historicalFailureRate: number;
+    poolRiskScore: number;
+    priceImpactBps?: number;
+    poolLabel?: string;
+  };
 }
 
 export interface EvaluateRequest {

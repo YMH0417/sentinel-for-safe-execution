@@ -52,7 +52,7 @@ export function executeMockPermit(
   }
 
   nonces.set(current.user, BigInt(current.nonce) + 1n);
-  const success = decision !== "REJECT";
+  const success = decision === "ALLOW";
   return {
     success,
     event: {
@@ -64,16 +64,22 @@ export function executeMockPermit(
         ? "Executed successfully in local mock chain mode"
         : "Execution rejected by Safety Agent in local mock chain mode",
       txHash: mockTransactionHash(routeId, current.nonce),
+      context: {
+        account: permit.user,
+        amountInRaw: permit.amountIn,
+        quotedOutRaw: permit.amountOutQuoted,
+        executionMode: "mock",
+        safetyMode: "vault",
+        requestedRouteId: routeId,
+        executedRouteId: success ? routeId : undefined,
+      },
     },
   };
 }
 
 export function executeMockLegacy(decision: Decision): MockExecutionResult {
-  const routeId =
-    decision.decision === "FALLBACK_TO_SAFE_ROUTE" && decision.fallbackRouteId
-      ? decision.fallbackRouteId
-      : decision.routeId;
-  const success = decision.decision !== "REJECT";
+  const routeId = decision.routeId;
+  const success = decision.decision === "ALLOW";
 
   return {
     success,

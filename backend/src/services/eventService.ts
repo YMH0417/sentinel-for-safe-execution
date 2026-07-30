@@ -1,7 +1,9 @@
+import { randomUUID } from "crypto";
 import { mkdirSync, appendFileSync, readFileSync, existsSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { Event } from "../types.js";
+import { isDemoChainMode } from "../config/demoConfig.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,6 +12,15 @@ const EVENTS_FILE = join(EVENTS_DIR, "events.jsonl");
 
 const events: Event[] = [];
 let loaded = false;
+
+function currentChainMode(): "mock" | "demo" | "rpc" {
+  const mode = process.env.CHAIN_MODE?.trim().toLowerCase();
+  if (mode === "mock") return "mock";
+  if (mode === "demo") return "demo";
+  if (mode === "rpc") return "rpc";
+  if (isDemoChainMode()) return "demo";
+  return "rpc";
+}
 
 function ensureLoaded(): void {
   if (loaded) return;
@@ -36,7 +47,13 @@ export function addEvent(event: Omit<Event, "id" | "timestamp">): Event {
   ensureLoaded();
   const fullEvent: Event = {
     ...event,
-    id: `evt_${Date.now()}_${events.length + 1}`,
+    context: {
+      ...event.context,
+      chainMode: currentChainMode(),
+    },
+    id: `evt_${randomUUID()}`,
+    schemaVersion: event.schemaVersion ?? 1,
+    source: event.source ?? "sentinel-backend",
     timestamp: Date.now(),
   };
   events.push(fullEvent);

@@ -8,11 +8,11 @@ import logo from "../../imgs/logo.svg"
 
 const NAV = [
   { to: "/dashboard", label: "仪表盘" },
-  { to: "/profile", label: "账户" },
+  { to: "/analysis", label: "Analysis" },
+  { to: "/profile", label: "账户与勋章" },
   { to: "/transaction", label: "交易" },
   { to: "/execution", label: "执行结果" },
   { to: "/risk-rules", label: "风控规则" },
-  { to: "/profile", label: "勋章墙" },
   { to: "/settings", label: "设置" },
 ];
 

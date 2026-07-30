@@ -1,11 +1,12 @@
 import type { Decision, Event, SwapResult } from "../types";
+import { parseApiError } from "../lib/apiError";
 
 const API = "/api";
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API}${path}`);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message ?? data.error ?? "Request failed");
+  if (!res.ok) throw new Error(parseApiError(data.error, "Request failed"));
   return data as T;
 }
 
@@ -55,7 +56,127 @@ export interface RiskConfig {
   defaultProfile: string;
   paused: boolean;
   maxSlippageBps?: number;
+  maxUnsafeSlippageBps?: number;
   profiles?: Record<string, unknown>;
+}
+
+export interface NumberStatistics {
+  count: number;
+  min: number;
+  max: number;
+  mean: number;
+  median: number;
+  p95: number;
+  sum: number;
+}
+
+export interface AnalysisReport {
+  metadata: {
+    context: string;
+    definitionVersion: string;
+    generatedAt: string;
+    sources: string[];
+  };
+  quality: {
+    receivedRows: number;
+    parsedRows: number;
+    validRows: number;
+    invalidRows: number;
+    duplicateRows: number;
+    validRate: number;
+    issues: Array<{
+      code: string;
+      severity: "error" | "warning";
+      field?: string;
+      count: number;
+    }>;
+    coverage: Record<
+      string,
+      { present: number; total: number; rate: number }
+    >;
+  };
+  summary: {
+    timeRange: { from: string; to: string } | null;
+    categoryCounts: Record<string, number>;
+    outcomeCounts: Record<string, number>;
+    uniqueEntities: number;
+    uniqueActors: number;
+    score?: NumberStatistics;
+    dimensionCounts: Record<string, Record<string, number>>;
+    metrics: Record<string, NumberStatistics>;
+  };
+  trends: Array<{
+    date: string;
+    count: number;
+    categoryCounts: Record<string, number>;
+    outcomeCounts: Record<string, number>;
+  }>;
+  entities: Array<{
+    entityId: string;
+    count: number;
+    outcomeCounts: Record<string, number>;
+    averageScore?: number;
+  }>;
+  insights: {
+    decisions?: {
+      total: number;
+      allow: number;
+      reject: number;
+      fallback: number;
+      previewEvaluations: number;
+      unclassified: number;
+      interventionRate: number | null;
+    };
+    riskFactors?: {
+      quoteDeviation: NumberStatistics | null;
+      historicalFailureRate: NumberStatistics | null;
+      poolRiskScore: NumberStatistics | null;
+      priceImpactBps: NumberStatistics | null;
+    };
+    execution?: {
+      attemptEvents: number;
+      swapAttempts: number;
+      swapsSucceeded: number;
+      swapsFailed: number;
+      swapSuccessRate: number | null;
+      executionFailures: number;
+      preventedByAgent: number;
+      preconditionFailures: number;
+      configurationFailures: number;
+      unclassifiedFailures: number;
+      protectedSwapsSucceeded: number;
+      forcedSwapsSucceeded: number;
+      vaultSucceeded: number;
+      vaultRejected: number;
+      usdcInputVolume: number;
+      forcedUsdcInputVolume: number;
+      gasUsed: NumberStatistics | null;
+      forcedBypassEvents: number;
+      forcedBypassOperations: number;
+    };
+    workflow?: {
+      correlatedOperations: number;
+      completedOperations: number;
+      failedOrRejectedOperations: number;
+      fallbackOperations: number;
+      uncorrelatedEvents: number;
+    };
+    evidence?: {
+      successfulSwapsWithQuoteAndActual: number;
+      richSwapEvidenceRate: number | null;
+      productionSuccessfulSwapsWithQuoteAndActual: number;
+      productionRichSwapEvidenceRate: number | null;
+      decisionEvidenceRate: number | null;
+      uniqueAccounts: number;
+      activeDays: number;
+      readinessCriteria: Record<
+        string,
+        { actual: number | null; required: number; met: boolean }
+      >;
+      sufficientForHistoricalClaims: boolean;
+      assessment: string;
+    };
+  };
 }
 
 export const api = {
@@ -64,6 +185,7 @@ export const api = {
     const data = await getJson<{ events: Event[] }>("/events");
     return data.events ?? [];
   },
+  analysis: () => getJson<AnalysisReport>("/analysis"),
   poolsHealth: (opts?: { force?: boolean }) =>
     getJson<PoolsHealthReport & { cache?: unknown }>(
       `/debug/pools-health${opts?.force ? "?refresh=true" : ""}`
@@ -71,7 +193,7 @@ export const api = {
   warmCache: () =>
     fetch(`${API}/debug/warm-cache`, { method: "POST" }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Warm cache failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Warm cache failed"));
       return data as { warmed: boolean; cache?: DebugStatus["poolsHealthCache"] };
     }),
   riskConfig: () => getJson<RiskConfig>("/config"),
@@ -90,7 +212,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Evaluate failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Evaluate failed"));
       return data as Decision;
     }),
   swapSafe: (body: object) =>
@@ -100,7 +222,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message ?? data.error ?? "Swap failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Swap failed"));
       return data as SwapResult;
     }),
   swapForce: (body: object) =>
@@ -110,7 +232,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message ?? data.error ?? "Swap failed");
+      if (!res.ok) throw new Error(parseApiError(data.error, "Swap failed"));
       return data as SwapResult;
     }),
 };
@@ -143,7 +265,10 @@ export function computeUserStats(events: Event[]) {
     swapCount: safeSwaps.length,
     rejectCount: rejects.length,
     fallbackCount: fallbacks.length,
-    safeVolumeUsd: safeSwaps.length * 100,
+    safeVolumeUsd: safeSwaps.reduce((total, event) => {
+      if (event.context?.tokenIn !== "USDC") return total;
+      return total + (event.context.amountIn ?? 0);
+    }, 0),
   };
 }
 

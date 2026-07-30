@@ -1,5 +1,6 @@
 // backend/src/routes/execute.ts — nonce query + signed permit execution
 import { Router, Request, Response } from "express";
+import { randomUUID } from "crypto";
 import {
   encodeBytes32String,
   isAddress,
@@ -35,6 +36,25 @@ const contractDecision: Record<DecisionType, ContractDecision> = {
   REJECT: 1,
   FALLBACK_TO_SAFE_ROUTE: 2,
 };
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function resolveExecutionCorrelationId(body: unknown): string {
+  if (body && typeof body === "object") {
+    const evaluation = (body as { evaluation?: unknown }).evaluation;
+    if (evaluation && typeof evaluation === "object") {
+      const correlationId = (evaluation as { correlationId?: unknown })
+        .correlationId;
+      if (
+        typeof correlationId === "string" &&
+        UUID_PATTERN.test(correlationId)
+      ) {
+        return correlationId;
+      }
+    }
+  }
+  return randomUUID();
+}
 
 function isAmountString(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9]\d*)(\.\d+)?$/.test(value);
@@ -116,12 +136,15 @@ async function validateExecuteRequest(
   const permitError = validatePermitFields(permit);
   if (permitError) return { error: permitError };
 
-  const effectiveRouteId =
-    evaluation.decision === "FALLBACK_TO_SAFE_ROUTE"
-      ? evaluation.fallbackRouteId
-      : evaluation.routeId;
+  const effectiveRouteId = evaluation.routeId;
   if (!effectiveRouteId) {
-    return { error: "evaluation.fallbackRouteId is required for fallback" };
+    return { error: "evaluation.routeId is required" };
+  }
+  if (evaluation.decision === "FALLBACK_TO_SAFE_ROUTE") {
+    return {
+      error:
+        "Agent recommends switching routes manually; automatic fallback execution is disabled",
+    };
   }
 
   let encodedRouteId: string;
@@ -205,7 +228,10 @@ type MockHandleResult =
  * hex (e.g. "route-a" → "0x...route-a"), which fails strict bytes32 checks.
  * In mock mode we trust evaluation and rewrite permit fields for the demo.
  */
-async function handleMockPermitBody(body: unknown): Promise<MockHandleResult> {
+async function handleMockPermitBody(
+  body: unknown,
+  correlationId: string
+): Promise<MockHandleResult> {
   if (!body || typeof body !== "object") {
     return { error: "request body must be an object", status: 400 };
   }
@@ -227,10 +253,35 @@ async function handleMockPermitBody(body: unknown): Promise<MockHandleResult> {
         ? candidate.configProfile
         : "normal"
     );
+    addEvent({
+      eventType: "ExecutionAttempted",
+      routeId: candidate.routeId,
+      decision: decision.decision,
+      riskScore: decision.riskScore,
+      fallbackRouteId: decision.fallbackRouteId ?? undefined,
+      message: `Mock execution attempted for ${candidate.routeId}`,
+      context: {
+        correlationId,
+        executionMode: "mock",
+        safetyMode: "vault",
+        requestedRouteId: candidate.routeId,
+        flags: decision.flags,
+      },
+    });
     const result = executeMockLegacy(decision);
     return {
       success: result.success,
-      event: addEvent(result.event),
+      event: addEvent({
+        ...result.event,
+        context: {
+          ...result.event.context,
+          correlationId,
+          executionMode: "mock",
+          safetyMode: "vault",
+          requestedRouteId: candidate.routeId,
+          executedRouteId: result.success ? result.event.routeId : undefined,
+        },
+      }),
       decision,
     };
   }
@@ -243,14 +294,15 @@ async function handleMockPermitBody(body: unknown): Promise<MockHandleResult> {
     return { error: "evaluation.decision is invalid", status: 400 };
   }
 
-  const effectiveRouteId =
-    evaluation.decision === "FALLBACK_TO_SAFE_ROUTE"
-      ? evaluation.fallbackRouteId
-      : evaluation.routeId;
+  const effectiveRouteId = evaluation.routeId;
   if (!effectiveRouteId) {
+    return { error: "evaluation.routeId is required", status: 400 };
+  }
+  if (evaluation.decision === "FALLBACK_TO_SAFE_ROUTE") {
     return {
-      error: "evaluation.fallbackRouteId is required for fallback",
-      status: 400,
+      error:
+        "Agent recommends switching routes manually; automatic fallback execution is disabled",
+      status: 422,
     };
   }
 
@@ -302,21 +354,67 @@ async function handleMockPermitBody(body: unknown): Promise<MockHandleResult> {
   };
 
   try {
+    addEvent({
+      eventType: "ExecutionAttempted",
+      routeId: effectiveRouteId,
+      decision: evaluation.decision,
+      riskScore: evaluation.riskScore,
+      fallbackRouteId: evaluation.fallbackRouteId ?? undefined,
+      message: `Mock permit execution attempted for ${effectiveRouteId}`,
+      context: {
+        correlationId,
+        account: permit.user,
+        amountInRaw: permit.amountIn,
+        quotedOutRaw: permit.amountOutQuoted,
+        executionMode: "mock",
+        safetyMode: "vault",
+        requestedRouteId: evaluation.routeId,
+        executedRouteId: effectiveRouteId,
+        flags: evaluation.flags,
+      },
+    });
     const result = executeMockPermit(permit, evaluation.decision, effectiveRouteId);
     return {
       success: result.success,
-      event: addEvent(result.event),
+      event: addEvent({
+        ...result.event,
+        context: {
+          ...result.event.context,
+          correlationId,
+        },
+      }),
       decision: evaluation,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Mock execution failed";
+    addEvent({
+      eventType: "ExecutionRejected",
+      routeId: effectiveRouteId,
+      decision: evaluation.decision,
+      riskScore: evaluation.riskScore,
+      fallbackRouteId: evaluation.fallbackRouteId ?? undefined,
+      message,
+      context: {
+        correlationId,
+        account: permit.user,
+        amountInRaw: permit.amountIn,
+        quotedOutRaw: permit.amountOutQuoted,
+        executionMode: "mock",
+        safetyMode: "vault",
+        requestedRouteId: evaluation.routeId,
+        executedRouteId: effectiveRouteId,
+        errorCode: "MOCK_EXECUTION_FAILED",
+        flags: evaluation.flags,
+      },
+    });
     return { error: message, status: 400 };
   }
 }
 
 router.post("/", async (req: Request, res: Response) => {
+  const correlationId = resolveExecutionCorrelationId(req.body);
   if (isMockChainMode()) {
-    const mockResult = await handleMockPermitBody(req.body);
+    const mockResult = await handleMockPermitBody(req.body, correlationId);
     if ("error" in mockResult) {
       return res.status(mockResult.status).json({
         error: {
@@ -343,6 +441,25 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const { evaluation, permit, signature } = validation.request;
+  addEvent({
+    eventType: "ExecutionAttempted",
+    routeId: validation.effectiveRouteId,
+    decision: evaluation.decision,
+    riskScore: evaluation.riskScore,
+    fallbackRouteId: evaluation.fallbackRouteId ?? undefined,
+    message: `Vault execution attempted for ${validation.effectiveRouteId}`,
+    context: {
+      correlationId,
+      account: permit.user,
+      amountInRaw: permit.amountIn,
+      quotedOutRaw: permit.amountOutQuoted,
+      executionMode: "vault",
+      safetyMode: "vault",
+      requestedRouteId: evaluation.routeId,
+      executedRouteId: validation.effectiveRouteId,
+      flags: evaluation.flags,
+    },
+  });
 
   try {
 
@@ -352,9 +469,41 @@ router.post("/", async (req: Request, res: Response) => {
       evaluation.decision,
       validation.effectiveRouteId
     );
-    const event = addEvent(result.event);
+    const event = addEvent({
+      ...result.event,
+      context: {
+        ...result.event.context,
+        correlationId,
+      },
+    });
     return res.json({ success: result.success, event, decision: evaluation });
   } catch (err: unknown) {
+    const errorCode =
+      err instanceof ChainConfigurationError
+        ? err.name
+        : err instanceof VaultExecutionError
+          ? err.code
+          : "CHAIN_EXECUTION_FAILED";
+    addEvent({
+      eventType: "ExecutionRejected",
+      routeId: validation.effectiveRouteId,
+      decision: evaluation.decision,
+      riskScore: evaluation.riskScore,
+      message:
+        err instanceof Error ? err.message : "Chain execution failed",
+      context: {
+        correlationId,
+        account: permit.user,
+        amountInRaw: permit.amountIn,
+        quotedOutRaw: permit.amountOutQuoted,
+        executionMode: "vault",
+        safetyMode: "vault",
+        requestedRouteId: evaluation.routeId,
+        executedRouteId: validation.effectiveRouteId,
+        errorCode,
+        flags: evaluation.flags,
+      },
+    });
     if (err instanceof ChainConfigurationError) {
       return res.status(503).json({
         error: { code: err.name, message: err.message },

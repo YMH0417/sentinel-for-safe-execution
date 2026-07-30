@@ -1,6 +1,6 @@
 # Documentation Index
 
-> **Last updated**: 2026-07-28
+> **Last updated**: 2026-07-30
 
 ## Start here
 
@@ -8,7 +8,10 @@
 |-----|----------|---------|
 | [`../README.md`](../README.md) | Everyone | Quick start, one-click deploy, API overview |
 | [`architecture.md`](architecture.md) | Developers | Safe swap flow, Router, modules, chain modes |
-| [`api-contract.md`](api-contract.md) | Frontend / integrators | HTTP schemas **v0.3** |
+| [`api-contract.md`](api-contract.md) | Frontend / integrators | HTTP schemas **v0.4** |
+| [`analysis-pipeline.md`](analysis-pipeline.md) | Data / backend | Reusable ingestion, validation, metrics, CLI, and API |
+| [`data-analysis.md`](data-analysis.md) | Product / judges | Baseline findings and evidence limits |
+| [`sentinel-data-analysis.xlsx`](sentinel-data-analysis.xlsx) | Product / data | Formula-driven route observations and charts |
 
 ## Scenarios & demos
 

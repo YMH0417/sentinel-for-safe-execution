@@ -53,6 +53,19 @@ export interface Decision {
   routeId: string;
   fallbackRouteId: string | null;
   flags: string[];
+  evidence?: DecisionEvidence;
+  /** Joins evaluate and execute events when the decision is sent back. */
+  correlationId?: string;
+}
+
+export interface DecisionEvidence {
+  quotedOut: number;
+  expectedOut: number;
+  quoteDeviation: number;
+  historicalFailureRate: number;
+  poolRiskScore: number;
+  priceImpactBps?: number;
+  poolLabel?: string;
 }
 
 export interface EvaluateRequest {
@@ -91,6 +104,8 @@ export interface ExecuteRequest {
 
 export interface Event {
   id: string;
+  schemaVersion?: number;
+  source?: string;
   eventType: EventType;
   timestamp: number;
   routeId?: string;
@@ -99,6 +114,54 @@ export interface Event {
   fallbackRouteId?: string;
   message: string;
   txHash?: string;
+  context?: EventContext;
+}
+
+/**
+ * Optional structured evidence attached to an event.
+ *
+ * The original event fields remain unchanged for frontend compatibility.
+ * Analytics use this context instead of trying to recover facts from `message`.
+ */
+export interface EventContext {
+  correlationId?: string;
+  account?: string;
+  tokenIn?: string;
+  tokenOut?: string;
+  amountIn?: number;
+  amountInRaw?: string;
+  quotedOut?: number;
+  quotedOutRaw?: string;
+  actualOut?: number;
+  amountOutMin?: number;
+  slippageBps?: number;
+  expectedOut?: number;
+  quoteDeviation?: number;
+  historicalFailureRate?: number;
+  poolRiskScore?: number;
+  priceImpactBps?: number;
+  gasUsed?: string;
+  blockNumber?: number;
+  executionMode?: "router" | "direct" | "vault" | "mock";
+  safetyMode?: "safe" | "force" | "evaluate" | "vault";
+  requestedRouteId?: string;
+  executedRouteId?: string;
+  pairAddress?: string;
+  poolLabel?: string;
+  configProfile?: "normal" | "conservative" | "aggressive";
+  flags?: string[];
+  errorCode?: string;
+  failureStage?:
+    | "evaluation"
+    | "precondition"
+    | "execution"
+    | "configuration";
+  prevented?: boolean;
+  chainMode?: "mock" | "demo" | "rpc";
+  batchPassed?: number;
+  batchFailed?: number;
+  batchTotal?: number;
+  [key: string]: unknown;
 }
 
 export interface RiskConfig {
@@ -110,6 +173,8 @@ export interface RiskConfig {
   defaultProfile: string;
   paused: boolean;
   maxSlippageBps?: number;
+  /** Unsafe / force swap slippage ceiling (10000 = 100%). */
+  maxUnsafeSlippageBps?: number;
 }
 
 export interface TokenBalance {
@@ -129,6 +194,10 @@ export interface SwapRequest {
   force?: boolean;
   configProfile?: "normal" | "conservative" | "aggressive";
   useRouter?: boolean;
+  /** Slippage tolerance in basis points (100 = 1%). Defaults to risk-config maxSlippageBps. */
+  slippageBps?: number;
+  /** Server-generated identifier used to join events from one operation. */
+  correlationId?: string;
 }
 
 export interface SwapResult {
@@ -137,14 +206,22 @@ export interface SwapResult {
   requestedRouteId?: string;
   executedRouteId?: string;
   agentDecision?: DecisionType;
+  agentBypassed?: boolean;
+  safetyMode?: "safe" | "force";
+  poolLabel?: string;
   executionMode?: "router" | "direct";
   tokenIn: string;
   tokenOut: string;
   amountIn: number;
   quotedOut: number;
+  /** On-chain balance delta for tokenOut (source of truth). */
   actualOut: number;
+  expectedOut?: number;
   amountOutMin?: number;
+  amountOutMax?: number;
   slippageBps?: number;
+  failureCode?: string;
+  failureMessage?: string;
   recipient: string;
   pairAddress: string;
   txHash: string;

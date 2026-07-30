@@ -17,6 +17,7 @@
         · DemoSwapRouter（可选）— Vault 闸门 + swap 同一笔 tx
         · POST /api/execute — 独立 Vault 闸门（EIP-712，不直接调 DEX）
     → Event 日志（JSONL 持久化 + 内存查询）
+    → Analysis Pipeline（校验、去重、覆盖率、统计、Sentinel 安全洞察）
 ```
 
 ---
@@ -84,7 +85,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/debug/status
 # Safe swap（evaluate + 必要时 fallback 到 safe 池）
 Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8080/api/swap/safe `
   -ContentType "application/json" `
-  -Body '{"routeId":"route-usdc-good-toxic","amountIn":1}'
+  -Body '{"routeId":"route-usdc-good-shallow","amountIn":100}'
 
 # 强制 swap（跳过 Agent，开发/批量验证用）
 Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8080/api/swap/force `
@@ -156,6 +157,9 @@ Base URL：`http://127.0.0.1:8080/api`
 | `GET` | `/config` | risk config |
 | `GET` | `/events` | 事件日志（内存 + JSONL 持久化） |
 | `POST` | `/events/clear` | 清空事件 |
+| `GET` | `/analysis` | 分析持久化事件，返回质量、统计和安全洞察 |
+| `GET` | `/analysis/definition` | 查看 Sentinel 字段映射 |
+| `POST` | `/analysis/run` | 使用声明式映射分析任意 JSON records |
 
 ### Quote & Evaluate
 
@@ -198,6 +202,29 @@ Base URL：`http://127.0.0.1:8080/api`
 **Agent 规则：** tokenOut 为 BAD/BAIT → REJECT（422）；TOXIC 池 → 可 FALLBACK 到同币对 SAFE 池。
 
 详见 [`docs/api-contract.md`](docs/api-contract.md)。
+
+### 可复用数据分析
+
+分析本地 Sentinel 事件：
+
+```bash
+cd backend
+npm run analyze -- --input data/events.jsonl
+```
+
+同一引擎可分析 JSON、JSONL/NDJSON 或 CSV。新项目提供字段映射 JSON，
+无需重写解析、校验、去重和通用统计代码：
+
+```bash
+npm run analyze -- --input orders.csv --config orders-analysis.json
+```
+
+设计、字段和完整用法见
+[`docs/analysis-pipeline.md`](docs/analysis-pipeline.md)。
+
+浏览器中的 `/analysis` 页面会直接渲染同一份实时报告，包括决策柱状图、
+事件趋势线、数据质量、风险因子、执行结果、证据就绪度、字段覆盖率和路由活动；没有运行数据时会
+明确显示空状态，不会用演示数字代替观测值。
 
 ---
 
@@ -253,10 +280,15 @@ sentinel-for-safe-execution/
 ├── backend/
 │   ├── .env                    # 自动生成（gitignore）
 │   ├── data/events.jsonl        # 事件持久化
-│   └── src/services/
-│       ├── swapService.ts       # safe / force / router
-│       ├── agentSignService.ts  # EIP-712 签名
-│       └── poolHealthService.ts
+│   └── src/
+│       ├── analysis/             # 可复用分析引擎
+│       ├── config/sentinel-analysis.json
+│       ├── routes/analysis.ts
+│       ├── cli/analyze.ts
+│       └── services/
+│           ├── swapService.ts       # safe / force / router
+│           ├── agentSignService.ts  # EIP-712 签名
+│           └── poolHealthService.ts
 ├── frontend/
 └── docs/
 ```
@@ -279,6 +311,7 @@ sentinel-for-safe-execution/
 - `fundSwapper` 仅 `authorizedFunders` 可调用（Router + deployer EOA），demo 专用
 - 同时只运行一个 backend 实例（8080），避免 swap 钱包 nonce 冲突
 - 前端 Timeline 部分本地拼装；权威事件源 `GET /api/events` + `backend/data/events.jsonl`
+- 旧事件缺少的分析字段会显示为低覆盖率；不会从日志文本中猜测数值
 
 ---
 

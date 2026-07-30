@@ -6,6 +6,8 @@
     "dev": "npx tsx watch src/index.ts",
     "build": "npx tsc && npx copyfiles -u 1 \"src/**/*.json\" dist/",
     "start": "node dist/index.js",
+    "analyze": "tsx src/cli/analyze.ts",
+    "test": "tsx --test test/**/*.test.ts",
     "verify:swaps": "powershell -ExecutionPolicy Bypass -File scripts/verify-swaps.ps1",
     "sync:env": "powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1"
   },
