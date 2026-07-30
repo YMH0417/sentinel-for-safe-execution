@@ -4,9 +4,9 @@ import { useWallet } from "../../contexts/WalletContext";
 import { useToast } from "../Toast";
 import { getAddress } from "ethers";
 import { api } from "../../api/client";
+import logo from "../../imgs/logo.svg"
 
 const NAV = [
-  { to: "/", label: "首页", end: true },
   { to: "/dashboard", label: "仪表盘" },
   { to: "/analysis", label: "Analysis" },
   { to: "/profile", label: "账户与勋章" },
@@ -43,28 +43,27 @@ export function AppLayout() {
     <div style={{ minHeight: "100vh", background: "var(--bg-deep)" }}>
       <header className="app-header">
         <div className="app-header-inner">
-          <NavLink to="/" className="app-header-brand">
-            <span className="app-header-logo">⬡</span>
-            <span className="app-header-title">Sentinel</span>
+          <NavLink to="/" className="app-header-brand" aria-label="返回首页">
+            <img src={logo} alt="Sentinel" />
           </NavLink>
-
-          <nav className="app-header-nav">
-            {NAV.map((item) => (
-              <NavLink
-                key={`${item.to}-${item.label}`}
-                to={item.to}
-                end={item.end}
-                className="app-header-nav-link"
-                style={({ isActive }) => ({
-                  color: isActive ? "var(--cyan)" : "var(--text-muted)",
-                  background: isActive ? "rgba(0, 255, 255, 0.08)" : "transparent",
-                  fontWeight: isActive ? 600 : 400,
-                })}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          {account && (
+            <nav className="app-header-nav">
+              {NAV.map((item) => (
+                <NavLink
+                  key={`${item.to}-${item.label}`}
+                  to={item.to}
+                  className="app-header-nav-link"
+                  style={({ isActive }) => ({
+                    color: isActive ? "var(--cyan)" : "var(--text-muted)",
+                    background: isActive ? "rgba(0, 255, 255, 0.08)" : "transparent",
+                    fontWeight: isActive ? 600 : 400,
+                  })}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+          )}
 
           <div className="app-header-actions">
             {account ? (
@@ -92,7 +91,6 @@ export function AppLayout() {
             )}
           </div>
         </div>
-        <div className="app-header-accent" />
       </header>
 
       <main className={isLanding ? "" : location.pathname === "/dashboard" ? "sentinel-page-dashboard" : "sentinel-page"}>
