@@ -44,7 +44,8 @@ export type EventType =
   | "SwapExecuted"
   | "SwapFailed"
   | "SwapBatchCompleted"
-  | "SdaExecutionWindowWaiting";
+  | "SdaExecutionWindowWaiting"
+  | "AIAnalysisCompleted";
 
 export interface Decision {
   decision: DecisionType;
@@ -79,6 +80,12 @@ export interface EvaluateRequest {
 
 export interface SafetyExplanation {
   narrative: string;
+  /** LLM 分类出的攻击向量（Normal/Quote Manipulation/Pool Risk/Liquidity Drain/MEV/Slippage/Token Risk/Unknown） */
+  attackVector?: string;
+  /** LLM 给出的 2-3 条建议动作 */
+  recommendations?: string[];
+  /** LLM 自评置信度 0-100 */
+  confidence?: number;
   source: "llm" | "local-post-train";
   model: string;
   generatedAt: string;
@@ -199,7 +206,7 @@ export interface SwapRequest {
   slippageBps?: number;
   /** Server-generated identifier used to join events from one operation. */
   correlationId?: string;
-  /** Batch verify-all: skip 15s wall-clock wait for SDA routes (evm_increaseTime only). */
+  /** For SDA pools: fast-forward the execution window in demo/Anvil instead of wall-clock waiting. */
   fastForwardSdaWindow?: boolean;
 }
 
@@ -233,14 +240,13 @@ export interface SwapResult {
   balancesBefore: Partial<Record<string, TokenBalance>>;
   balancesAfter: Partial<Record<string, TokenBalance>>;
   balanceDelta: Partial<Record<string, number>>;
-  /** SDA two-step execution window (Unsafe / force path). */
+  /** SDA delayed execution meta — present only when the swap went through an SDA pool. */
   sdaExecutionWindow?: boolean;
   sdaWindowSeconds?: number;
   sdaWaitedSeconds?: number;
   sdaOpenTxHash?: string;
   sdaReadyAt?: number;
   quotedOutAtOpen?: number;
-  quotedOutAtComplete?: number;
 }
 
 export interface SwapBatchResult {

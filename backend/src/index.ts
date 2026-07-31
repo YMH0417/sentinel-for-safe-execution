@@ -16,6 +16,7 @@ import debugRouter from "./routes/debug.js";
 import demoRouter from "./routes/demo.js";
 import swapRouter from "./routes/swap.js";
 import analysisRouter from "./routes/analysis.js";
+import aiAnalysisRouter from "./routes/ai-analysis.js";
 import { isMockChainMode } from "./config/chainConfig.js";
 import { isDemoChainMode } from "./config/demoConfig.js";
 import { warmPoolsHealthCache } from "./services/poolHealthCacheService.js";
@@ -41,6 +42,7 @@ app.use("/api/debug", debugRouter);
 app.use("/api/demo", demoRouter);
 app.use("/api/swap", swapRouter);
 app.use("/api/analysis", analysisRouter);
+app.use("/api/ai-alert-analysis", aiAnalysisRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -63,15 +65,16 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    GET  /api/events         — 查询事件日志`);
   console.log(`    GET  /api/analysis       — 运行持久化事件数据分析`);
   console.log(`    POST /api/analysis/run   — 通用配置化数据分析`);
+  console.log(`    POST /api/ai-alert-analysis — AI智能解析单条决策事件`);
   console.log(`    GET  /api/config         — 读取 risk config`);
   console.log(`    GET  /api/quote/route/:id — 单条路由报价`);
   console.log(`    GET  /api/demo/tokens     — Demo 代币元数据`);
-  console.log(`    GET  /api/demo/pools      — Demo 48 池注册表`);
+  console.log(`    GET  /api/demo/pools      — Demo 36 池注册表`);
   console.log(`    POST /api/swap            — Safe swap (evaluate + fallback)`);
   console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
   console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
-  console.log(`    POST /api/swap/verify-all — Batch verify (default force; ?safe=true)`);
-  console.log(`    GET  /api/debug/pools-health — 池健康检查（带缓存）`);
+  console.log(`    POST /api/swap/verify-all — Batch 36 (default force; ?safe=true)`);
+  console.log(`    GET  /api/debug/pools-health — 36 池健康检查（带缓存）`);
   console.log(`    POST /api/debug/warm-cache   — 预热 pools-health 缓存`);
   console.log(`    GET  /api/swap/wallet     — Swap 钱包地址`);
   console.log(`    GET  /api/swap/balances   — Swap 钱包余额`);

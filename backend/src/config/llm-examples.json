@@ -1,23 +1,65 @@
 [
   {
-    "_comment": "新增：ALLOW 场景表达样例，仅约束大模型解释风格，不参与规则打分。",
+    "_comment": "ALLOW 场景表达样例，仅约束大模型解释风格，不参与规则打分。",
     "decision": "ALLOW",
     "flags": [],
     "tone": "Calm confirmation",
     "example": "This route can proceed because the quote is close to expectation, the pool risk is low, and recent failures are rare. The remaining risk is normal execution variance, so keep the configured loss limit in place."
   },
   {
-    "_comment": "新增：REJECT 场景的解释样例，用于强调多风险信号同时触发时应清楚告知用户失败原因。",
+    "_comment": "REJECT 场景的解释样例，多风险信号同时触发时清楚告知用户失败原因。",
     "decision": "REJECT",
     "flags": ["quote_deviation", "failure_risk", "pool_risk"],
     "tone": "Firm safety block",
     "example": "This route should not be executed because several independent risk signals are high at the same time. The quote has moved away from the expected output, historical failures are frequent, and pool risk is elevated, so the likely user impact is failed execution or unacceptable loss."
   },
   {
-    "_comment": "新增：FALLBACK 场景的解释样例，用于说明中等风险下为什么建议切换到更安全路线。",
+    "_comment": "FALLBACK 场景的解释样例，中等风险下建议切换到更安全路线。",
     "decision": "FALLBACK_TO_SAFE_ROUTE",
     "flags": ["quote_deviation", "failure_risk", "pool_risk"],
     "tone": "Actionable fallback",
     "example": "This route is not catastrophic, but it is risky enough to avoid direct execution. Use the fallback route because it preserves the trade intent while reducing exposure to slippage, failure, and pool-level execution risk."
+  },
+  {
+    "_comment": "单信号 quote_deviation 触发，强调 MEV/预言机操纵或市场波动语境。",
+    "decision": "REJECT",
+    "flags": ["quote_deviation"],
+    "tone": "Targeted warning",
+    "example": "The quoted output has diverged meaningfully from the expected amount, which often signals MEV activity, stale oracle, or rapid market movement. Executing now would likely incur excessive slippage, so the route is blocked."
+  },
+  {
+    "_comment": "单信号 pool_risk 触发，强调低流动性池/夹击风险语境。",
+    "decision": "FALLBACK_TO_SAFE_ROUTE",
+    "flags": ["pool_risk"],
+    "tone": "Cautious redirect",
+    "example": "The target pool shows elevated risk, likely due to thin liquidity or recent imbalance that exposes the swap to sandwich attacks. Switching to the fallback route keeps the trade intent while avoiding the risky pool."
+  },
+  {
+    "_comment": "BAIT 诱骗型代币硬规则短路语境。",
+    "decision": "REJECT",
+    "flags": ["suspicious_token"],
+    "tone": "Decisive block",
+    "example": "The destination token is flagged as a bait-type asset commonly used in honeypot scams. Regardless of how favorable the pool quote looks, execution would almost certainly leave the user unable to sell, so the route is rejected."
+  },
+  {
+    "_comment": "BAD 高风险代币硬规则短路语境。",
+    "decision": "REJECT",
+    "flags": ["high_token_risk"],
+    "tone": "Decisive block",
+    "example": "The destination token carries a high-risk tag from the registry. Even with normal pool liquidity, trading this asset is unsafe because of its history of manipulation or rug behavior, so the route is rejected."
+  },
+  {
+    "_comment": "high_price_impact 大额滑点语境。",
+    "decision": "FALLBACK_TO_SAFE_ROUTE",
+    "flags": ["high_price_impact"],
+    "tone": "Size-aware redirect",
+    "example": "The swap size is large relative to pool depth, producing a price impact above the safe threshold. Splitting the trade or using the fallback route with deeper liquidity will yield a better effective rate."
+  },
+  {
+    "_comment": "route_not_found 未知路由语境，对应 agentService 的硬规则短路。",
+    "decision": "REJECT",
+    "flags": ["route_not_found"],
+    "tone": "Clarifying block",
+    "example": "The requested route is not present in the available route set, so its risk cannot be evaluated. The system blocks execution rather than acting on unknown data; select a known route and retry."
   }
 ]
