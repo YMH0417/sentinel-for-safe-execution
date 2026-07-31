@@ -21,8 +21,8 @@ export interface LlmEnvConfigView {
   responseLanguage: LlmResponseLanguage;
 }
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
 const CANONICAL_KEYS = [
   "LLM_API_KEY",
@@ -37,9 +37,9 @@ const ALIAS_KEYS = [
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "OPENAI_MODEL",
-  "DEEPSEEK_API_KEY",
-  "DEEPSEEK_BASE_URL",
-  "DEEPSEEK_MODEL",
+  "GROQ_API_KEY",
+  "GROQ_BASE_URL",
+  "GROQ_MODEL",
 ] as const;
 
 const ALL_MANAGED_KEYS = [...CANONICAL_KEYS, ...ALIAS_KEYS];
@@ -99,12 +99,12 @@ export function maskApiKey(apiKey: string): string | null {
 
 export function readLlmEnvConfig(): LlmEnvConfig {
   const map = readEnvMap();
-  const apiKey = firstNonEmpty(map, ["LLM_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"]);
+  const apiKey = firstNonEmpty(map, ["LLM_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"]);
   const baseUrl =
-    firstNonEmpty(map, ["LLM_BASE_URL", "OPENAI_BASE_URL", "DEEPSEEK_BASE_URL"]) ||
+    firstNonEmpty(map, ["LLM_BASE_URL", "GROQ_BASE_URL", "OPENAI_BASE_URL"]) ||
     DEFAULT_BASE_URL;
   const model =
-    firstNonEmpty(map, ["LLM_MODEL", "OPENAI_MODEL", "DEEPSEEK_MODEL"]) || DEFAULT_MODEL;
+    firstNonEmpty(map, ["LLM_MODEL", "GROQ_MODEL", "OPENAI_MODEL"]) || DEFAULT_MODEL;
   const enabledRaw = map.get("LLM_ANALYSIS_ENABLED")?.trim().toLowerCase();
   const enabled = enabledRaw !== "false";
   const responseLanguage = normalizeLlmResponseLanguage(map.get("LLM_RESPONSE_LANGUAGE"));

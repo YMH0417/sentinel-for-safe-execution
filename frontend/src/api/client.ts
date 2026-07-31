@@ -1,5 +1,6 @@
 import type { Decision, Event, SwapResult } from "../types";
 import { parseApiError } from "../lib/apiError";
+import { fetchJson, TimeoutError } from "../lib/withTimeout";
 
 const API = "/api";
 
@@ -283,16 +284,31 @@ export const api = {
       if (!res.ok) throw new Error(parseApiError(data.error, "Swap failed"));
       return data as SwapResult;
     }),
-  aiAlertAnalysis: (eventId?: string) =>
-    fetch(`${API}/ai-alert-analysis`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(eventId ? { eventId } : {}),
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(parseApiError(data.error, "AI 分析调用失败"));
+  aiAlertAnalysis: async (eventId?: string) => {
+    try {
+      const { res, data } = await fetchJson<SafetyExplanation & { error?: unknown }>(
+        `${API}/ai-alert-analysis`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(eventId ? { eventId } : {}),
+        },
+        15_000
+      );
+      if (!res.ok) {
+        throw new Error(parseApiError(data.error, "AI 分析调用失败"));
+      }
       return data as SafetyExplanation;
-    }),
+    } catch (error) {
+      if (
+        error instanceof TimeoutError ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
+        throw new Error("AI 分析等待超时，大模型响应较慢，请稍后重试");
+      }
+      throw error;
+    }
+  },
   getLlmSettings: () => getJson<LlmSettingsView>("/settings/llm"),
   saveLlmSettings: (body: {
     apiKey?: string;

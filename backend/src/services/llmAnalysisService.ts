@@ -4,8 +4,8 @@ import * as path from "path";
 import type { Decision, Route, SafetyExplanation } from "../types.js";
 import { getLlmPromptBundle, type LlmResponseLanguage } from "../config/llmPromptConfig.js";
 import { readLlmEnvConfig } from "./llmEnvConfigService.js";
+import { postJson } from "../utils/platformFetch.js";
 
-// 领域风格样例：约束大模型在 Web3/AMM 语境下的表达方式，不参与规则打分。
 interface PostTrainExample {
   decision: string;
   flags: string[];
@@ -17,11 +17,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const examplesFilePath = path.join(__dirname, "../config/llm-examples.json");
 
-// OpenAI-compatible Chat Completions API (any provider with /chat/completions).
-const DEFAULT_MODEL = "gpt-4o-mini";
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+const DEFAULT_TIMEOUT_MS = 10_000;
 
-// 读取本地风格样例。读取失败时降级为空样例，不影响核心调用链。
 function loadPostTrainExamples(): PostTrainExample[] {
   try {
     const raw = fs.readFileSync(examplesFilePath, "utf-8");
@@ -31,57 +30,52 @@ function loadPostTrainExamples(): PostTrainExample[] {
   }
 }
 
-function pct(value: number): string {
-  return `${(value * 100).toFixed(value < 0.1 ? 1 : 0)}%`;
-}
-
 function quoteDeviation(route?: Route): number {
   if (!route || route.expectedOut === 0) return 0;
   return Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
 }
 
-// LLM 解释层配置（OpenAI 兼容：base URL + API key + model）。
-// 优先 LLM_*，也兼容 OPENAI_* / DEEPSEEK_*。未配置 key 或 LLM_ANALYSIS_ENABLED=false 时调用失败。
 function getConfig() {
   const apiKey =
     process.env.LLM_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.DEEPSEEK_API_KEY;
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY;
   const baseUrl = (
     process.env.LLM_BASE_URL ||
+    process.env.GROQ_BASE_URL ||
     process.env.OPENAI_BASE_URL ||
-    process.env.DEEPSEEK_BASE_URL ||
     DEFAULT_BASE_URL
   ).replace(/\/+$/, "");
-  const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || DEFAULT_MODEL;
+  const model =
+    process.env.LLM_MODEL ||
+    process.env.GROQ_MODEL ||
+    process.env.OPENAI_MODEL ||
+    DEFAULT_MODEL;
   const enabled = process.env.LLM_ANALYSIS_ENABLED !== "false";
   const responseLanguage = readLlmEnvConfig().responseLanguage;
 
   return { apiKey, baseUrl, model, enabled, responseLanguage };
 }
 
-function isZhipuProvider(baseUrl: string): boolean {
-  const lower = baseUrl.toLowerCase();
-  return lower.includes("bigmodel.cn") || lower.includes("z.ai");
-}
-
-function llmRequestTimeoutMs(baseUrl: string): number {
+function llmRequestTimeoutMs(): number {
   const fromEnv = Number(process.env.LLM_TIMEOUT_MS);
-  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-  return isZhipuProvider(baseUrl) ? 30_000 : 6_000;
+  if (Number.isFinite(fromEnv) && fromEnv > 0) {
+    return Math.min(fromEnv, 10_000);
+  }
+  return DEFAULT_TIMEOUT_MS;
 }
 
-function extractMessageText(message?: {
-  content?: string;
-  reasoning_content?: string;
-}): string {
-  const content = message?.content?.trim();
-  if (content) return content;
-  const reasoning = message?.reasoning_content?.trim();
-  if (!reasoning) return "";
-  // GLM thinking mode may put JSON in reasoning_content; prefer last JSON object block.
-  const jsonMatch = reasoning.match(/\{[\s\S]*\}\s*$/);
-  return jsonMatch?.[0]?.trim() ?? reasoning;
+function formatLlmFetchError(error: unknown, timeoutMs: number): Error {
+  if (error instanceof Error) {
+    const aborted =
+      error.name === "AbortError" ||
+      error.message.toLowerCase().includes("aborted") ||
+      error.message.toLowerCase().includes("abort");
+    if (aborted) {
+      return new Error(`大模型响应超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试。`);
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function compactDecision(decision: Decision) {
@@ -115,8 +109,6 @@ function compactRoute(route?: Route) {
   };
 }
 
-// 构造给大模型的最小上下文：传入规则引擎已算出的结果和必要 route 指标，
-// 避免模型重新“裁决”交易。强制 JSON 输出，便于结构化消费。
 function buildPrompt(
   decision: Decision,
   route: Route | undefined,
@@ -139,7 +131,6 @@ function buildPrompt(
   );
 }
 
-// 剥离可能的 markdown 代码块后解析 JSON。仿 sentineldao 的 parseResponse。
 function parseLlmResponse(
   text: string,
   language: LlmResponseLanguage
@@ -191,8 +182,6 @@ function parseLlmResponse(
   };
 }
 
-// 调用 OpenAI 兼容 Chat Completions 生成结构化解释。超时 6 秒，防止外部模型拖慢安全评估链路。
-// 失败（无 key / 超时 / HTTP 非 2xx / 解析失败）一律抛错，由调用方决定如何对外暴露。
 async function requestLlmNarrative(
   decision: Decision,
   route: Route | undefined,
@@ -203,71 +192,59 @@ async function requestLlmNarrative(
     throw new Error("LLM analysis disabled by LLM_ANALYSIS_ENABLED=false");
   }
   if (!apiKey) {
-    throw new Error(
-      "LLM API key not configured (set LLM_API_KEY, OPENAI_API_KEY, or DEEPSEEK_API_KEY)"
-    );
+    throw new Error("LLM API key not configured (set LLM_API_KEY or GROQ_API_KEY)");
   }
 
+  const timeoutMs = llmRequestTimeoutMs();
   const controller = new AbortController();
-  const timeoutMs = llmRequestTimeoutMs(baseUrl);
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
   const prompts = getLlmPromptBundle(responseLanguage);
 
-  const requestBody: Record<string, unknown> = {
-    model,
-    temperature: 0.2,
-    max_tokens: 400,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: prompts.systemMessage,
-      },
-      {
-        role: "user",
-        content: buildPrompt(decision, route, configProfile, responseLanguage),
-      },
-    ],
-  };
-  if (isZhipuProvider(baseUrl)) {
-    // GLM-4.7-Flash defaults to thinking mode; disable for direct JSON in content.
-    requestBody.thinking = { type: "disabled" };
-  }
-
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
+    const { status, text } = await postJson(
+      `${baseUrl}/chat/completions`,
+      {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+      JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 400,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: prompts.systemMessage },
+          {
+            role: "user",
+            content: buildPrompt(decision, route, configProfile, responseLanguage),
+          },
+        ],
+      }),
+      controller.signal
+    );
 
-    if (!response.ok) {
-      throw new Error(`LLM HTTP ${response.status}: ${await response.text()}`);
+    if (status < 200 || status >= 300) {
+      throw new Error(`LLM HTTP ${status}: ${text}`);
     }
 
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
+    const payload = JSON.parse(text) as {
+      choices?: Array<{ message?: { content?: string } }>;
       model?: string;
     };
-    const content = extractMessageText(payload.choices?.[0]?.message);
+    const content = payload.choices?.[0]?.message?.content?.trim();
     if (!content) {
       throw new Error("LLM returned empty content");
     }
 
     const parsed = parseLlmResponse(content, responseLanguage);
     return { ...parsed, model: payload.model || model };
+  } catch (error) {
+    throw formatLlmFetchError(error, timeoutMs);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-// 统一出口：成功返回结构化 SafetyExplanation，失败抛错。
-// 原有 ALLOW/REJECT/FALLBACK_TO_SAFE_ROUTE 决策仍由 agentService 的确定性规则产生。
 export async function explainSafetyDecision(
   decision: Decision,
   route: Route | undefined,

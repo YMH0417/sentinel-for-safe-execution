@@ -195,7 +195,9 @@ export function DashboardPage() {
               </div>
               {aiState.status === "idle" && summary}
               {aiState.status === "loading" && (
-                <div style={{ color: "var(--text-muted)" }}>AI 分析中…</div>
+                <div style={{ color: "var(--text-muted)" }}>
+                  AI 分析中…（通常数秒内完成）
+                </div>
               )}
               {aiState.status === "done" && (
                 <AiAnalysisContent result={aiState.result} onRerun={handleAiAnalysis} loading={aiLoading} />

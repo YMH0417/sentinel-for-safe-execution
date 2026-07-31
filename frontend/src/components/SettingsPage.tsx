@@ -455,7 +455,7 @@ export function SettingsPage() {
       <div className="sentinel-card" style={{ marginTop: 20 }}>
         <div className="sentinel-label">大模型（AI 警报分析）</div>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
-          配置 OpenAI 兼容接口，写入 <code>backend/.env</code>。
+          配置 Groq 等 OpenAI 兼容接口，写入 <code>backend/.env</code>。
           Dashboard「AI 深度分析」读取此处配置；保存后立即生效。
         </p>
 
@@ -504,7 +504,7 @@ export function SettingsPage() {
                 <span style={{ color: "var(--text-muted)" }}>Base URL</span>
                 <input
                   type="url"
-                  placeholder="https://api.openai.com/v1"
+                  placeholder="https://api.groq.com/openai/v1"
                   value={llmBaseUrl}
                   onChange={(e) => setLlmBaseUrl(e.target.value)}
                   disabled={llmSaving}
@@ -515,7 +515,7 @@ export function SettingsPage() {
                 <span style={{ color: "var(--text-muted)" }}>Model</span>
                 <input
                   type="text"
-                  placeholder="gpt-4o-mini"
+                  placeholder="llama-3.3-70b-versatile"
                   value={llmModel}
                   onChange={(e) => setLlmModel(e.target.value)}
                   disabled={llmSaving}
