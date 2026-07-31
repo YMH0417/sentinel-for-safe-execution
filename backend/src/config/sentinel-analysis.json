@@ -67,7 +67,8 @@
     "FallbackRequired",
     "SwapExecuted",
     "SwapFailed",
-    "SwapBatchCompleted"
+    "SwapBatchCompleted",
+    "AIAnalysisCompleted"
   ],
   "allowedOutcomes": [
     "ALLOW",

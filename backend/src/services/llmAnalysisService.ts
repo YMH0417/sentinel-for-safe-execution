@@ -1,9 +1,9 @@
 import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as path from "path";
-import { Decision, Route, SafetyExplanation } from "../types.js";
+import type { Decision, Route, SafetyExplanation } from "../types.js";
 
-// 新增：约束大模型表达方式的样例
+// 领域风格样例：约束大模型在 Web3/AMM 语境下的表达方式，不参与规则打分。
 interface PostTrainExample {
   decision: string;
   flags: string[];
@@ -13,14 +13,13 @@ interface PostTrainExample {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// 新增：风格样例文件。JSON 本身不能写注释，所以说明放在这里。
 const examplesFilePath = path.join(__dirname, "../config/llm-examples.json");
 
-const DEFAULT_MODEL = "gpt-4o-mini";
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+// 提供兼容接口，默认使用 deepseek。
+const DEFAULT_MODEL = "deepseek-chat";
+const DEFAULT_BASE_URL = "https://api.deepseek.com";
 
-// 新增：读取本地风格样例。
-// 读取失败时直接降级为空样例，保证核心评估接口不被解释层影响。
+// 读取本地风格样例。读取失败时降级为空样例，不影响核心调用链。
 function loadPostTrainExamples(): PostTrainExample[] {
   try {
     const raw = fs.readFileSync(examplesFilePath, "utf-8");
@@ -39,25 +38,23 @@ function quoteDeviation(route?: Route): number {
   return Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
 }
 
-// 新增：本地兜底解释器。
-// 当未配置 API Key、模型超时或模型服务不可用时，仍能给用户自然语言说明。
-function buildLocalNarrative(decision: Decision, route?: Route): string {
-  if (!route) {
-    return `The route could not be evaluated safely because "${decision.routeId}" was not found. The system rejected execution to avoid acting on unknown route data.`;
-  }
+// LLM 解释层配置。
+// DEEPSEEK_API_KEY 未设置或 LLM_ANALYSIS_ENABLED=false 时调用方应直接判定为失败。
+function getConfig() {
+  const apiKey =
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.LLM_API_KEY ||
+    process.env.OPENAI_API_KEY;
+  const baseUrl = (
+    process.env.DEEPSEEK_BASE_URL ||
+    process.env.LLM_BASE_URL ||
+    process.env.OPENAI_BASE_URL ||
+    DEFAULT_BASE_URL
+  ).replace(/\/+$/, "");
+  const model = process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || DEFAULT_MODEL;
+  const enabled = process.env.LLM_ANALYSIS_ENABLED !== "false";
 
-  const deviation = quoteDeviation(route);
-  const metrics = `Quote deviation is ${pct(deviation)}, historical failure rate is ${pct(route.historicalFailureRate)}, and pool risk is ${route.poolRiskScore}/100.`;
-
-  if (decision.decision === "ALLOW") {
-    return `This route can proceed because the combined risk score is ${decision.riskScore}/100 and no blocking risk flags were triggered. ${metrics} The main residual risk is normal market movement between quote and execution, so the configured loss limit should still remain active.`;
-  }
-
-  if (decision.decision === "FALLBACK_TO_SAFE_ROUTE") {
-    return `This route is usable only with extra caution because the risk score is ${decision.riskScore}/100 and the active flags are ${decision.flags.join(", ") || "moderate-risk signals"}. ${metrics} The safer action is to switch to fallback route ${decision.fallbackRouteId ?? "the configured fallback"} before execution.`;
-  }
-
-  return `This route should be blocked because the risk score is ${decision.riskScore}/100 and the active flags are ${decision.flags.join(", ") || "critical-risk signals"}. ${metrics} Executing it could expose the user to failed settlement, excessive slippage, or pool-level manipulation risk.`;
+  return { apiKey, baseUrl, model, enabled };
 }
 
 function compactDecision(decision: Decision) {
@@ -91,13 +88,25 @@ function compactRoute(route?: Route) {
   };
 }
 
-// 新增：构造给大模型的最小上下文。
-// 只传入规则引擎已经算出的结果和必要 route 指标，避免模型重新“裁决”交易。
-function buildPrompt(decision: Decision, route: Route | undefined, configProfile: string): string {
+// 构造给大模型的最小上下文：传入规则引擎已算出的结果和必要 route 指标，
+// 避免模型重新“裁决”交易。强制 JSON 输出，便于结构化消费。
+function buildPrompt(
+  decision: Decision,
+  route: Route | undefined,
+  configProfile: string
+): string {
   const examples = loadPostTrainExamples();
   return JSON.stringify(
     {
-      task: "Explain the deterministic safety evaluation to an end user in natural language. Do not change the decision. Do not promise guaranteed execution. Mention why it succeeded or failed, the main risk, and the recommended next action. Keep it under 90 words.",
+      task:
+        "You are Sentinel's Web3 safety explainer for Uniswap-V2-style swap routes. " +
+        "Domain context: AMM swaps, quote deviation, pool liquidity risk, historical failure rate, price impact, MEV/slippage, token risk. " +
+        "Do NOT change the deterministic decision. Do NOT invent a new risk score. " +
+        "Explain WHY the rule engine produced this decision, classify the attack vector if any, and give 2-3 actionable recommendations. " +
+        "Keep the narrative under 90 words and user-facing. " +
+        "Respond ONLY with valid JSON in this exact shape: " +
+        '{"narrative":"<string>","attackVector":"<Normal|Quote Manipulation|Pool Risk|Liquidity Drain|MEV/Slippage|Token Risk|Unknown>","recommendations":["<string>"],"confidence":<0-100>}. ' +
+        "No markdown, no code fences.",
       configProfile,
       route: compactRoute(route),
       deterministicDecision: compactDecision(decision),
@@ -108,22 +117,68 @@ function buildPrompt(decision: Decision, route: Route | undefined, configProfile
   );
 }
 
-// 新增：LLM 解释层配置。
-// 支持 OpenAI 兼容接口；LLM_ANALYSIS_ENABLED=false 可关闭模型请求。
-function getConfig() {
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  const baseUrl = (process.env.LLM_BASE_URL || process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
-  const model = process.env.LLM_MODEL || DEFAULT_MODEL;
-  const enabled = process.env.LLM_ANALYSIS_ENABLED !== "false";
+// 剥离可能的 markdown 代码块后解析 JSON。仿 sentineldao 的 parseResponse。
+function parseLlmResponse(text: string): {
+  narrative: string;
+  attackVector: string;
+  recommendations: string[];
+  confidence: number;
+} {
+  let cleanText = text.trim();
+  if (cleanText.startsWith("```json")) {
+    cleanText = cleanText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
+  } else if (cleanText.startsWith("```")) {
+    cleanText = cleanText.replace(/```\n?/g, "");
+  }
 
-  return { apiKey, baseUrl, model, enabled };
+  const parsed = JSON.parse(cleanText) as {
+    narrative?: unknown;
+    attackVector?: unknown;
+    recommendations?: unknown;
+    confidence?: unknown;
+  };
+
+  const recommendations = Array.isArray(parsed.recommendations)
+    ? parsed.recommendations
+        .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
+        .slice(0, 3)
+    : [];
+
+  if (typeof parsed.narrative !== "string" || !parsed.narrative.trim()) {
+    throw new Error("LLM response missing narrative");
+  }
+
+  return {
+    narrative: parsed.narrative.trim(),
+    attackVector:
+      typeof parsed.attackVector === "string" && parsed.attackVector.trim()
+        ? parsed.attackVector.trim()
+        : "Unknown",
+    recommendations:
+      recommendations.length > 0
+        ? recommendations
+        : ["Monitor route activity for changes."],
+    confidence:
+      typeof parsed.confidence === "number" && Number.isFinite(parsed.confidence)
+        ? Math.min(100, Math.max(0, Math.round(parsed.confidence)))
+        : 70,
+  };
 }
 
-// 新增：调用大模型生成用户可读解释。
-// 这里把超时控制在 6 秒，防止外部模型拖慢或阻塞安全评估链路。
-async function requestLlmNarrative(decision: Decision, route: Route | undefined, configProfile: string): Promise<{ narrative: string; model: string } | null> {
+// 调用 DeepSeek 生成结构化解释。超时 6 秒，防止外部模型拖慢安全评估链路。
+// 失败（无 key / 超时 / HTTP 非 2xx / 解析失败）一律抛错，由调用方决定如何对外暴露。
+async function requestLlmNarrative(
+  decision: Decision,
+  route: Route | undefined,
+  configProfile: string
+): Promise<{ narrative: string; attackVector: string; recommendations: string[]; confidence: number; model: string }> {
   const { apiKey, baseUrl, model, enabled } = getConfig();
-  if (!enabled || !apiKey) return null;
+  if (!enabled) {
+    throw new Error("LLM analysis disabled by LLM_ANALYSIS_ENABLED=false");
+  }
+  if (!apiKey) {
+    throw new Error("LLM API key not configured (set DEEPSEEK_API_KEY)");
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
@@ -132,17 +187,19 @@ async function requestLlmNarrative(decision: Decision, route: Route | undefined,
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_tokens: 180,
+        max_tokens: 400,
+        response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "You are Sentinel's safety-result explainer. Your output is concise, user-facing, and faithful to the deterministic risk engine.",
+            content:
+              "You are Sentinel's Web3 safety-result explainer. Your output is concise, user-facing, faithful to the deterministic risk engine, and always valid JSON.",
           },
           {
             role: "user",
@@ -153,27 +210,27 @@ async function requestLlmNarrative(decision: Decision, route: Route | undefined,
       signal: controller.signal,
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      throw new Error(`LLM HTTP ${response.status}: ${await response.text()}`);
+    }
 
-    const payload = await response.json() as {
+    const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
       model?: string;
     };
     const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) return null;
+    if (!content) {
+      throw new Error("LLM returned empty content");
+    }
 
-    return {
-      narrative: content,
-      model: payload.model || model,
-    };
-  } catch {
-    return null;
+    const parsed = parseLlmResponse(content);
+    return { ...parsed, model: payload.model || model };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-// 新增：统一出口。优先使用 LLM 解释，失败则回退到本地解释。
+// 统一出口：成功返回结构化 SafetyExplanation，失败抛错。
 // 原有 ALLOW/REJECT/FALLBACK_TO_SAFE_ROUTE 决策仍由 agentService 的确定性规则产生。
 export async function explainSafetyDecision(
   decision: Decision,
@@ -181,21 +238,15 @@ export async function explainSafetyDecision(
   configProfile: string
 ): Promise<SafetyExplanation> {
   const generatedAt = new Date().toISOString();
-  const llmResult = await requestLlmNarrative(decision, route, configProfile);
-
-  if (llmResult) {
-    return {
-      narrative: llmResult.narrative,
-      source: "llm",
-      model: llmResult.model,
-      generatedAt,
-    };
-  }
+  const result = await requestLlmNarrative(decision, route, configProfile);
 
   return {
-    narrative: buildLocalNarrative(decision, route),
-    source: "local-post-train",
-    model: "built-in-safety-explainer",
+    narrative: result.narrative,
+    attackVector: result.attackVector,
+    recommendations: result.recommendations,
+    confidence: result.confidence,
+    source: "llm",
+    model: result.model,
     generatedAt,
   };
 }

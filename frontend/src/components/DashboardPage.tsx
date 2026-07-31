@@ -1,16 +1,25 @@
 ﻿import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { getAddress } from "ethers";
 import {
+  api,
   buildAlertSummary,
   computePoolChainStatus,
   computeScoreLegend,
   computeUserStats,
   computeWorkflowStages,
 } from "../api/client";
+import type { SafetyExplanation } from "../api/client";
 import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { useWallet } from "../contexts/WalletContext";
 import { useDashboardData } from "../hooks/useDashboardData";
+
+type AiState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; result: SafetyExplanation }
+  | { status: "error"; message: string };
 
 const DOT_CLASS = {
   purple: "dashboard-dot-purple",
@@ -23,8 +32,31 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const { account } = useWallet();
   const { events, pools, status, balances, score, refreshing, poolsPending, refresh } = useDashboardData(account);
+  const [aiState, setAiState] = useState<AiState>({ status: "idle" });
+  const [aiLoading, setAiLoading] = useState(false);
 
   const handleRefresh = () => void refresh();
+
+  const handleAiAnalysis = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiState({ status: "loading" });
+    try {
+      // 取最新一条决策事件
+      const latestDecision = [...events]
+        .reverse()
+        .find((e) => e.eventType === "DecisionMade" || e.decision);
+      const result = await api.aiAlertAnalysis(latestDecision?.id);
+      setAiState({ status: "done", result });
+    } catch (err) {
+      setAiState({
+        status: "error",
+        message: err instanceof Error ? err.message : "AI 分析调用失败",
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const legend = computeScoreLegend(events, pools ?? undefined);
   const chainRows = computePoolChainStatus(pools ?? undefined);
@@ -147,8 +179,44 @@ export function DashboardPage() {
               )}
             </div>
             <div className="dashboard-ai-box">
-              <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 6 }}>AI 警报分析</div>
-              {summary}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontWeight: 600, color: "var(--green)" }}>AI 警报分析</span>
+                {aiState.status === "idle" && (
+                  <button
+                    type="button"
+                    className="sentinel-btn sentinel-btn-ghost"
+                    onClick={handleAiAnalysis}
+                    disabled={aiLoading}
+                    style={{ padding: "2px 10px", fontSize: 11 }}
+                  >
+                    AI 深度分析
+                  </button>
+                )}
+              </div>
+              {aiState.status === "idle" && summary}
+              {aiState.status === "loading" && (
+                <div style={{ color: "var(--text-muted)" }}>AI 分析中…</div>
+              )}
+              {aiState.status === "done" && (
+                <AiAnalysisContent result={aiState.result} onRerun={handleAiAnalysis} loading={aiLoading} />
+              )}
+              {aiState.status === "error" && (
+                <div>
+                  <div style={{ color: "var(--red)", marginBottom: 6 }}>AI 分析调用失败</div>
+                  <div style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 8, wordBreak: "break-word" }}>
+                    {aiState.message}
+                  </div>
+                  <button
+                    type="button"
+                    className="sentinel-btn sentinel-btn-ghost"
+                    onClick={handleAiAnalysis}
+                    disabled={aiLoading}
+                    style={{ padding: "2px 10px", fontSize: 11 }}
+                  >
+                    重试
+                  </button>
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -231,6 +299,67 @@ export function DashboardPage() {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AiAnalysisContent({
+  result,
+  onRerun,
+  loading,
+}: {
+  result: SafetyExplanation;
+  onRerun: () => void;
+  loading: boolean;
+}) {
+  const vectorColor =
+    result.attackVector && result.attackVector !== "Normal" && result.attackVector !== "Unknown"
+      ? "var(--yellow)"
+      : "var(--green)";
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+        {result.attackVector && (
+          <span
+            style={{
+              fontSize: 11,
+              padding: "2px 8px",
+              borderRadius: 12,
+              background: `${vectorColor}22`,
+              color: vectorColor,
+              border: `1px solid ${vectorColor}44`,
+            }}
+          >
+            {result.attackVector}
+          </span>
+        )}
+        {typeof result.confidence === "number" && (
+          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            置信度 {result.confidence}%
+          </span>
+        )}
+      </div>
+      <div style={{ color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 8 }}>
+        {result.narrative}
+      </div>
+      {result.recommendations && result.recommendations.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: 16, color: "var(--text-muted)", lineHeight: 1.6 }}>
+          {result.recommendations.map((rec, i) => (
+            <li key={i} style={{ marginBottom: 2 }}>{rec}</li>
+          ))}
+        </ul>
+      )}
+      <div style={{ marginTop: 8, textAlign: "right" }}>
+        <button
+          type="button"
+          className="sentinel-btn sentinel-btn-ghost"
+          onClick={onRerun}
+          disabled={loading}
+          style={{ padding: "2px 10px", fontSize: 11 }}
+        >
+          重新分析
+        </button>
       </div>
     </div>
   );

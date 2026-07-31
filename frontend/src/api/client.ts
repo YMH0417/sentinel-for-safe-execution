@@ -52,30 +52,14 @@ export interface TokenBalance {
   human: number;
 }
 
-export interface DemoSupplyOverview {
-  scenarioDeployer: string;
-  testUser: string;
-  holder: string;
-  testUserIsAuthorizedMinter: boolean;
-  tokens: Array<{
-    symbol: string;
-    address: string;
-    decimals: number;
-    totalSupplyHuman: number;
-    deployerInventoryHuman: number;
-    holderBalanceHuman: number;
-  }>;
-  pools: Array<{
-    routeName: string;
-    pair: string;
-    tokenIn: string;
-    tokenOut: string;
-    token0Symbol: string;
-    token1Symbol: string;
-    reserve0Human: number;
-    reserve1Human: number;
-    label: string;
-  }>;
+export interface SafetyExplanation {
+  narrative: string;
+  attackVector?: string;
+  recommendations?: string[];
+  confidence?: number;
+  source: "llm" | "local-post-train";
+  model: string;
+  generatedAt: string;
 }
 
 export interface RiskConfig {
@@ -227,8 +211,6 @@ export const api = {
     getJson<{ address: string; balances: Record<string, TokenBalance> }>(
       `/swap/balances/${address}`
     ),
-  demoSupply: (holder: string) =>
-    getJson<DemoSupplyOverview>(`/demo/supply?holder=${encodeURIComponent(holder)}`),
   quote: (tokenIn: string, tokenOut: string, amount: string) =>
     getJson<{ routes: import("../types").Route[]; referencePrice?: number; recommendedRouteId?: string }>(
       `/quote?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amount=${amount}`
@@ -262,6 +244,16 @@ export const api = {
       const data = await res.json();
       if (!res.ok) throw new Error(parseApiError(data.error, "Swap failed"));
       return data as SwapResult;
+    }),
+  aiAlertAnalysis: (eventId?: string) =>
+    fetch(`${API}/ai-alert-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(eventId ? { eventId } : {}),
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data.error, "AI 分析调用失败"));
+      return data as SafetyExplanation;
     }),
 };
 
@@ -348,7 +340,6 @@ export function computePoolChainStatus(poolReport?: PoolsHealthReport): ChainSta
       { label: "SAFE 池", score: 92, dot: "purple" },
       { label: "SHALLOW 池", score: 88, dot: "cyan" },
       { label: "TOXIC 池", score: 71, dot: "yellow" },
-      { label: "SDA 池", score: 58, dot: "red" },
       { label: "异常/空池", score: 22, dot: "red" },
     ];
   }
@@ -363,14 +354,12 @@ export function computePoolChainStatus(poolReport?: PoolsHealthReport): ChainSta
   const safe = healthRate(byLabel("SAFE"));
   const shallow = healthRate(byLabel("SHALLOW")) || Math.max(0, safe - 8);
   const toxic = healthRate(byLabel("TOXIC"));
-  const sda = healthRate(byLabel("SDA"));
   const abnormal = Math.round(((poolReport.degraded + poolReport.empty) / poolReport.poolCount) * 100);
 
   return [
     { label: "SAFE 池", score: safe || 92, dot: "purple" },
     { label: "SHALLOW 池", score: shallow || 88, dot: "cyan" },
     { label: "TOXIC 池", score: toxic || 71, dot: "yellow" },
-    { label: "SDA 池", score: sda || 58, dot: "red" },
     { label: "异常/空池", score: Math.max(abnormal, 5), dot: "red" },
   ];
 }
