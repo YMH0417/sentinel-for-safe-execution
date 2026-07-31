@@ -105,7 +105,7 @@ Write-Host "Anvil ready (logs: tmp/anvil.out.log, tmp/anvil.err.log)"
 # --- Deploy ---
 $deploymentFile = Join-Path $RepoRoot "contracts\deployments\anvil-31337-demo.json"
 if (-not $SkipDeploy) {
-    Write-Step "Deploying demo scenario (48 pools + Vault + Router)"
+    Write-Step "Deploying demo scenario (phased: 48 pools + Vault + Router, <=30M gas/tx)"
     Push-Location (Join-Path $RepoRoot "contracts")
     $env:PRIVATE_KEY = $AnvilKey
     $env:AGENT_SIGNER = ""

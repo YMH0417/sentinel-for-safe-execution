@@ -32,14 +32,43 @@ powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1
 
 ---
 
-## Demo 48-Route Scenario (Anvil)
+## Demo 48-Route Scenario (Anvil / Monad)
 
-### Prerequisites
+### Local (Anvil)
 
 ```powershell
-# MUST raise block gas limit (deploy ~72M gas for 48 pools)
+# Anvil — high block gas still recommended for forge tests; deploy uses phased txs (~17 broadcasts)
 anvil --chain-id 31337 --port 8545 --block-gas-limit 120000000
 ```
+
+Same script as Monad — **`DeployAllDemo`** splits scenario deploy into batches (≤30M gas per tx):
+
+| Phase | Call | ~Gas |
+|-------|------|------|
+| 0 | `new DemoScenarioDeployer()` | ~6.5M |
+| 1 | `beginScenario()` — tokens + registry | ~5M |
+| 2 | `deployPoolBatch(12)` × 4 | ~16–18M each |
+| 3 | `sealScenario()` | ~90K |
+| + | Vault, Router, auth, fund test user | ~1–2M each |
+
+### Monad testnet (chain ID 10143)
+
+Per-tx gas cap **30M**. Use the same phased flow:
+
+```powershell
+# 1. Copy and fill contracts/.env (PRIVATE_KEY, optional AGENT_SIGNER / MONADSCAN_API_KEY)
+Copy-Item contracts\.env.example contracts\.env
+
+# 2. Deploy (~17 txs, ~8–10 MON at typical testnet gas price)
+.\scripts\deploy-monad-testnet.ps1
+
+# 3. Point backend at Monad RPC + set wallet keys in backend/.env
+cd backend; npm run dev
+```
+
+Manifest: **`deployments/monad-10143-demo.json`** (`deploymentMode: "phased"`, `poolsPerBatch: 12`).
+
+Foundry RPC alias: `forge script ... --rpc-url monad_testnet` (reads `MONAD_RPC_URL` from env).
 
 ### Deploy output
 
@@ -52,6 +81,8 @@ Forge auto-writes **`deployments/anvil-31337-demo.json`**:
   "vaultExecution": "0x...",
   "swapRouter": "0x...",
   "scenarioDeployer": "0x...",
+  "deploymentMode": "phased",
+  "poolsPerBatch": 12,
   "agentSigner": "0x...",
   "tokens": { "USDC": "0x...", "GOOD": "0x...", "BAD": "0x...", "BAIT": "0x..." },
   "pools": []
@@ -68,7 +99,7 @@ Pool metadata is read from chain by backend (`DemoPoolRegistry.poolCount()` = **
 | `DemoToken` / `DemoERC20` | GOOD, BAD, BAIT (18 dec) |
 | `DemoPair` | Uniswap V2-style `swap()`, `getReserves()` |
 | `DemoPoolRegistry` | Register **48** pools (incl. SDA label), seal, token risk tags |
-| `DemoScenarioDeployer` | Deploy all, seed liquidity, `fundSwapper()` |
+| `DemoScenarioDeployer` | Phased deploy: `beginScenario` → `deployPoolBatch` → `sealScenario`; seed liquidity, `fundSwapper()` |
 | `DemoSwapRouter` | `vault.executeRoute` + `fundSwapper` + `pair.swap` in **one tx** |
 | `VaultExecution` | EIP-712 gate (standalone or via Router) |
 
@@ -172,6 +203,7 @@ Notable tests:
 - `DemoPoolsIntegration.t.sol` — 48 pool count, SDA ≈ SAFE quote, ordering
 - `DemoSwapRouter.t.sol` — Router + Vault + swap
 - `VaultExecution*.t.sol` — gate, rejection, boundary
+- `DemoScenarioDeployer.t.sol` — phased deploy, Monad gas cap per batch
 - `DemoPoolRegistry.t.sol` — seal count, reference pool
 
 CI: `.github/workflows/ci.yml` runs `forge test` + backend build.

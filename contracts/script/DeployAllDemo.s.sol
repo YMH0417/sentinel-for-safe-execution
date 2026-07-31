@@ -9,10 +9,11 @@ import {UniswapV2Quote} from "../src/libraries/UniswapV2Quote.sol";
 import {IDemoPair} from "../src/dex/interfaces/IDemoPair.sol";
 import {VaultExecution} from "../src/VaultExecution.sol";
 
-/// @notice One-shot deploy for the 3x3 demo matrix on Anvil.
+/// @notice Deploy demo scenario in Monad-safe batches (≤30M gas per transaction).
 contract DeployAllDemo is Script {
     uint256 internal constant QUOTE_AMOUNT_USDC = 100 * 1e6;
     uint256 internal constant DEFAULT_MAX_LOSS_BPS = 100;
+    uint256 internal constant MONAD_TESTNET_CHAIN_ID = 10143;
 
     uint256 internal constant ANVIL_DEFAULT_KEY =
         0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
@@ -21,7 +22,7 @@ contract DeployAllDemo is Script {
 
     uint256 internal constant TEST_USER_USDC = 100_000 * 1e6;
     uint256 internal constant TEST_USER_TOKEN = 10_000 ether;
-    uint256 internal constant TEST_USER_ETH = 10 ether;
+    uint256 internal constant TEST_USER_NATIVE = 10 ether;
 
     struct DeploymentArtifacts {
         DemoScenarioDeployer.Scenario scenario;
@@ -41,7 +42,7 @@ contract DeployAllDemo is Script {
 
         DemoScenarioDeployer scenarioDeployer = new DemoScenarioDeployer();
         artifacts.scenarioDeployer = address(scenarioDeployer);
-        artifacts.scenario = scenarioDeployer.deploy();
+        artifacts.scenario = _deployScenarioPhased(scenarioDeployer);
         artifacts.deployer = deployer;
         artifacts.chainId = block.chainid;
 
@@ -65,6 +66,28 @@ contract DeployAllDemo is Script {
         _logSummary(artifacts);
     }
 
+    /// @dev Each external call becomes its own broadcast transaction (Monad 30M gas cap safe).
+    function _deployScenarioPhased(DemoScenarioDeployer scenarioDeployer)
+        private
+        returns (DemoScenarioDeployer.Scenario memory scenario)
+    {
+        console2.log("Phase 1/3: beginScenario (tokens + registry)");
+        scenarioDeployer.beginScenario();
+
+        uint256 batchSize = scenarioDeployer.POOLS_PER_BATCH();
+        uint256 batches = scenarioDeployer.expectedPoolBatches();
+        for (uint256 i = 0; i < batches; i++) {
+            console2.log("Phase 2/3: deployPoolBatch", i + 1, "/", batches);
+            uint256 deployed = scenarioDeployer.deployPoolBatch(batchSize);
+            console2.log("  pools deployed in tx:", deployed);
+            console2.log("  cumulative pools:", scenarioDeployer.poolsDeployed());
+        }
+
+        console2.log("Phase 3/3: sealScenario");
+        scenarioDeployer.sealScenario();
+        scenario = scenarioDeployer.getScenario();
+    }
+
     function _fundTestUser(
         DemoScenarioDeployer scenarioDeployer,
         DemoScenarioDeployer.Scenario memory scenario,
@@ -77,27 +100,36 @@ contract DeployAllDemo is Script {
         scenarioDeployer.fundSwapper(address(scenario.tokens.bad), testUser, TEST_USER_TOKEN);
         scenarioDeployer.fundSwapper(address(scenario.tokens.bait), testUser, TEST_USER_TOKEN);
 
-        (bool sent,) = testUser.call{value: TEST_USER_ETH}("");
-        require(sent, "test user ETH transfer failed");
+        (bool sent,) = testUser.call{value: TEST_USER_NATIVE}("");
+        require(sent, "test user native transfer failed");
 
         console2.log("Funded test user:", testUser);
-        console2.log("  ETH:", TEST_USER_ETH);
+        console2.log("  Native:", TEST_USER_NATIVE);
         console2.log("  USDC:", TEST_USER_USDC);
         console2.log("  GOOD/BAD/BAIT:", TEST_USER_TOKEN);
+    }
+
+    function _deploymentManifestName(uint256 chainId) private pure returns (string memory) {
+        if (chainId == MONAD_TESTNET_CHAIN_ID) {
+            return "monad-10143-demo.json";
+        }
+        return string.concat("anvil-", vm.toString(chainId), "-demo.json");
     }
 
     function _writeDeploymentJson(DeploymentArtifacts memory artifacts, address agentSigner) private {
         DemoScenarioDeployer.Scenario memory scenario = artifacts.scenario;
         string memory path = string.concat(
-            "deployments/anvil-",
-            vm.toString(artifacts.chainId),
-            "-demo.json"
+            "deployments/",
+            _deploymentManifestName(artifacts.chainId)
         );
         string memory content = string.concat(
             "{\n",
             '  "chainId": ',
             vm.toString(artifacts.chainId),
             ",\n",
+            '  "network": "',
+            artifacts.chainId == MONAD_TESTNET_CHAIN_ID ? "monad-testnet" : "anvil-local",
+            '",\n',
             '  "deployer": "',
             vm.toString(artifacts.deployer),
             '",\n',
@@ -119,6 +151,8 @@ contract DeployAllDemo is Script {
             '  "testUser": "',
             vm.toString(vm.envOr("TEST_USER_ADDRESS", DEFAULT_TEST_USER)),
             '",\n',
+            '  "deploymentMode": "phased",\n',
+            '  "poolsPerBatch": 12,\n',
             '  "tokens": {\n',
             '    "USDC": "',
             vm.toString(address(scenario.tokens.usdc)),
@@ -142,7 +176,7 @@ contract DeployAllDemo is Script {
 
     function _logSummary(DeploymentArtifacts memory artifacts) private view {
         DemoScenarioDeployer.Scenario memory scenario = artifacts.scenario;
-        console2.log("=== Demo Scenario Deployed ===");
+        console2.log("=== Demo Scenario Deployed (phased) ===");
         console2.log("Deployer:", artifacts.deployer);
         console2.log("Chain ID:", artifacts.chainId);
         console2.log("USDC:", address(scenario.tokens.usdc));
@@ -173,12 +207,9 @@ contract DeployAllDemo is Script {
         uint256 impact = UniswapV2Quote.getPriceImpactBps(amountIn, reserveIn, reserveOut);
 
         console2.log("---");
-        console2.log("Route:", scenario.pools.routeNames[index]);
+        console2.log("Pool index:", index);
         console2.log("Pair:", entry.pair);
         console2.log("QuotedOut (100 USDC):", amountOut);
         console2.log("Impact bps:", impact);
     }
-
 }
-
-// Deployment addresses are logged above; backend hydrates pool metadata from registry via RPC.

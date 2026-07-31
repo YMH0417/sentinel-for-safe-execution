@@ -17,3 +17,7 @@ depth = 100
 
 [etherscan]
 monad_testnet = { key = "${MONADSCAN_API_KEY}", chain = 10143 }
+
+[rpc_endpoints]
+monad_testnet = "${MONAD_RPC_URL}"
+anvil = "http://127.0.0.1:8545"

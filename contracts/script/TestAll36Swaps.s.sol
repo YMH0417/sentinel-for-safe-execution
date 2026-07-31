@@ -35,7 +35,9 @@ contract TestAll36Swaps is Script {
         uint256 failed;
 
         for (uint256 i = 0; i < pools.length; i++) {
-            bool ok = _trySwap(scenarioDeployer, scenario, pools[i], scenario.pools.routeNames[i], trader, i + 1);
+            bool ok = _trySwap(
+                scenarioDeployer, scenario, pools[i], vm.toString(i + 1), trader, i + 1
+            );
             if (ok) passed++;
             else failed++;
         }
