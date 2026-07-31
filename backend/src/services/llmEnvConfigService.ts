@@ -1,11 +1,14 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 
+import { normalizeLlmResponseLanguage, type LlmResponseLanguage } from "../config/llmPromptConfig.js";
+
 export interface LlmEnvConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
   enabled: boolean;
+  responseLanguage: LlmResponseLanguage;
 }
 
 export interface LlmEnvConfigView {
@@ -15,6 +18,7 @@ export interface LlmEnvConfigView {
   baseUrl: string;
   model: string;
   enabled: boolean;
+  responseLanguage: LlmResponseLanguage;
 }
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
@@ -25,6 +29,7 @@ const CANONICAL_KEYS = [
   "LLM_BASE_URL",
   "LLM_MODEL",
   "LLM_ANALYSIS_ENABLED",
+  "LLM_RESPONSE_LANGUAGE",
 ] as const;
 
 /** Legacy alias keys — read-only fallback; removed from file when saving canonical keys. */
@@ -102,8 +107,9 @@ export function readLlmEnvConfig(): LlmEnvConfig {
     firstNonEmpty(map, ["LLM_MODEL", "OPENAI_MODEL", "DEEPSEEK_MODEL"]) || DEFAULT_MODEL;
   const enabledRaw = map.get("LLM_ANALYSIS_ENABLED")?.trim().toLowerCase();
   const enabled = enabledRaw !== "false";
+  const responseLanguage = normalizeLlmResponseLanguage(map.get("LLM_RESPONSE_LANGUAGE"));
 
-  return { apiKey, baseUrl, model, enabled };
+  return { apiKey, baseUrl, model, enabled, responseLanguage };
 }
 
 export function readLlmEnvConfigView(): LlmEnvConfigView {
@@ -115,6 +121,7 @@ export function readLlmEnvConfigView(): LlmEnvConfigView {
     baseUrl: config.baseUrl,
     model: config.model,
     enabled: config.enabled,
+    responseLanguage: config.responseLanguage,
   };
 }
 
@@ -127,6 +134,7 @@ export function applyLlmEnvToProcess(config: LlmEnvConfig): void {
   process.env.LLM_BASE_URL = config.baseUrl;
   process.env.LLM_MODEL = config.model;
   process.env.LLM_ANALYSIS_ENABLED = config.enabled ? "true" : "false";
+  process.env.LLM_RESPONSE_LANGUAGE = config.responseLanguage;
 }
 
 export interface LlmEnvUpdateInput {
@@ -134,6 +142,7 @@ export interface LlmEnvUpdateInput {
   baseUrl?: string;
   model?: string;
   enabled?: boolean;
+  responseLanguage?: LlmResponseLanguage;
   /** When true, clear stored API key even if apiKey field is omitted. */
   clearApiKey?: boolean;
 }
@@ -145,6 +154,7 @@ export function writeLlmEnvConfig(input: LlmEnvUpdateInput): LlmEnvConfigView {
     baseUrl: input.baseUrl?.trim() || current.baseUrl || DEFAULT_BASE_URL,
     model: input.model?.trim() || current.model || DEFAULT_MODEL,
     enabled: input.enabled ?? current.enabled,
+    responseLanguage: input.responseLanguage ?? current.responseLanguage,
   };
 
   if (input.clearApiKey) {
@@ -159,6 +169,7 @@ export function writeLlmEnvConfig(input: LlmEnvUpdateInput): LlmEnvConfigView {
     LLM_BASE_URL: next.baseUrl,
     LLM_MODEL: next.model,
     LLM_ANALYSIS_ENABLED: next.enabled ? "true" : "false",
+    LLM_RESPONSE_LANGUAGE: next.responseLanguage,
     LLM_API_KEY: next.apiKey || undefined,
   };
 

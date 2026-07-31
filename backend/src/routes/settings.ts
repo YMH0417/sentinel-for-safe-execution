@@ -65,6 +65,17 @@ router.put("/llm", (req: Request, res: Response) => {
     }
     input.enabled = body.enabled;
   }
+  if ("responseLanguage" in body) {
+    if (body.responseLanguage !== "en" && body.responseLanguage !== "zh") {
+      return res.status(400).json({
+        error: {
+          code: "INVALID_LLM_SETTINGS",
+          message: 'responseLanguage must be "en" or "zh"',
+        },
+      });
+    }
+    input.responseLanguage = body.responseLanguage;
+  }
 
   try {
     const view = writeLlmEnvConfig(input);

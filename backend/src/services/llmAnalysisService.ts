@@ -2,6 +2,8 @@ import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as path from "path";
 import type { Decision, Route, SafetyExplanation } from "../types.js";
+import { getLlmPromptBundle, type LlmResponseLanguage } from "../config/llmPromptConfig.js";
+import { readLlmEnvConfig } from "./llmEnvConfigService.js";
 
 // 领域风格样例：约束大模型在 Web3/AMM 语境下的表达方式，不参与规则打分。
 interface PostTrainExample {
@@ -51,14 +53,35 @@ function getConfig() {
     process.env.DEEPSEEK_BASE_URL ||
     DEFAULT_BASE_URL
   ).replace(/\/+$/, "");
-  const model =
-    process.env.LLM_MODEL ||
-    process.env.OPENAI_MODEL ||
-    process.env.DEEPSEEK_MODEL ||
-    DEFAULT_MODEL;
+  const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || DEFAULT_MODEL;
   const enabled = process.env.LLM_ANALYSIS_ENABLED !== "false";
+  const responseLanguage = readLlmEnvConfig().responseLanguage;
 
-  return { apiKey, baseUrl, model, enabled };
+  return { apiKey, baseUrl, model, enabled, responseLanguage };
+}
+
+function isZhipuProvider(baseUrl: string): boolean {
+  const lower = baseUrl.toLowerCase();
+  return lower.includes("bigmodel.cn") || lower.includes("z.ai");
+}
+
+function llmRequestTimeoutMs(baseUrl: string): number {
+  const fromEnv = Number(process.env.LLM_TIMEOUT_MS);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return isZhipuProvider(baseUrl) ? 30_000 : 6_000;
+}
+
+function extractMessageText(message?: {
+  content?: string;
+  reasoning_content?: string;
+}): string {
+  const content = message?.content?.trim();
+  if (content) return content;
+  const reasoning = message?.reasoning_content?.trim();
+  if (!reasoning) return "";
+  // GLM thinking mode may put JSON in reasoning_content; prefer last JSON object block.
+  const jsonMatch = reasoning.match(/\{[\s\S]*\}\s*$/);
+  return jsonMatch?.[0]?.trim() ?? reasoning;
 }
 
 function compactDecision(decision: Decision) {
@@ -97,20 +120,15 @@ function compactRoute(route?: Route) {
 function buildPrompt(
   decision: Decision,
   route: Route | undefined,
-  configProfile: string
+  configProfile: string,
+  language: LlmResponseLanguage
 ): string {
   const examples = loadPostTrainExamples();
+  const prompts = getLlmPromptBundle(language);
   return JSON.stringify(
     {
-      task:
-        "You are Sentinel's Web3 safety explainer for Uniswap-V2-style swap routes. " +
-        "Domain context: AMM swaps, quote deviation, pool liquidity risk, historical failure rate, price impact, MEV/slippage, token risk. " +
-        "Do NOT change the deterministic decision. Do NOT invent a new risk score. " +
-        "Explain WHY the rule engine produced this decision, classify the attack vector if any, and give 2-3 actionable recommendations. " +
-        "Keep the narrative under 90 words and user-facing. " +
-        "Respond ONLY with valid JSON in this exact shape: " +
-        '{"narrative":"<string>","attackVector":"<Normal|Quote Manipulation|Pool Risk|Liquidity Drain|MEV/Slippage|Token Risk|Unknown>","recommendations":["<string>"],"confidence":<0-100>}. ' +
-        "No markdown, no code fences.",
+      task: prompts.taskInstruction,
+      responseLanguage: language,
       configProfile,
       route: compactRoute(route),
       deterministicDecision: compactDecision(decision),
@@ -122,12 +140,16 @@ function buildPrompt(
 }
 
 // 剥离可能的 markdown 代码块后解析 JSON。仿 sentineldao 的 parseResponse。
-function parseLlmResponse(text: string): {
+function parseLlmResponse(
+  text: string,
+  language: LlmResponseLanguage
+): {
   narrative: string;
   attackVector: string;
   recommendations: string[];
   confidence: number;
 } {
+  const prompts = getLlmPromptBundle(language);
   let cleanText = text.trim();
   if (cleanText.startsWith("```json")) {
     cleanText = cleanText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
@@ -157,11 +179,11 @@ function parseLlmResponse(text: string): {
     attackVector:
       typeof parsed.attackVector === "string" && parsed.attackVector.trim()
         ? parsed.attackVector.trim()
-        : "Unknown",
+        : prompts.attackVectorUnknown,
     recommendations:
       recommendations.length > 0
         ? recommendations
-        : ["Monitor route activity for changes."],
+        : [prompts.defaultRecommendation],
     confidence:
       typeof parsed.confidence === "number" && Number.isFinite(parsed.confidence)
         ? Math.min(100, Math.max(0, Math.round(parsed.confidence)))
@@ -176,7 +198,7 @@ async function requestLlmNarrative(
   route: Route | undefined,
   configProfile: string
 ): Promise<{ narrative: string; attackVector: string; recommendations: string[]; confidence: number; model: string }> {
-  const { apiKey, baseUrl, model, enabled } = getConfig();
+  const { apiKey, baseUrl, model, enabled, responseLanguage } = getConfig();
   if (!enabled) {
     throw new Error("LLM analysis disabled by LLM_ANALYSIS_ENABLED=false");
   }
@@ -187,7 +209,31 @@ async function requestLlmNarrative(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
+  const timeoutMs = llmRequestTimeoutMs(baseUrl);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  const prompts = getLlmPromptBundle(responseLanguage);
+
+  const requestBody: Record<string, unknown> = {
+    model,
+    temperature: 0.2,
+    max_tokens: 400,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: prompts.systemMessage,
+      },
+      {
+        role: "user",
+        content: buildPrompt(decision, route, configProfile, responseLanguage),
+      },
+    ],
+  };
+  if (isZhipuProvider(baseUrl)) {
+    // GLM-4.7-Flash defaults to thinking mode; disable for direct JSON in content.
+    requestBody.thinking = { type: "disabled" };
+  }
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -196,23 +242,7 @@ async function requestLlmNarrative(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 400,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are Sentinel's Web3 safety-result explainer. Your output is concise, user-facing, faithful to the deterministic risk engine, and always valid JSON.",
-          },
-          {
-            role: "user",
-            content: buildPrompt(decision, route, configProfile),
-          },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -221,15 +251,15 @@ async function requestLlmNarrative(
     }
 
     const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
       model?: string;
     };
-    const content = payload.choices?.[0]?.message?.content?.trim();
+    const content = extractMessageText(payload.choices?.[0]?.message);
     if (!content) {
       throw new Error("LLM returned empty content");
     }
 
-    const parsed = parseLlmResponse(content);
+    const parsed = parseLlmResponse(content, responseLanguage);
     return { ...parsed, model: payload.model || model };
   } finally {
     clearTimeout(timeout);

@@ -41,6 +41,7 @@ test("writeLlmEnvConfig persists canonical LLM keys", () => {
     assert.equal(view.baseUrl, "https://api.example.com/v1");
     assert.equal(view.model, "test-model");
     assert.equal(view.enabled, true);
+    assert.equal(view.responseLanguage, "zh");
   } finally {
     process.chdir(prevCwd);
     rmSync(dir, { recursive: true, force: true });

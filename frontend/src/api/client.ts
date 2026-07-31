@@ -69,6 +69,7 @@ export interface LlmSettingsView {
   baseUrl: string;
   model: string;
   enabled: boolean;
+  responseLanguage: "en" | "zh";
 }
 
 export interface DemoSupplyOverview {
@@ -299,6 +300,7 @@ export const api = {
     baseUrl?: string;
     model?: string;
     enabled?: boolean;
+    responseLanguage?: "en" | "zh";
   }) =>
     fetch(`${API}/settings/llm`, {
       method: "PUT",

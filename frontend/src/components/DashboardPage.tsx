@@ -313,8 +313,9 @@ function AiAnalysisContent({
   onRerun: () => void;
   loading: boolean;
 }) {
+  const safeVectors = new Set(["Normal", "Unknown", "正常", "未知"]);
   const vectorColor =
-    result.attackVector && result.attackVector !== "Normal" && result.attackVector !== "Unknown"
+    result.attackVector && !safeVectors.has(result.attackVector)
       ? "var(--yellow)"
       : "var(--green)";
   return (

@@ -42,12 +42,14 @@ export function SettingsPage() {
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [llmModel, setLlmModel] = useState("");
   const [llmEnabled, setLlmEnabled] = useState(true);
+  const [llmResponseLanguage, setLlmResponseLanguage] = useState<"en" | "zh">("zh");
 
   const applyLlmForm = useCallback((view: LlmSettingsView) => {
     setLlmSettings(view);
     setLlmBaseUrl(view.baseUrl);
     setLlmModel(view.model);
     setLlmEnabled(view.enabled);
+    setLlmResponseLanguage(view.responseLanguage);
     setLlmApiKeyInput("");
   }, []);
 
@@ -73,12 +75,14 @@ export function SettingsPage() {
         baseUrl: string;
         model: string;
         enabled: boolean;
+        responseLanguage: "en" | "zh";
         apiKey?: string;
         clearApiKey?: boolean;
       } = {
         baseUrl: llmBaseUrl.trim(),
         model: llmModel.trim(),
         enabled: llmEnabled,
+        responseLanguage: llmResponseLanguage,
       };
       if (llmApiKeyInput.trim()) {
         body.apiKey = llmApiKeyInput.trim();
@@ -102,6 +106,7 @@ export function SettingsPage() {
         baseUrl: llmBaseUrl.trim(),
         model: llmModel.trim(),
         enabled: llmEnabled,
+        responseLanguage: llmResponseLanguage,
         clearApiKey: true,
       });
       applyLlmForm(view);
@@ -517,6 +522,39 @@ export function SettingsPage() {
                   style={{ padding: "8px 10px", fontSize: 13 }}
                 />
               </label>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>
+                分析输出语言
+              </div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="llm-response-language"
+                    value="zh"
+                    checked={llmResponseLanguage === "zh"}
+                    onChange={() => setLlmResponseLanguage("zh")}
+                    disabled={llmSaving}
+                  />
+                  中文
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="llm-response-language"
+                    value="en"
+                    checked={llmResponseLanguage === "en"}
+                    onChange={() => setLlmResponseLanguage("en")}
+                    disabled={llmSaving}
+                  />
+                  English
+                </label>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8, marginBottom: 0 }}>
+                写入 <code>LLM_RESPONSE_LANGUAGE</code>，Dashboard「AI 深度分析」按此语言生成 narrative 与建议。
+              </p>
             </div>
 
             <label
