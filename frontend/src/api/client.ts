@@ -62,6 +62,15 @@ export interface SafetyExplanation {
   generatedAt: string;
 }
 
+export interface LlmSettingsView {
+  envFile: string;
+  apiKeyConfigured: boolean;
+  apiKeyMasked: string | null;
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+}
+
 export interface DemoSupplyOverview {
   scenarioDeployer: string;
   testUser: string;
@@ -282,6 +291,23 @@ export const api = {
       const data = await res.json();
       if (!res.ok) throw new Error(parseApiError(data.error, "AI 分析调用失败"));
       return data as SafetyExplanation;
+    }),
+  getLlmSettings: () => getJson<LlmSettingsView>("/settings/llm"),
+  saveLlmSettings: (body: {
+    apiKey?: string;
+    clearApiKey?: boolean;
+    baseUrl?: string;
+    model?: string;
+    enabled?: boolean;
+  }) =>
+    fetch(`${API}/settings/llm`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data.error, "保存 LLM 配置失败"));
+      return data as LlmSettingsView;
     }),
 };
 

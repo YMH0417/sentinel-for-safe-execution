@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAddress } from "ethers";
-import { api, type DebugStatus } from "../api/client";
+import { api, type DebugStatus, type LlmSettingsView } from "../api/client";
 import { useWallet } from "../contexts/WalletContext";
 import { DEMO_TEST_USER } from "../lib/demoConstants";
 import {
@@ -33,6 +33,86 @@ export function SettingsPage() {
   const [selectedPoolRoute, setSelectedPoolRoute] = useState("");
   const [poolFilter, setPoolFilter] = useState("");
 
+  const [llmSettings, setLlmSettings] = useState<LlmSettingsView | null>(null);
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSaving, setLlmSaving] = useState(false);
+  const [llmError, setLlmError] = useState("");
+  const [llmMsg, setLlmMsg] = useState("");
+  const [llmApiKeyInput, setLlmApiKeyInput] = useState("");
+  const [llmBaseUrl, setLlmBaseUrl] = useState("");
+  const [llmModel, setLlmModel] = useState("");
+  const [llmEnabled, setLlmEnabled] = useState(true);
+
+  const applyLlmForm = useCallback((view: LlmSettingsView) => {
+    setLlmSettings(view);
+    setLlmBaseUrl(view.baseUrl);
+    setLlmModel(view.model);
+    setLlmEnabled(view.enabled);
+    setLlmApiKeyInput("");
+  }, []);
+
+  const refreshLlmSettings = useCallback(async () => {
+    setLlmLoading(true);
+    setLlmError("");
+    try {
+      const view = await api.getLlmSettings();
+      applyLlmForm(view);
+    } catch (e) {
+      setLlmError(e instanceof Error ? e.message : "加载 LLM 配置失败");
+    } finally {
+      setLlmLoading(false);
+    }
+  }, [applyLlmForm]);
+
+  const saveLlmSettings = async () => {
+    setLlmSaving(true);
+    setLlmError("");
+    setLlmMsg("");
+    try {
+      const body: {
+        baseUrl: string;
+        model: string;
+        enabled: boolean;
+        apiKey?: string;
+        clearApiKey?: boolean;
+      } = {
+        baseUrl: llmBaseUrl.trim(),
+        model: llmModel.trim(),
+        enabled: llmEnabled,
+      };
+      if (llmApiKeyInput.trim()) {
+        body.apiKey = llmApiKeyInput.trim();
+      }
+      const view = await api.saveLlmSettings(body);
+      applyLlmForm(view);
+      setLlmMsg("已保存到 backend/.env，立即生效（无需重启 backend）");
+    } catch (e) {
+      setLlmError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setLlmSaving(false);
+    }
+  };
+
+  const clearLlmApiKey = async () => {
+    setLlmSaving(true);
+    setLlmError("");
+    setLlmMsg("");
+    try {
+      const view = await api.saveLlmSettings({
+        baseUrl: llmBaseUrl.trim(),
+        model: llmModel.trim(),
+        enabled: llmEnabled,
+        clearApiKey: true,
+      });
+      applyLlmForm(view);
+      setLlmMsg("API Key 已从 backend/.env 清除");
+    } catch (e) {
+      setLlmError(e instanceof Error ? e.message : "清除 Key 失败");
+    } finally {
+      setLlmSaving(false);
+    }
+  };
+
   const isDemoMode = status?.chainMode === "demo";
   const connectedIsTestUser = useMemo(() => {
     if (!account) return false;
@@ -60,7 +140,8 @@ export function SettingsPage() {
 
   useEffect(() => {
     api.debugStatus().then(setStatus).catch(() => setStatus(null));
-  }, []);
+    void refreshLlmSettings();
+  }, [refreshLlmSettings]);
 
   useEffect(() => {
     if (!isDemoMode) return;
@@ -364,6 +445,136 @@ export function SettingsPage() {
           </button>
           {msg && <p style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>{msg}</p>}
         </div>
+      </div>
+
+      <div className="sentinel-card" style={{ marginTop: 20 }}>
+        <div className="sentinel-label">大模型（AI 警报分析）</div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
+          配置 OpenAI 兼容接口，写入 <code>backend/.env</code>。
+          Dashboard「AI 深度分析」读取此处配置；保存后立即生效。
+        </p>
+
+        {llmLoading && !llmSettings ? (
+          <p style={{ color: "var(--text-dim)", fontSize: 13 }}>加载配置中…</p>
+        ) : (
+          <>
+            {llmSettings && (
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
+                配置文件：<code>{llmSettings.envFile}</code>
+                {llmSettings.apiKeyConfigured && llmSettings.apiKeyMasked ? (
+                  <span style={{ marginLeft: 12 }}>
+                    当前 Key：<code>{llmSettings.apiKeyMasked}</code>
+                  </span>
+                ) : (
+                  <span style={{ marginLeft: 12, color: "var(--yellow)" }}>未配置 API Key</span>
+                )}
+              </p>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 16,
+                marginBottom: 16,
+              }}
+            >
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                <span style={{ color: "var(--text-muted)" }}>API Key</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={
+                    llmSettings?.apiKeyConfigured
+                      ? "留空则不修改已保存的 Key"
+                      : "sk-..."
+                  }
+                  value={llmApiKeyInput}
+                  onChange={(e) => setLlmApiKeyInput(e.target.value)}
+                  disabled={llmSaving}
+                  style={{ padding: "8px 10px", fontSize: 13 }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                <span style={{ color: "var(--text-muted)" }}>Base URL</span>
+                <input
+                  type="url"
+                  placeholder="https://api.openai.com/v1"
+                  value={llmBaseUrl}
+                  onChange={(e) => setLlmBaseUrl(e.target.value)}
+                  disabled={llmSaving}
+                  style={{ padding: "8px 10px", fontSize: 13 }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                <span style={{ color: "var(--text-muted)" }}>Model</span>
+                <input
+                  type="text"
+                  placeholder="gpt-4o-mini"
+                  value={llmModel}
+                  onChange={(e) => setLlmModel(e.target.value)}
+                  disabled={llmSaving}
+                  style={{ padding: "8px 10px", fontSize: 13 }}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                marginBottom: 16,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={llmEnabled}
+                onChange={(e) => setLlmEnabled(e.target.checked)}
+                disabled={llmSaving}
+              />
+              <span>启用 LLM 分析（关闭后 Dashboard 调用将返回 503）</span>
+            </label>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                className="sentinel-btn"
+                onClick={() => void saveLlmSettings()}
+                disabled={llmSaving || !llmBaseUrl.trim() || !llmModel.trim()}
+              >
+                {llmSaving ? "保存中…" : "保存到 .env"}
+              </button>
+              <button
+                type="button"
+                className="sentinel-btn sentinel-btn-secondary"
+                onClick={() => void refreshLlmSettings()}
+                disabled={llmLoading || llmSaving}
+              >
+                重新读取
+              </button>
+              {llmSettings?.apiKeyConfigured && (
+                <button
+                  type="button"
+                  className="sentinel-btn sentinel-btn-danger"
+                  onClick={() => void clearLlmApiKey()}
+                  disabled={llmSaving}
+                >
+                  清除 Key
+                </button>
+              )}
+            </div>
+
+            {llmMsg && (
+              <p style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>{llmMsg}</p>
+            )}
+            {llmError && (
+              <p style={{ marginTop: 12, fontSize: 13, color: "var(--red)" }}>{llmError}</p>
+            )}
+          </>
+        )}
       </div>
 
       {isDemoMode && (
