@@ -15,9 +15,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const examplesFilePath = path.join(__dirname, "../config/llm-examples.json");
 
-// 提供兼容接口，默认使用 deepseek。
-const DEFAULT_MODEL = "deepseek-chat";
-const DEFAULT_BASE_URL = "https://api.deepseek.com";
+// OpenAI-compatible Chat Completions API (any provider with /chat/completions).
+const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 // 读取本地风格样例。读取失败时降级为空样例，不影响核心调用链。
 function loadPostTrainExamples(): PostTrainExample[] {
@@ -38,20 +38,24 @@ function quoteDeviation(route?: Route): number {
   return Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
 }
 
-// LLM 解释层配置。
-// DEEPSEEK_API_KEY 未设置或 LLM_ANALYSIS_ENABLED=false 时调用方应直接判定为失败。
+// LLM 解释层配置（OpenAI 兼容：base URL + API key + model）。
+// 优先 LLM_*，也兼容 OPENAI_* / DEEPSEEK_*。未配置 key 或 LLM_ANALYSIS_ENABLED=false 时调用失败。
 function getConfig() {
   const apiKey =
-    process.env.DEEPSEEK_API_KEY ||
     process.env.LLM_API_KEY ||
-    process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY ||
+    process.env.DEEPSEEK_API_KEY;
   const baseUrl = (
-    process.env.DEEPSEEK_BASE_URL ||
     process.env.LLM_BASE_URL ||
     process.env.OPENAI_BASE_URL ||
+    process.env.DEEPSEEK_BASE_URL ||
     DEFAULT_BASE_URL
   ).replace(/\/+$/, "");
-  const model = process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || DEFAULT_MODEL;
+  const model =
+    process.env.LLM_MODEL ||
+    process.env.OPENAI_MODEL ||
+    process.env.DEEPSEEK_MODEL ||
+    DEFAULT_MODEL;
   const enabled = process.env.LLM_ANALYSIS_ENABLED !== "false";
 
   return { apiKey, baseUrl, model, enabled };
@@ -165,7 +169,7 @@ function parseLlmResponse(text: string): {
   };
 }
 
-// 调用 DeepSeek 生成结构化解释。超时 6 秒，防止外部模型拖慢安全评估链路。
+// 调用 OpenAI 兼容 Chat Completions 生成结构化解释。超时 6 秒，防止外部模型拖慢安全评估链路。
 // 失败（无 key / 超时 / HTTP 非 2xx / 解析失败）一律抛错，由调用方决定如何对外暴露。
 async function requestLlmNarrative(
   decision: Decision,
@@ -177,7 +181,9 @@ async function requestLlmNarrative(
     throw new Error("LLM analysis disabled by LLM_ANALYSIS_ENABLED=false");
   }
   if (!apiKey) {
-    throw new Error("LLM API key not configured (set DEEPSEEK_API_KEY)");
+    throw new Error(
+      "LLM API key not configured (set LLM_API_KEY, OPENAI_API_KEY, or DEEPSEEK_API_KEY)"
+    );
   }
 
   const controller = new AbortController();
