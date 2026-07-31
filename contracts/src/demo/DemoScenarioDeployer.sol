@@ -7,14 +7,14 @@ import {DemoPair} from "../dex/DemoPair.sol";
 import {DemoPoolRegistry} from "../registry/DemoPoolRegistry.sol";
 import {DemoERC20} from "../tokens/DemoERC20.sol";
 
-/// @notice Deployer for the 4-token demo: 12 directed pairs × 3 pool labels = 36 routes.
+/// @notice Deployer for the 4-token demo: 12 directed pairs × 4 pool labels = 48 routes.
 contract DemoScenarioDeployer {
-    uint256 public constant POOL_COUNT = 36;
+    uint256 public constant POOL_COUNT = 48;
     uint256 public constant PAIR_COUNT = 12;
-    uint256 public constant LABEL_COUNT = 3;
+    uint256 public constant LABEL_COUNT = 4;
 
-    uint256 public constant USDC_MINT = 200_000_000 * 1e6;
-    uint256 public constant TOKEN_MINT = 200_000_000 ether;
+    uint256 public constant USDC_MINT = 500_000_000 * 1e6;
+    uint256 public constant TOKEN_MINT = 500_000_000 ether;
 
     /// @dev Relative prices USDC:GOOD:BAD:BAIT = 1:20:100:1 (USDC numeraire).
     uint256 internal constant PRICE_USDC = 1;
@@ -26,6 +26,8 @@ contract DemoScenarioDeployer {
     uint256 public constant SHALLOW_RESERVE = 500;
     uint256 public constant TOXIC_IN_RESERVE = 40_000;
     uint256 public constant TOXIC_OUT_RESERVE = 50_000;
+    /// @dev SDA pools use SAFE-depth liquidity; risk is execution-window metadata (bridge-delay analogue).
+    uint256 public constant SDA_RESERVE = 1_000_000;
 
     struct TokenBundle {
         MockUSDC usdc;
@@ -35,9 +37,9 @@ contract DemoScenarioDeployer {
     }
 
     struct PoolBundle {
-        DemoPair[36] pairs;
-        bytes32[36] routeIds;
-        string[36] routeNames;
+        DemoPair[48] pairs;
+        bytes32[48] routeIds;
+        string[48] routeNames;
     }
 
     struct Scenario {
@@ -48,8 +50,10 @@ contract DemoScenarioDeployer {
 
     address public bootstrapOwner;
     mapping(address => bool) public authorizedFunders;
+    mapping(address => bool) public authorizedMinters;
 
     error UnauthorizedFunder();
+    error UnauthorizedMinter();
 
     function routeId(string memory routeName) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(routeName));
@@ -66,10 +70,36 @@ contract DemoScenarioDeployer {
         authorizedFunders[funder] = allowed;
     }
 
+    function authorizeMinter(address minter, bool allowed) external {
+        if (msg.sender != bootstrapOwner) revert UnauthorizedFunder();
+        authorizedMinters[minter] = allowed;
+    }
+
     /// @notice Release demo tokens from deployer inventory (authorized funder only).
     function fundSwapper(address token, address to, uint256 amount) external {
         if (!authorizedFunders[msg.sender]) revert UnauthorizedFunder();
         DemoERC20(token).transfer(to, amount);
+    }
+
+    /// @notice Mint new demo tokens to the caller's wallet (authorized minter only).
+    function mintToken(address token, address to, uint256 amount) external {
+        if (!authorizedMinters[msg.sender]) revert UnauthorizedMinter();
+        if (to != msg.sender) revert UnauthorizedMinter();
+        DemoERC20(token).mint(to, amount);
+    }
+
+    /// @notice Mint tokens directly into a pool and sync reserves (authorized minter only).
+    function mintTokenToPool(address token, address pair, uint256 amount) external {
+        if (!authorizedMinters[msg.sender]) revert UnauthorizedMinter();
+        DemoERC20(token).mint(pair, amount);
+        DemoPair(pair).syncReserves();
+    }
+
+    /// @notice Remove tokens from pool reserves and burn them (authorized minter only).
+    function burnTokenFromPool(address token, address pair, uint256 amount) external {
+        if (!authorizedMinters[msg.sender]) revert UnauthorizedMinter();
+        DemoPair(pair).adminWithdraw(token, msg.sender, amount);
+        DemoERC20(token).burnFromAccount(msg.sender, amount);
     }
 
     function _deployTokens() private returns (TokenBundle memory bundle) {
@@ -106,7 +136,7 @@ contract DemoScenarioDeployer {
         for (uint256 i = 0; i < 4; i++) {
             for (uint256 j = 0; j < 4; j++) {
                 if (i == j) continue;
-                for (uint256 label = 0; label < 3; label++) {
+                for (uint256 label = 0; label < LABEL_COUNT; label++) {
                     DemoPoolRegistry.PoolLabel poolLabel = DemoPoolRegistry.PoolLabel(label);
                     string memory routeName = _routeName(keys[i], keys[j], label);
                     pools.routeNames[index] = routeName;
@@ -135,7 +165,11 @@ contract DemoScenarioDeployer {
         pure
         returns (string memory)
     {
-        string memory labelKey = label == 0 ? "safe" : (label == 1 ? "shallow" : "toxic");
+        string memory labelKey;
+        if (label == 0) labelKey = "safe";
+        else if (label == 1) labelKey = "shallow";
+        else if (label == 2) labelKey = "toxic";
+        else labelKey = "sda";
         return string(
             abi.encodePacked("route-", tokenInKey, "-", tokenOutKey, "-", labelKey)
         );
@@ -157,6 +191,7 @@ contract DemoScenarioDeployer {
         pair = new DemoPair();
         (address token0, address token1) = _sortTokens(address(tokenIn), address(tokenOut));
         pair.initialize(token0, token1);
+        pair.setLiquidityAdmin(address(this));
 
         tokenIn.transfer(address(pair), amountIn);
         tokenOut.transfer(address(pair), amountOut);
@@ -184,10 +219,12 @@ contract DemoScenarioDeployer {
         } else if (label == DemoPoolRegistry.PoolLabel.SHALLOW) {
             inHuman = SHALLOW_RESERVE;
             outHuman = (inHuman * priceIn) / priceOut;
-        } else {
+        } else if (label == DemoPoolRegistry.PoolLabel.TOXIC) {
             inHuman = TOXIC_IN_RESERVE;
-            // Skew out side for toxic trap: fair ratio × 1.25
             outHuman = (TOXIC_OUT_RESERVE * priceIn) / priceOut;
+        } else {
+            inHuman = SDA_RESERVE;
+            outHuman = (inHuman * priceIn) / priceOut;
         }
 
         return (inHuman * scaleIn, outHuman * scaleOut);

@@ -9,6 +9,7 @@ import {IERC20Minimal} from "./interfaces/IERC20Minimal.sol";
 contract DemoPair is IDemoPair {
     address public token0;
     address public token1;
+    address public liquidityAdmin;
 
     uint112 private reserve0;
     uint112 private reserve1;
@@ -20,6 +21,8 @@ contract DemoPair is IDemoPair {
     error InvalidTokenOrder();
     error InsufficientLiquidity();
     error InvalidOutputAmount();
+    error AdminAlreadySet();
+    error UnauthorizedAdmin();
 
     event Swap(
         address indexed sender,
@@ -36,6 +39,30 @@ contract DemoPair is IDemoPair {
         token0 = token0_;
         token1 = token1_;
         initialized = true;
+    }
+
+    function setLiquidityAdmin(address admin) external {
+        if (liquidityAdmin != address(0)) revert AdminAlreadySet();
+        if (admin == address(0)) revert InvalidTokenOrder();
+        liquidityAdmin = admin;
+    }
+
+    /// @notice Sync reserves to current token balances (demo recovery).
+    function syncReserves() external {
+        _update(
+            IERC20Minimal(token0).balanceOf(address(this)),
+            IERC20Minimal(token1).balanceOf(address(this))
+        );
+    }
+
+    /// @notice Withdraw tokens from pool reserves (demo recovery, admin only).
+    function adminWithdraw(address token, address to, uint256 amount) external {
+        if (msg.sender != liquidityAdmin) revert UnauthorizedAdmin();
+        IERC20Minimal(token).transfer(to, amount);
+        _update(
+            IERC20Minimal(token0).balanceOf(address(this)),
+            IERC20Minimal(token1).balanceOf(address(this))
+        );
     }
 
     function getReserves() external view returns (uint112, uint112, uint32) {

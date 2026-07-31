@@ -1,7 +1,7 @@
-# API Contract — Sentinel for Safe Execution v0.4
+# API Contract — Sentinel for Safe Execution v0.5
 
-> **Last updated**: 2026-07-30
-> Safe swap, structured JSONL evidence, and reusable data-analysis API.
+> **Last updated**: 2026-07-31
+> 48 demo routes (SDA pool), Safe vs force slippage split, frontend Safe/Unsafe.
 > Legacy mock routes (`route-a/b/c`) unchanged in mock mode.
 
 ## Base URL
@@ -152,8 +152,8 @@ Full configuration and CLI documentation:
   "swapWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   "eventsPersistPath": "backend/data/events.jsonl",
   "demoRegistry": "0x603E1BD79259EbcbAaeD0c83eeC09cA0B89a5bcC",
-  "demoPoolCount": 36,
-  "routeCount": 36,
+  "demoPoolCount": 48,
+  "routeCount": 48,
   "defaultProfile": "normal",
   "paused": false,
   "eventCount": 42,
@@ -168,12 +168,12 @@ Full configuration and CLI documentation:
 
 ### GET /debug/pools-health
 
-Demo mode only. Returns reserves and health for all 36 pools.
+Demo mode only. Returns reserves and health for all 48 pools.
 
 ```json
 {
   "registry": "0x603E...",
-  "poolCount": 36,
+  "poolCount": 48,
   "healthy": 34,
   "degraded": 2,
   "empty": 0,
@@ -247,7 +247,7 @@ Invalid profile → HTTP 400:
 GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100
 ```
 
-**Demo mode** — returns up to 3 routes (SAFE / SHALLOW / TOXIC) with live reserves:
+**Demo mode** — returns up to **4** routes (SAFE / SHALLOW / TOXIC / SDA) with live reserves:
 
 ```json
 {
@@ -470,7 +470,7 @@ Returns `404` when `CHAIN_MODE != demo`.
 ```json
 {
   "registry": "0x603E...",
-  "poolCount": 36,
+  "poolCount": 48,
   "isSealed": true,
   "pools": [
     {
@@ -494,7 +494,7 @@ Returns `404` when `CHAIN_MODE != demo`.
 ```json
 {
   "registry": "0x603E...",
-  "poolCount": 36,
+  "poolCount": 48,
   "tokens": { "USDC": "0x...", "GOOD": "0x...", "BAD": "0x...", "BAIT": "0x..." },
   "priceRatio": "USDC:GOOD:BAD:BAIT = 1:20:100:1",
   "swapReady": true,
@@ -525,21 +525,29 @@ Content-Type: application/json
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `routeId` | yes | One of 36 demo routes |
+| `routeId` | yes | One of **48** demo routes |
 | `amountIn` | yes | Human amount (respects token decimals) |
 | `recipient` | no | Defaults to swap wallet |
 | `configProfile` | no | Passed to Agent (default `normal`) |
 
-**Pipeline:**
+**Pipeline (Safe — `POST /swap/safe`):**
 
 1. `evaluateRoute(routeId)` → ALLOW | REJECT | FALLBACK_TO_SAFE_ROUTE
-2. If FALLBACK → re-evaluate and execute on `route-{in}-{out}-safe`
-3. Re-quote; enforce `maxSlippageBps` from risk-config (default 100 = 1%)
-4. Execute:
+2. If REJECT → 422 `SWAP_REJECTED_BY_AGENT` (no chain tx)
+3. If FALLBACK → re-evaluate and execute on `route-{in}-{out}-safe`
+4. Re-quote; **no slippage band** (`amountOutMin` omitted; router `minOut=0`)
+5. Execute:
    - **Router mode** (`routerSwapAvailable`): `DemoSwapRouter.swapWithPermit` — Vault + fund + swap in **1 tx**
    - **Direct mode**: `fundSwapper` → `token.transfer(pair)` → `pair.swap()` — **3 tx**
 
-**Success response:**
+**Pipeline (Unsafe — `POST /swap/force`):**
+
+1. Skip Agent (`agentBypassed: true`, `safetyMode: "force"`)
+2. Re-quote; enforce `slippageBps` band vs SAFE reference `expectedOut` (default from risk-config: 100 = 1%)
+3. Pre-chain reject if `quotedOut < min` → `SLIPPAGE_EXCEEDED`; if `quotedOut > max` → `QUOTE_DEVIATION_EXCEEDED`
+4. Execute as above
+
+**Success response (safe example):**
 
 ```json
 {
@@ -553,8 +561,6 @@ Content-Type: application/json
   "tokenOut": "GOOD",
   "amountIn": 100,
   "quotedOut": 4.9845,
-  "amountOutMin": 4.934655,
-  "slippageBps": 100,
   "actualOut": 4.9845,
   "recipient": "0xf39F...",
   "pairAddress": "0x8633...",
@@ -570,23 +576,33 @@ Content-Type: application/json
 | Status | Condition |
 |--------|-----------|
 | 400 | Invalid request / route |
-| 409 | `SLIPPAGE_EXCEEDED` — re-quote below minimum |
+| 409 | `SLIPPAGE_EXCEEDED` / `QUOTE_DEVIATION_EXCEEDED` — **force mode only** (pre-chain) |
 | 422 | `SWAP_REJECTED_BY_AGENT` |
 | 502 | RPC / tx failure |
 | 503 | Swap not configured |
 
 ### POST /swap/force
 
-Bypasses Agent evaluation. Use for development and batch verification.
+Bypasses Agent evaluation. **Only protection** is slippage band vs SAFE `expectedOut`. Use for Unsafe frontend mode, development, and batch verification.
 
 ```http
 POST /api/swap/force
 Content-Type: application/json
 
-{ "routeId": "route-usdc-bad-safe", "amountIn": 1 }
+{
+  "routeId": "route-usdc-good-sda",
+  "amountIn": 1,
+  "slippageBps": 100
+}
 ```
 
-Same response shape as safe swap; `agentDecision` omitted; `requestedRouteId` equals `executedRouteId`.
+| Field | Required | Notes |
+|-------|----------|-------|
+| `slippageBps` | no | Default from risk-config (`maxSlippageBps`, typically 100). Max 10000 (100%) in frontend Unsafe UI. |
+
+Response includes `agentBypassed: true`, `safetyMode: "force"`. `agentDecision` omitted.
+
+Same response shape as safe swap otherwise; slippage fields present when band enforced.
 
 > Legacy field `skipEvaluate: true` on `POST /api/swap` is deprecated — use `/swap/force`.
 
@@ -602,16 +618,16 @@ Content-Type: application/json
 | Field | Default | Notes |
 |-------|---------|-------|
 | `amountIn` | `1` | Per-route input amount |
-| `safe` | `false` | Set `"safe": true` to use Agent (BAD/BAIT out will REJECT) |
+| `safe` | `false` | Set `"safe": true` to use Agent (BAD/BAIT/SDA routes reject; fewer passes) |
 | `recipient` | swap wallet | Optional |
 
-Defaults to **force** mode (36/36 expected).
+Defaults to **force** mode. Expected at default slippage: **36 passed, 12 failed** (all TOXIC routes fail quote-deviation check).
 
 ```json
 {
   "passed": 36,
-  "failed": 0,
-  "total": 36,
+  "failed": 12,
+  "total": 48,
   "amountIn": 1,
   "mode": "force",
   "routerAvailable": true,
@@ -783,7 +799,8 @@ Common error codes:
 | `INVALID_CONFIG_PROFILE` | GET /config |
 | `INVALID_USER_ADDRESS` | GET /execute/nonce |
 | `SWAP_REJECTED_BY_AGENT` | POST /swap/safe |
-| `SLIPPAGE_EXCEEDED` | POST /swap/safe |
+| `SLIPPAGE_EXCEEDED` | POST /swap/force |
+| `QUOTE_DEVIATION_EXCEEDED` | POST /swap/force |
 
 Swap rejection example:
 

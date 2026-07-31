@@ -28,7 +28,7 @@ contract DemoPoolRegistryTest is Test {
         for (uint256 i = 0; i < 4; i++) {
             for (uint256 j = 0; j < 4; j++) {
                 if (i == j) continue;
-                for (uint256 p = 0; p < 3; p++) {
+                for (uint256 p = 0; p < 4; p++) {
                     registry.registerPool(
                         keccak256(abi.encodePacked("route", index)),
                         address(uint160(0x2000 + index)),
@@ -43,7 +43,7 @@ contract DemoPoolRegistryTest is Test {
 
         registry.seal();
         assertTrue(registry.isSealed());
-        assertEq(registry.poolCount(), 36);
+        assertEq(registry.poolCount(), 48);
         assertEq(registry.getReferencePool(usdc, good), address(0x2000));
         assertEq(uint256(registry.tokenRiskTag(bad)), uint256(DemoPoolRegistry.TokenRiskTag.HIGH));
     }
@@ -57,7 +57,9 @@ contract DemoPoolRegistryTest is Test {
         registry.registerPool(keccak256("b"), address(0xA2), usdc, good, DemoPoolRegistry.PoolLabel.SHALLOW);
         registry.registerPool(keccak256("c"), address(0xA3), usdc, good, DemoPoolRegistry.PoolLabel.TOXIC);
 
-        for (uint256 i = 0; i < 33; i++) {
+        registry.registerPool(keccak256("d"), address(0xA4), usdc, good, DemoPoolRegistry.PoolLabel.SDA);
+
+        for (uint256 i = 0; i < 44; i++) {
             registry.registerPool(
                 keccak256(abi.encodePacked("x", i)),
                 address(uint160(0xB0 + i)),
@@ -69,6 +71,6 @@ contract DemoPoolRegistryTest is Test {
 
         registry.seal();
         DemoPoolRegistry.PoolEntry[] memory goodPools = registry.getPoolsByTokenOut(good);
-        assertEq(goodPools.length, 3);
+        assertEq(goodPools.length, 4);
     }
 }

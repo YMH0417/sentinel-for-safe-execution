@@ -45,7 +45,8 @@ export function RiskRulesPage() {
           <div className="sentinel-label">池类型策略</div>
           <RuleRow token="SAFE" level="推荐" color="var(--green)" desc="低冲击，作 fallback 目标" />
           <RuleRow token="SHALLOW" level="警告" color="var(--yellow)" desc="高价格冲击，风险分升高" />
-          <RuleRow token="TOXIC" level="Fallback" color="var(--yellow)" desc="可触发切换到同币对 SAFE 池" />
+          <RuleRow token="TOXIC" level="Reject" color="var(--red)" desc="诱多报价 / 高池风险 → Agent REJECT" />
+          <RuleRow token="SDA" level="Reject" color="var(--red)" desc="执行窗口风险（类比桥延迟）→ Agent REJECT" />
         </div>
 
         <div className="sentinel-card">

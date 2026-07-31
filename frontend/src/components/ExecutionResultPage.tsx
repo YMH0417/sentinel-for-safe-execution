@@ -167,6 +167,9 @@ export function ExecutionResultPage() {
               {swap.poolLabel ? ` · ${swap.poolLabel} 池` : ""}
               {swap.executedRouteId ? ` · ${swap.executedRouteId}` : ""}
               {agentBypassed ? " · Unsafe 直连" : ""}
+              {swap.sdaExecutionWindow
+                ? ` · SDA 窗口 ${swap.sdaWaitedSeconds ?? swap.sdaWindowSeconds ?? 15}s`
+                : ""}
             </p>
           )}
           {swap && <SettlementSummary swap={swap} success={success} preSwapBlocked={preSwapBlocked} />}
@@ -244,6 +247,17 @@ function SettlementSummary({
       label: `允许区间 (± ${swap.slippageBps !== undefined ? `${(swap.slippageBps / 100).toFixed(1)}%` : "滑点"})`,
       value: `${formatAmount(swap.amountOutMin)} ~ ${formatAmount(swap.amountOutMax)}`,
     });
+  } else if (swap.sdaExecutionWindow) {
+    rows.push({
+      label: "SDA 执行窗口",
+      value: `${swap.sdaWaitedSeconds ?? swap.sdaWindowSeconds ?? 15}s 链上 finality 等待`,
+    });
+    if (swap.quotedOutAtOpen !== undefined) {
+      rows.push({
+        label: "窗口开启时报价",
+        value: formatAmount(swap.quotedOutAtOpen),
+      });
+    }
   } else if (!slippageMode) {
     rows.push({
       label: "保护策略",

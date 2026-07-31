@@ -3,6 +3,9 @@ import {
   JsonRpcProvider,
   id,
   getAddress,
+  keccak256,
+  randomBytes,
+  toUtf8Bytes,
   type ContractTransactionReceipt,
 } from "ethers";
 import {
@@ -46,11 +49,15 @@ import {
   signExecutionPermit,
 } from "./agentSignService.js";
 import { addEvent } from "./eventService.js";
+import {
+  SDA_EXECUTION_WINDOW_SECONDS,
+  waitForSdaExecutionWindow,
+} from "./sdaWindowService.js";
 import { withTimeout, waitForReceipt } from "../utils/withTimeout.js";
 
 /** Serialize on-chain swaps — shared wallet nonce must not race */
 let swapChain = Promise.resolve();
-const SWAP_LOCK_TIMEOUT_MS = 90_000;
+const SWAP_LOCK_TIMEOUT_MS = 180_000;
 
 function withSwapLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = swapChain.then(
@@ -459,6 +466,113 @@ export async function getTokenBalances(
   return result;
 }
 
+function buildSdaSwapId(recipient: string, routeName: string): string {
+  return keccak256(
+    toUtf8Bytes(`${recipient.toLowerCase()}:${routeName}:${Date.now()}:${randomBytes(8)}`)
+  );
+}
+
+async function executeSdaDelayedRouterSwap(params: {
+  router: Contract;
+  provider: JsonRpcProvider;
+  recipient: string;
+  executedRouteId: string;
+  amountInRaw: bigint;
+  amountOutMinRaw: bigint;
+  decOut: number;
+  swapRequest: SwapRequest;
+  correlationId?: string;
+}): Promise<{
+  receipt: ContractTransactionReceipt;
+  swapId: string;
+  sdaOpenTxHash: string;
+  sdaReadyAt: number;
+  sdaWaitedSeconds: number;
+  quotedOutAtOpen: number;
+}> {
+  const routeIdBytes32 = id(params.executedRouteId);
+  const swapId = buildSdaSwapId(params.recipient, params.executedRouteId);
+
+  const openTx = await params.router.openSdaExecutionWindow(
+    swapId,
+    params.recipient,
+    routeIdBytes32,
+    params.amountInRaw,
+    params.amountOutMinRaw,
+    params.recipient
+  );
+  const openReceipt = (await waitForReceipt(openTx)) as ContractTransactionReceipt | null;
+  if (!openReceipt || openReceipt.status === 0) {
+    throw new SwapExecutionError("SWAP_REVERTED", "SDA execution window open reverted on-chain", {
+      txHash: openReceipt?.hash,
+    });
+  }
+
+  let quotedOutAtOpen = 0;
+  for (const log of openReceipt.logs) {
+    try {
+      const parsed = params.router.interface.parseLog(log);
+      if (parsed?.name === "SdaExecutionWindowOpened") {
+        quotedOutAtOpen = toHumanAmount(parsed.args.quotedOutAtOpen as bigint, params.decOut);
+        break;
+      }
+    } catch {
+      // ignore unrelated logs
+    }
+  }
+
+  const readyAtBn: bigint = await params.router.getSdaWindowReadyAt(swapId);
+  const sdaReadyAt = Number(readyAtBn);
+  const fastForward =
+    params.swapRequest.fastForwardSdaWindow === true ||
+    params.swapRequest.correlationId?.startsWith("batch-") === true;
+
+  addEvent({
+    eventType: "SdaExecutionWindowWaiting",
+    routeId: params.executedRouteId,
+    message: fastForward
+      ? `SDA window fast-forward (${SDA_EXECUTION_WINDOW_SECONDS}s simulated)`
+      : `SDA execution window open — waiting ${SDA_EXECUTION_WINDOW_SECONDS}s for bridge finality`,
+    txHash: openReceipt.hash,
+    context: {
+      correlationId: params.correlationId,
+      account: params.recipient,
+      swapId,
+      sdaReadyAt,
+      sdaWindowSeconds: SDA_EXECUTION_WINDOW_SECONDS,
+      fastForward,
+      quotedOutAtOpen,
+      poolLabel: "SDA",
+    },
+  });
+
+  const { waitedSeconds } = await waitForSdaExecutionWindow(params.provider, readyAtBn, {
+    wallClockWait: !fastForward,
+    fastForward,
+  });
+
+  const completeTx = await params.router.completeSdaExecutionWindow(swapId);
+  const receipt = (await waitForReceipt(completeTx)) as ContractTransactionReceipt | null;
+  if (!receipt) {
+    throw new SwapExecutionError("SWAP_FAILED", "SDA completion produced no receipt");
+  }
+  if (receipt.status === 0) {
+    throw new SwapExecutionError("SWAP_REVERTED", "SDA completion reverted on-chain", {
+      txHash: receipt.hash,
+      gasUsed: receipt.gasUsed.toString(),
+    });
+  }
+
+  return {
+    receipt,
+    swapId,
+    sdaOpenTxHash: openReceipt.hash,
+    sdaReadyAt,
+    sdaWaitedSeconds: waitedSeconds,
+    quotedOutAtOpen,
+  };
+}
+
 export async function executeDemoSwap(params: SwapRequest): Promise<SwapResult> {
   return withSwapLock(() => executeDemoSwapInner(params));
 }
@@ -580,6 +694,15 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
 
   let receipt: ContractTransactionReceipt | null;
   let executionMode: "router" | "direct" = "direct";
+  let sdaMeta: Pick<
+    SwapResult,
+    | "sdaExecutionWindow"
+    | "sdaWindowSeconds"
+    | "sdaWaitedSeconds"
+    | "sdaOpenTxHash"
+    | "sdaReadyAt"
+    | "quotedOutAtOpen"
+  > = {};
 
   if (useRouter && routerAddress) {
     executionMode = "router";
@@ -593,43 +716,68 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
         tokenIn
       );
     }
-    const permitDecision: Decision = {
-      ...executionDecision,
-      decision: "ALLOW" as DecisionType,
-      routeId: executedRouteId,
-    };
-    const { permit, signature, routeIdBytes32 } = await signExecutionPermit({
-      user: recipient,
-      routeName: executedRouteId,
-      amountInRaw,
-      amountOutQuotedRaw: quotedOutRaw,
-      deadline: defaultSwapDeadline(),
-      decision: permitDecision,
-    });
 
     const router = new Contract(routerAddress, demoSwapRouterAbi, signer);
-    const tx = await router.swapWithPermit(
-      recipient,
-      routeIdBytes32,
-      amountInRaw,
-      quotedOutRaw,
-      amountOutMinRaw,
-      Number(permit.deadline),
-      Number(permit.riskScore),
-      permit.decision,
-      permit.nonce,
-      signature,
-      recipient
-    );
-    receipt = (await waitForReceipt(tx)) as ContractTransactionReceipt | null;
-    if (!receipt) {
-      throw new SwapExecutionError("SWAP_FAILED", "Router swap produced no receipt");
-    }
-    if (receipt.status === 0) {
-      throw new SwapExecutionError("SWAP_REVERTED", "Router swap reverted on-chain", {
-        txHash: receipt.hash,
-        gasUsed: receipt.gasUsed.toString(),
+
+    if (poolLabel === "SDA" && agentBypassed) {
+      const sdaResult = await executeSdaDelayedRouterSwap({
+        router,
+        provider,
+        recipient,
+        executedRouteId,
+        amountInRaw,
+        amountOutMinRaw,
+        decOut,
+        swapRequest: params,
+        correlationId: params.correlationId,
       });
+      receipt = sdaResult.receipt;
+      sdaMeta = {
+        sdaExecutionWindow: true,
+        sdaWindowSeconds: SDA_EXECUTION_WINDOW_SECONDS,
+        sdaWaitedSeconds: sdaResult.sdaWaitedSeconds,
+        sdaOpenTxHash: sdaResult.sdaOpenTxHash,
+        sdaReadyAt: sdaResult.sdaReadyAt,
+        quotedOutAtOpen: sdaResult.quotedOutAtOpen,
+      };
+    } else {
+      const permitDecision: Decision = {
+        ...executionDecision,
+        decision: "ALLOW" as DecisionType,
+        routeId: executedRouteId,
+      };
+      const { permit, signature, routeIdBytes32 } = await signExecutionPermit({
+        user: recipient,
+        routeName: executedRouteId,
+        amountInRaw,
+        amountOutQuotedRaw: quotedOutRaw,
+        deadline: defaultSwapDeadline(),
+        decision: permitDecision,
+      });
+
+      const tx = await router.swapWithPermit(
+        recipient,
+        routeIdBytes32,
+        amountInRaw,
+        quotedOutRaw,
+        amountOutMinRaw,
+        Number(permit.deadline),
+        Number(permit.riskScore),
+        permit.decision,
+        permit.nonce,
+        signature,
+        recipient
+      );
+      receipt = (await waitForReceipt(tx)) as ContractTransactionReceipt | null;
+      if (!receipt) {
+        throw new SwapExecutionError("SWAP_FAILED", "Router swap produced no receipt");
+      }
+      if (receipt.status === 0) {
+        throw new SwapExecutionError("SWAP_REVERTED", "Router swap reverted on-chain", {
+          txHash: receipt.hash,
+          gasUsed: receipt.gasUsed.toString(),
+        });
+      }
     }
   } else {
     if (payerIsUser) {
@@ -739,10 +887,11 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
       [tokenIn]: afterIn - beforeIn,
       [tokenOut]: actualOutHuman,
     },
+    ...sdaMeta,
   };
 }
 
-export async function executeAll36Swaps(
+export async function executeAllDemoSwaps(
   amountIn = 1,
   recipient?: string,
   skipEvaluate = true

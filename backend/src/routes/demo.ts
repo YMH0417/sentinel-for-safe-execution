@@ -4,7 +4,9 @@ import { isDemoChainMode } from "../config/demoConfig.js";
 import { decimalsForSymbol } from "../config/demoRoutes.js";
 import { demoPoolRegistryAbi } from "../abi/demoAbis.js";
 import { getRpcUrl, getOptionalSwapRouterAddress } from "../config/chainConfig.js";
+import { getAddress } from "ethers";
 import { getLiveDemoConfig } from "../services/demoRegistryService.js";
+import { getDemoSupplyOverview } from "../services/demoSupplyService.js";
 import type { DemoTokenSymbol } from "../config/demoConfig.js";
 
 const router = Router();
@@ -81,7 +83,7 @@ router.get("/pools", async (_req: Request, res: Response) => {
       tokenInAddress: pool.tokenIn,
       tokenOutAddress: pool.tokenOut,
       label: pool.label,
-      poolLabel: pool.label === 0 ? "SAFE" : pool.label === 1 ? "SHALLOW" : "TOXIC",
+      poolLabel: pool.label === 0 ? "SAFE" : pool.label === 1 ? "SHALLOW" : pool.label === 2 ? "TOXIC" : "SDA",
       isReferencePool: pool.isReferencePool,
     }));
 
@@ -93,6 +95,26 @@ router.get("/pools", async (_req: Request, res: Response) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load pools";
+    res.status(503).json({ error: message });
+  }
+});
+
+router.get("/supply", async (req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "Demo endpoints require demo chain mode" });
+  }
+
+  const holderParam = typeof req.query.holder === "string" ? req.query.holder.trim() : "";
+  if (!holderParam) {
+    return res.status(400).json({ error: "Query parameter holder is required" });
+  }
+
+  try {
+    const holder = getAddress(holderParam);
+    const overview = await getDemoSupplyOverview(holder);
+    res.json(overview);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load token supply overview";
     res.status(503).json({ error: message });
   }
 });
@@ -121,6 +143,8 @@ router.get("/status", async (_req: Request, res: Response) => {
       registry: config.registry,
       poolCount: config.pools.length,
       tokens: config.tokens,
+      scenarioDeployer: config.scenarioDeployer ?? null,
+      testUser: config.testUser ?? null,
       swapRouter: getOptionalSwapRouterAddress() ?? null,
       priceRatio: "USDC:GOOD:BAD:BAIT = 1:20:100:1",
       swapReady,

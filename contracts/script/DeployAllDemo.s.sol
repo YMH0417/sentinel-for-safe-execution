@@ -56,6 +56,7 @@ contract DeployAllDemo is Script {
         scenarioDeployer.authorizeFunder(deployer, true);
 
         address testUser = vm.envOr("TEST_USER_ADDRESS", DEFAULT_TEST_USER);
+        scenarioDeployer.authorizeMinter(testUser, true);
         _fundTestUser(scenarioDeployer, artifacts.scenario, testUser);
 
         vm.stopBroadcast();
@@ -114,6 +115,9 @@ contract DeployAllDemo is Script {
             '",\n',
             '  "scenarioDeployer": "',
             vm.toString(artifacts.scenarioDeployer),
+            '",\n',
+            '  "testUser": "',
+            vm.toString(vm.envOr("TEST_USER_ADDRESS", DEFAULT_TEST_USER)),
             '",\n',
             '  "tokens": {\n',
             '    "USDC": "',

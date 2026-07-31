@@ -20,7 +20,7 @@ contract GenerateQuoteTables is Script {
         DemoScenarioDeployer deployer = new DemoScenarioDeployer();
         DemoScenarioDeployer.Scenario memory scenario = deployer.deploy();
 
-        console2.log("=== 4-Token Demo: 12 pairs x 3 pools = 36 routes ===");
+        console2.log("=== 4-Token Demo: 12 pairs x 4 pools = 48 routes ===");
         console2.log("Registry:", address(scenario.registry));
         console2.log("Quote amount: 100 units of tokenIn per row");
         console2.log("");

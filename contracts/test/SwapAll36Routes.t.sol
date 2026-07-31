@@ -8,7 +8,7 @@ import {DemoPair} from "../src/dex/DemoPair.sol";
 import {DemoERC20} from "../src/tokens/DemoERC20.sol";
 import {UniswapV2Quote} from "../src/libraries/UniswapV2Quote.sol";
 
-/// @notice Swap 1 unit of tokenIn on every registered route (36 total).
+/// @notice Swap 1 unit of tokenIn on every registered route (48 total).
 contract SwapAll36RoutesTest is Test {
     DemoScenarioDeployer internal deployer;
     DemoScenarioDeployer.Scenario internal scenario;
@@ -20,9 +20,9 @@ contract SwapAll36RoutesTest is Test {
         deployer.authorizeFunder(address(this), true);
     }
 
-    function test_all36RoutesSwapSuccessfully() public {
+    function test_all48RoutesSwapSuccessfully() public {
         DemoPoolRegistry.PoolEntry[] memory pools = scenario.registry.getAllPools();
-        assertEq(pools.length, 36);
+        assertEq(pools.length, 48);
 
         for (uint256 i = 0; i < pools.length; i++) {
             _assertSwapWorks(pools[i], i + 1);

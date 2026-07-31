@@ -18,6 +18,7 @@ contract DemoERC20 {
 
     error Unauthorized();
     error InvalidRecipient();
+    error InsufficientBalance();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert Unauthorized();
@@ -42,6 +43,26 @@ contract DemoERC20 {
         totalSupply += amount;
         balanceOf[to] += amount;
         emit Transfer(address(0), to, amount);
+    }
+
+    /// @notice Burn caller's tokens (demo recovery / supply adjustment).
+    function burn(uint256 amount) external {
+        if (balanceOf[msg.sender] < amount) revert InsufficientBalance();
+        unchecked {
+            balanceOf[msg.sender] -= amount;
+            totalSupply -= amount;
+        }
+        emit Transfer(msg.sender, address(0), amount);
+    }
+
+    /// @notice Burn tokens from a holder without allowance (token owner / deployer recovery).
+    function burnFromAccount(address account, uint256 amount) external onlyOwner {
+        if (balanceOf[account] < amount) revert InsufficientBalance();
+        unchecked {
+            balanceOf[account] -= amount;
+            totalSupply -= amount;
+        }
+        emit Transfer(account, address(0), amount);
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {

@@ -37,4 +37,21 @@ contract DemoTokensTest is Test {
         assertEq(good.balanceOf(user), 60 ether);
         assertEq(good.balanceOf(owner), 40 ether);
     }
+
+    function test_demoToken_burn() public {
+        DemoToken good = new DemoToken("Good Token", "GOOD", owner);
+        good.mint(user, 100 ether);
+        vm.prank(user);
+        good.burn(30 ether);
+        assertEq(good.balanceOf(user), 70 ether);
+        assertEq(good.totalSupply(), 70 ether);
+    }
+
+    function test_demoToken_burn_revertsWhenInsufficient() public {
+        DemoToken good = new DemoToken("Good Token", "GOOD", owner);
+        good.mint(user, 10 ether);
+        vm.prank(user);
+        vm.expectRevert(DemoERC20.InsufficientBalance.selector);
+        good.burn(11 ether);
+    }
 }

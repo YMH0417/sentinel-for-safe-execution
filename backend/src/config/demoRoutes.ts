@@ -2,7 +2,7 @@ import { id } from "ethers";
 import type { DemoTokenSymbol } from "./demoConfig.js";
 
 export const DEMO_TOKEN_KEYS = ["usdc", "good", "bad", "bait"] as const;
-export const DEMO_POOL_KEYS = ["safe", "shallow", "toxic"] as const;
+export const DEMO_POOL_KEYS = ["safe", "shallow", "toxic", "sda"] as const;
 
 export type DemoTokenKey = (typeof DEMO_TOKEN_KEYS)[number];
 export type DemoPoolKey = (typeof DEMO_POOL_KEYS)[number];
@@ -49,7 +49,7 @@ export function buildRouteName(
 
 export function parseRouteName(routeName: string): ParsedRouteName | null {
   const match = routeName.match(
-    /^route-(usdc|good|bad|bait)-(usdc|good|bad|bait)-(safe|shallow|toxic)$/i
+    /^route-(usdc|good|bad|bait)-(usdc|good|bad|bait)-(safe|shallow|toxic|sda)$/i
   );
   if (!match) return null;
   const tokenInKey = match[1].toLowerCase() as DemoTokenKey;

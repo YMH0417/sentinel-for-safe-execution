@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
@@ -18,23 +18,22 @@ import type {
 } from "../types";
 import { executionSearchParams } from "../lib/swapResult";
 import { parseApiError } from "../lib/apiError";
+import {
+  checkSlippageBand,
+  computeMaxOut,
+  computeMinOut,
+  formatSlippagePercent,
+} from "../lib/slippage";
 
 const API_BASE = "/api";
 const PAGE_SIZE = 5;
 const SLIPPAGE_PRESETS_BPS = [10, 50, 100, 300] as const;
 const DEFAULT_SLIPPAGE_BPS = 100;
 const UNSAFE_MAX_SLIPPAGE_BPS = 10_000;
+const SDA_SWAP_TIMEOUT_MS = 180_000;
 
-function formatSlippagePercent(slippageBps: number): string {
-  return `${(slippageBps / 100).toFixed(slippageBps % 100 === 0 ? 0 : 1)}%`;
-}
-
-function computeMinOut(expectedOut: number, slippageBps: number): number {
-  return expectedOut * (1 - slippageBps / 10_000);
-}
-
-function computeMaxOut(expectedOut: number, slippageBps: number): number {
-  return expectedOut * (1 + slippageBps / 10_000);
+function isSdaRoute(routeId: string): boolean {
+  return routeId.includes("-sda");
 }
 
 const PRE_SWAP_BLOCK_CODES = new Set(["SLIPPAGE_EXCEEDED", "QUOTE_DEVIATION_EXCEEDED"]);
@@ -74,6 +73,7 @@ function buildFailedSwapResult(
     onChainFailure?: boolean;
     gasUsed?: string;
     txHash?: string;
+    unsafeMode?: boolean;
   }
 ): SwapResult {
   const details = error.details ?? {};
@@ -98,7 +98,28 @@ function buildFailedSwapResult(
     failureMessage: error.message,
     onChainFailure: opts.onChainFailure,
     executionMode: "router",
+    safetyMode: opts.unsafeMode ? "force" : "safe",
+    agentBypassed: opts.unsafeMode ?? false,
   };
+}
+
+function buildUnsafeSlippageError(
+  route: RouteType,
+  slippageBps: number
+): SwapApiError | null {
+  const violation = checkSlippageBand(route.quotedOut, route.expectedOut, slippageBps);
+  if (!violation) return null;
+  const message =
+    violation.code === "QUOTE_DEVIATION_EXCEEDED"
+      ? `报价 ${route.quotedOut.toFixed(4)} 高于公允价 ${route.expectedOut.toFixed(4)} 加滑点上限（疑似 TOXIC 池诱多报价）`
+      : `报价 ${route.quotedOut.toFixed(4)} 低于公允价 ${route.expectedOut.toFixed(4)} 减滑点后的最低接收量 ${violation.amountOutMin.toFixed(4)}`;
+  return new SwapApiError(message, violation.code, {
+    quotedOut: route.quotedOut,
+    expectedOut: route.expectedOut,
+    amountOutMin: violation.amountOutMin,
+    amountOutMax: violation.amountOutMax,
+    slippageBps,
+  });
 }
 
 interface Props {
@@ -148,6 +169,37 @@ export function TransactionPage({ safeMode }: Props) {
   const [recommendedRouteId, setRecommendedRouteId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
+  const [executionElapsedSeconds, setExecutionElapsedSeconds] = useState<number | null>(null);
+  const executionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const executionStartedAtRef = useRef<number | null>(null);
+
+  const startExecutionTimer = () => {
+    executionStartedAtRef.current = performance.now();
+    setExecutionElapsedSeconds(0);
+    if (executionTimerRef.current) clearInterval(executionTimerRef.current);
+    executionTimerRef.current = setInterval(() => {
+      if (executionStartedAtRef.current !== null) {
+        setExecutionElapsedSeconds(
+          (performance.now() - executionStartedAtRef.current) / 1000
+        );
+      }
+    }, 100);
+  };
+
+  const stopExecutionTimer = () => {
+    if (executionTimerRef.current) clearInterval(executionTimerRef.current);
+    executionTimerRef.current = null;
+    executionStartedAtRef.current = null;
+    setExecutionElapsedSeconds(null);
+  };
+
+  useEffect(() => () => stopExecutionTimer(), []);
+
+  useEffect(() => {
+    setDecision(null);
+    setError("");
+    setRecommendedRouteId(null);
+  }, [safeMode]);
 
   const selectedRouteData = routes.find((r) => r.routeId === selectedRoute);
   const maxReceiveOut =
@@ -158,11 +210,12 @@ export function TransactionPage({ safeMode }: Props) {
     !safeMode && selectedRouteData?.expectedOut !== undefined
       ? computeMinOut(selectedRouteData.expectedOut, slippageBps)
       : null;
-  const gaugeScore = decision
-    ? Math.max(0, 100 - decision.riskScore)
-    : selectedRouteData
-      ? Math.max(0, 100 - selectedRouteData.poolRiskScore)
-      : 72;
+  const gaugeScore =
+    safeMode && decision
+      ? Math.max(0, 100 - decision.riskScore)
+      : selectedRouteData
+        ? Math.max(0, 100 - selectedRouteData.poolRiskScore)
+        : 72;
 
   const loadRoutes = async (options?: {
     preserveSelection?: boolean;
@@ -317,7 +370,7 @@ export function TransactionPage({ safeMode }: Props) {
           ...(force ? { slippageBps } : {}),
         }),
       },
-      120_000
+      force && isSdaRoute(routeId) ? SDA_SWAP_TIMEOUT_MS : 120_000
     );
     if (!res.ok) {
       const errPayload = data.error;
@@ -391,11 +444,36 @@ export function TransactionPage({ safeMode }: Props) {
   };
 
   const resolveExecutionRouteId = (
-    activeDecision: Decision | null | undefined,
+    _activeDecision: Decision | null | undefined,
     routeIdOverride?: string
   ): string => {
     if (routeIdOverride) return routeIdOverride;
     return selectedRoute;
+  };
+
+  const navigateUnsafeSlippageBlock = (
+    routeId: string,
+    slipError: SwapApiError,
+    routeData?: RouteType
+  ) => {
+    const failedSwap = buildFailedSwapResult(routeId, slipError, {
+      tokenIn,
+      tokenOut,
+      amount,
+      slippageBps,
+      recipient: account ?? "",
+      route: routeData,
+      onChainFailure: false,
+      unsafeMode: true,
+    });
+    navigate("/execution", { state: { swap: failedSwap, decision: null } });
+    showToast({
+      type: "error",
+      message:
+        slipError.code === "QUOTE_DEVIATION_EXCEEDED"
+          ? "报价异常偏高，交易被拦截（未上链）"
+          : "滑点过低，交易被拦截（未上链）",
+    });
   };
 
   const executeRoute = async (
@@ -403,7 +481,12 @@ export function TransactionPage({ safeMode }: Props) {
     routeIdOverride?: string
   ) => {
     const evalDecision = activeDecision ?? decision;
-    if (!evalDecision && safeMode) return;
+    if (safeMode && !evalDecision) {
+      const msg = "Safe 模式需先完成「风险评估」再执行";
+      setError(msg);
+      showToast({ type: "warning", message: msg });
+      return;
+    }
     if (safeMode && evalDecision?.decision === "REJECT") {
       const msg = "当前路由已被 Safety Agent 拒绝，请手动选择其他路由后再执行";
       setError(msg);
@@ -417,12 +500,29 @@ export function TransactionPage({ safeMode }: Props) {
       return;
     }
 
+    const routeId = resolveExecutionRouteId(evalDecision, routeIdOverride);
+    const routeData = routes.find((r) => r.routeId === routeId);
+    if (!routeData) {
+      const msg = "请先获取报价并选择有效路由";
+      setError(msg);
+      showToast({ type: "error", message: msg });
+      return;
+    }
+
+    if (!safeMode) {
+      const slipError = buildUnsafeSlippageError(routeData, slippageBps);
+      if (slipError) {
+        setError(slipError.message);
+        navigateUnsafeSlippageBlock(routeId, slipError, routeData);
+        return;
+      }
+    }
+
     setLoading("Executing route on-chain...");
+    startExecutionTimer();
     if (!safeMode) {
       setDecision(null);
     }
-    const routeId = resolveExecutionRouteId(evalDecision, routeIdOverride);
-    const routeData = routes.find((r) => r.routeId === routeId);
     try {
       const chainMode = await getChainMode();
 
@@ -433,26 +533,39 @@ export function TransactionPage({ safeMode }: Props) {
         setLoading("等待 MetaMask 确认（连接 / 授权 / 签名）...");
         const swap = await executeDemoSwap(routeId, !safeMode);
 
-        const finalDecision =
-          evalDecision ?? {
-            decision: swap.agentDecision ?? "ALLOW",
-            riskScore: 0,
-            reason: swap.success ? "Swap executed" : swap.failureMessage ?? "Swap settlement failed",
-            routeId: swap.requestedRouteId ?? routeId,
-            fallbackRouteId:
-              swap.executedRouteId !== swap.requestedRouteId ? swap.executedRouteId ?? null : null,
-            flags: [],
-          };
-        setDecision(finalDecision);
+        const finalDecision: Decision | null = safeMode
+          ? (evalDecision ?? {
+              decision: swap.agentDecision ?? "ALLOW",
+              riskScore: 0,
+              reason: swap.success
+                ? "Swap executed"
+                : swap.failureMessage ?? "Swap settlement failed",
+              routeId: swap.requestedRouteId ?? routeId,
+              fallbackRouteId:
+                swap.executedRouteId !== swap.requestedRouteId
+                  ? swap.executedRouteId ?? null
+                  : null,
+              flags: [],
+            })
+          : null;
+        if (finalDecision) {
+          setDecision(finalDecision);
+        }
         if (swap.success) {
-          showToast({ type: "success", message: "Swap 链上结算成功" });
+          const sdaNote =
+            swap.sdaExecutionWindow && swap.sdaWaitedSeconds
+              ? `（SDA 窗口等待 ${swap.sdaWaitedSeconds}s）`
+              : "";
+          showToast({ type: "success", message: `Swap 链上结算成功${sdaNote}` });
         } else {
           showToast({
             type: "error",
             message: swap.failureMessage ?? "链上交易已发送，但结算未通过校验",
           });
         }
-        navigate(executionSearchParams(swap.txHash), { state: { swap, decision: finalDecision } });
+        navigate(executionSearchParams(swap.txHash), {
+          state: { swap, decision: finalDecision },
+        });
         return;
       }
 
@@ -501,9 +614,10 @@ export function TransactionPage({ safeMode }: Props) {
           recipient: account ?? "",
           route: routeData,
           onChainFailure: false,
+          unsafeMode: !safeMode,
         });
         navigate("/execution", {
-          state: { swap: failedSwap, decision: evalDecision ?? null },
+          state: { swap: failedSwap, decision: safeMode ? evalDecision ?? null : null },
         });
         showToast({
           type: "error",
@@ -518,6 +632,7 @@ export function TransactionPage({ safeMode }: Props) {
       setError(`Execute failed: ${msg}`);
       showToast({ type: "error", message: `Execution failed: ${msg}` });
     } finally {
+      stopExecutionTimer();
       setLoading("");
     }
   };
@@ -580,6 +695,19 @@ export function TransactionPage({ safeMode }: Props) {
 
   const pageCount = Math.max(1, Math.ceil(routes.length / PAGE_SIZE));
   const pagedRoutes = routes.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+  const primaryFlowButtonLabel = (() => {
+    if (executionElapsedSeconds !== null && !!loading) {
+      return `执行中 ${executionElapsedSeconds.toFixed(1)}s`;
+    }
+    if (loading === "Running full flow...") return "流程执行中...";
+    if (loading === "Loading routes...") return "加载报价中...";
+    if (loading === "Executing route on-chain...") return "链上执行中...";
+    if (loading === "Evaluating route with Safety Agent...") return "评估中...";
+    if (loading?.includes("MetaMask")) return "等待 MetaMask...";
+    if (loading) return "处理中...";
+    return safeMode ? "一键完整流程（含执行）" : "无安全模式执行";
+  })();
 
   return (
     <div>
@@ -654,6 +782,21 @@ export function TransactionPage({ safeMode }: Props) {
               </div>
             ) : (
             <div>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  background: "rgba(218,54,51,0.08)",
+                  border: "1px solid rgba(218,54,51,0.25)",
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                Unsafe 模式<strong style={{ color: "var(--red)" }}> 绕过 Safety Agent</strong>，
+                仅通过滑点带宽（相对 SAFE 公允价）拦截异常报价。
+              </div>
               <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
                 滑点容忍（Unsafe 唯一保护）
               </label>
@@ -732,22 +875,24 @@ export function TransactionPage({ safeMode }: Props) {
             />
             <RiskIndicator
               label="Agent 决策"
-              value={decision?.decision ?? "待评估"}
+              value={safeMode ? (decision?.decision ?? "待评估") : "已绕过"}
               level={
-                decision?.decision === "REJECT"
-                  ? "high"
-                  : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
-                    ? "moderate"
-                    : "low"
+                safeMode
+                  ? decision?.decision === "REJECT"
+                    ? "high"
+                    : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
+                      ? "moderate"
+                      : "low"
+                  : "high"
               }
             />
             <RiskIndicator
               label="安全模式"
-              value={safeMode ? "开启" : "关闭"}
+              value={safeMode ? "Safe" : "Unsafe"}
               level={safeMode ? "low" : "high"}
             />
           </div>
-          <SafetyPanel decision={decision} onSwitchToFallback={switchToFallbackRoute} />
+          <SafetyPanel decision={decision} safeMode={safeMode} onSwitchToFallback={switchToFallbackRoute} />
         </div>
 
         <div className="sentinel-card">
@@ -828,15 +973,21 @@ export function TransactionPage({ safeMode }: Props) {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
               className="sentinel-btn sentinel-btn-ghost"
               onClick={() => evaluateRoute()}
-              disabled={!!loading || !selectedRoute}
+              disabled={!!loading || !selectedRoute || !safeMode}
+              title={!safeMode ? "Unsafe 模式不经过 Agent" : undefined}
             >
               {loading === "Evaluating route with Safety Agent..." ? "评估中..." : "风险评估"}
             </button>
+            {!safeMode && (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Unsafe 下 Agent 不生效，请直接执行并依赖滑点保护
+              </span>
+            )}
             <button
               type="button"
               className="sentinel-btn sentinel-btn-primary"
@@ -844,21 +995,7 @@ export function TransactionPage({ safeMode }: Props) {
               disabled={!!loading}
               style={{ flex: 1, minWidth: 200 }}
             >
-              {loading === "Running full flow..."
-                ? "流程执行中..."
-                : loading === "Loading routes..."
-                  ? "加载报价中..."
-                  : loading === "Executing route on-chain..."
-                    ? "链上执行中..."
-                    : loading === "Evaluating route with Safety Agent..."
-                      ? "评估中..."
-                      : loading?.includes("MetaMask")
-                        ? "等待 MetaMask..."
-                        : loading
-                          ? "处理中..."
-                          : safeMode
-                            ? "一键完整流程（含执行）"
-                            : "无安全模式执行"}
+              {primaryFlowButtonLabel}
             </button>
           </div>
         </div>

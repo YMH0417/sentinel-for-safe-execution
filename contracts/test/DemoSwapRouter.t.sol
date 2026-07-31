@@ -78,6 +78,44 @@ contract DemoSwapRouterTest is Test {
         assertEq(vault.nonces(user), 1);
     }
 
+    function test_sdaExecutionWindow_requiresDelay() public {
+        DemoPoolRegistry.PoolEntry memory pool = scenario.registry.getPoolByRouteId(
+            scenarioDeployer.routeId("route-usdc-good-sda")
+        );
+
+        uint256 amountIn = 1e6;
+        uint256 amountOutMin = 1;
+        bytes32 swapId = keccak256("sda-delay-test");
+        address relayer = makeAddr("relayer");
+
+        scenarioDeployer.fundSwapper(pool.tokenIn, user, amountIn);
+        vm.prank(user);
+        DemoERC20(pool.tokenIn).approve(address(router), amountIn);
+
+        vm.prank(relayer);
+        router.openSdaExecutionWindow(swapId, user, pool.routeId, amountIn, amountOutMin, user);
+
+        vm.prank(relayer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DemoSwapRouter.SdaWindowNotReady.selector,
+                block.timestamp + router.SDA_EXECUTION_WINDOW(),
+                block.timestamp
+            )
+        );
+        router.completeSdaExecutionWindow(swapId);
+
+        vm.warp(block.timestamp + router.SDA_EXECUTION_WINDOW());
+
+        uint256 goodBefore = DemoERC20(pool.tokenOut).balanceOf(user);
+        vm.prank(relayer);
+        uint256 amountOut = router.completeSdaExecutionWindow(swapId);
+
+        assertGt(amountOut, 0);
+        assertGt(DemoERC20(pool.tokenOut).balanceOf(user) - goodBefore, 0);
+        assertEq(router.SDA_EXECUTION_WINDOW(), 15 seconds);
+    }
+
     function _signPermit(
         address permitUser,
         bytes32 routeId,

@@ -43,7 +43,8 @@ export type EventType =
   | "FallbackRequired"
   | "SwapExecuted"
   | "SwapFailed"
-  | "SwapBatchCompleted";
+  | "SwapBatchCompleted"
+  | "SdaExecutionWindowWaiting";
 
 export interface Decision {
   decision: DecisionType;
@@ -198,6 +199,8 @@ export interface SwapRequest {
   slippageBps?: number;
   /** Server-generated identifier used to join events from one operation. */
   correlationId?: string;
+  /** Batch verify-all: skip 15s wall-clock wait for SDA routes (evm_increaseTime only). */
+  fastForwardSdaWindow?: boolean;
 }
 
 export interface SwapResult {
@@ -230,6 +233,14 @@ export interface SwapResult {
   balancesBefore: Partial<Record<string, TokenBalance>>;
   balancesAfter: Partial<Record<string, TokenBalance>>;
   balanceDelta: Partial<Record<string, number>>;
+  /** SDA two-step execution window (Unsafe / force path). */
+  sdaExecutionWindow?: boolean;
+  sdaWindowSeconds?: number;
+  sdaWaitedSeconds?: number;
+  sdaOpenTxHash?: string;
+  sdaReadyAt?: number;
+  quotedOutAtOpen?: number;
+  quotedOutAtComplete?: number;
 }
 
 export interface SwapBatchResult {

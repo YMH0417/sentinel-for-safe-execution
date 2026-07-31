@@ -12,4 +12,8 @@ interface IDemoPair {
     function mint(address to) external returns (uint256 liquidity);
 
     function swap(uint256 amount0Out, uint256 amount1Out, address to) external;
+
+    function syncReserves() external;
+
+    function adminWithdraw(address token, address to, uint256 amount) external;
 }

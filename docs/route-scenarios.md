@@ -1,8 +1,8 @@
 # Route 场景说明
 
-> **Last updated**: 2026-07-28  
+> **Last updated**: 2026-07-31  
 > **Part I** — Legacy mock routes (`route-a/b/c`, mock mode)  
-> **Part II** — Demo chain routes (36 on-chain routes, demo mode)
+> **Part II** — Demo chain routes (**48** on-chain routes, demo mode)
 
 ---
 
@@ -81,7 +81,7 @@
 | 代币 | USDC, GOOD, BAD, BAIT |
 | 公允价格比 | USDC : GOOD : BAD : BAIT = **1 : 20 : 100 : 1** |
 | 定向币对 | 4×3 = **12 pairs**（不含同币互换） |
-| 池档位 | SAFE / SHALLOW / TOXIC × 每币对 = **36 routes** |
+| 池档位 | SAFE / SHALLOW / TOXIC / **SDA** × 每币对 = **48 routes** |
 | 报价来源 | 链上 `DemoPair.getReserves()` + Uniswap V2 `getAmountOut` |
 | 参考价 | 同币对 SAFE 池 spot price → `expectedOut` |
 | Fallback | SHALLOW / TOXIC → 同币对 `route-{in}-{out}-safe` |
@@ -98,7 +98,9 @@ route-{tokenIn}-{tokenOut}-{pool}
 ```
 
 `tokenIn` / `tokenOut` ∈ {usdc, good, bad, bait}  
-`pool` ∈ {safe, shallow, toxic}
+`pool` ∈ {safe, shallow, toxic, **sda**}
+
+示例：`route-usdc-good-sda`
 
 ---
 
@@ -109,6 +111,7 @@ route-{tokenIn}-{tokenOut}-{pool}
 | SAFE | 0.02 | 12 | false | 深流动性，接近公允价 |
 | SHALLOW | 0.25 | 55 | true | 浅池，高 price impact |
 | TOXIC | 0.35 | 88 | true | 恶意报价倾向，flag `toxic_pool` |
+| SDA | 0.45 | 90 | true | 深池（同 SAFE），**执行窗口风险**（类比跨链桥延迟） |
 
 `poolRiskScore` = base + price impact 修正（见 `chainQuoteService.ts`）。
 
@@ -134,13 +137,39 @@ route-{tokenIn}-{tokenOut}-{pool}
 | `route-usdc-good-safe` | ALLOW | 原路由 |
 | `route-usdc-good-toxic` | REJECT | 422，不 swap |
 | `route-usdc-bad-safe` | REJECT | 422，不 swap |
+| `route-usdc-good-sda` | **REJECT** | 422，不 swap（SDA 执行窗口） |
 | `route-usdc-good-shallow`（amount 100） | FALLBACK | 同币对 `route-usdc-good-safe` |
 
-SHALLOW fallback 与交易量有关；normal profile 下 amount 100 是可复现示例。
-
-额外保护：`maxSlippageBps`（默认 100 = 1%）在 swap 前二次报价校验。
+Safe 模式**不启用滑点带宽**（`minOut=0`）；路由策略完全由 Agent 决定。
 
 执行模式：配置了 DemoSwapRouter 时 `executionMode: "router"`（1 tx）；否则 `"direct"`（3 tx）。
+
+---
+
+## Unsafe / Force Swap（`POST /api/swap/force`）
+
+| 场景 | Agent | 滑点（默认 100 bps） | 结果 |
+|------|-------|----------------------|------|
+| `route-usdc-good-safe` | 绕过 | — | 成功 |
+| `route-usdc-good-sda` | 绕过 | 报价≈SAFE | **成功**（对比 Safe 下 REJECT） |
+| `route-usdc-good-toxic` | 绕过 | 报价高于上限 | **QUOTE_DEVIATION_EXCEEDED** |
+| `route-usdc-good-shallow`（amount 100） | 绕过 | 报价低于下限 | **SLIPPAGE_EXCEEDED** |
+| `route-usdc-bad-safe` | 绕过 | — | 可成功（无 tokenOut 硬规则） |
+
+滑点参考价：同币对 **SAFE 池** `expectedOut`；带宽 `[expectedOut × (1−bps), expectedOut × (1+bps)]`。
+
+前端 Unsafe 模式在 MetaMask 前做同等预检（`frontend/src/lib/slippage.ts`）。
+
+---
+
+## 前端 Safe / Unsafe 切换（`/transaction`）
+
+| 模式 | UI | 行为 |
+|------|-----|------|
+| **Safe** | Agent 面板 +「风险评估」 | 必须先 evaluate；REJECT / FALLBACK 拦截执行 |
+| **Unsafe** | 滑点控件 +「Unsafe 执行保护」说明 | 「风险评估」禁用；直连 `/swap/force` |
+
+切换模式时清空 stale Agent 决策，避免 Unsafe 下误显示旧 REJECT/ALLOW。
 
 ---
 
@@ -150,62 +179,41 @@ SHALLOW fallback 与交易量有关；normal profile 下 amount 100 是可复现
 |---------|------|------|
 | `route-usdc-good-safe` | ALLOW | 低偏差、SAFE 池 |
 | `route-usdc-good-toxic` | REJECT | 高 pool risk + toxic flags |
+| `route-usdc-good-sda` | **REJECT** | SDA 执行窗口风险 |
 | `route-usdc-bad-safe` | REJECT | tokenOut=BAD 硬规则 |
 | `route-good-bait-shallow` | REJECT | tokenOut=BAIT 硬规则 |
 | `route-bad-usdc-safe` | ALLOW* | BAD 作 tokenIn 允许；*仅评分规则 |
 
 ---
 
-## 36 路由完整列表
+## 48 路由完整列表
+
+每定向币对含 4 池：**safe / shallow / toxic / sda**。
 
 ### USDC → *
 
-| routeId | tokenOut | Pool |
-|---------|----------|------|
-| route-usdc-good-safe / -shallow / -toxic | GOOD | 3 |
-| route-usdc-bad-safe / -shallow / -toxic | BAD | 3 |
-| route-usdc-bait-safe / -shallow / -toxic | BAIT | 3 |
+| routeId 后缀 | tokenOut |
+|--------------|----------|
+| `-good-safe / -shallow / -toxic / -sda` | GOOD |
+| `-bad-safe / -shallow / -toxic / -sda` | BAD |
+| `-bait-safe / -shallow / -toxic / -sda` | BAIT |
 
-### GOOD → *
+### GOOD / BAD / BAIT → *
 
-| routeId | tokenOut | Pool |
-|---------|----------|------|
-| route-good-usdc-* | USDC | 3 |
-| route-good-bad-* | BAD | 3 |
-| route-good-bait-* | BAIT | 3 |
-
-### BAD → *
-
-| routeId | tokenOut | Pool |
-|---------|----------|------|
-| route-bad-usdc-* | USDC | 3 |
-| route-bad-good-* | GOOD | 3 |
-| route-bad-bait-* | BAIT | 3 |
-
-### BAIT → *
-
-| routeId | tokenOut | Pool |
-|---------|----------|------|
-| route-bait-usdc-* | USDC | 3 |
-| route-bait-good-* | GOOD | 3 |
-| route-bait-bad-* | BAD | 3 |
-
-完整地址与 pair：`GET /api/demo/pools`。
+同理 12 定向 × 4 池 = **48**。完整 pair 地址：`GET /api/demo/pools`。
 
 ---
 
 ## Swap 验证
 
-| 验证方式 | 命令 |
-|----------|------|
+| 验证方式 | 命令 / 预期 |
+|----------|-------------|
 | 一键启动 + 验证 | `.\start-demo.ps1 -VerifySwaps` |
-| Backend API (force) | `POST /api/swap/verify-all` → 36/36 |
-| Backend API (safe) | `POST /api/swap/verify-all` `{"safe":true}` → BAD/BAIT out 会 REJECT |
+| Backend API (force) | `POST /api/swap/verify-all` → **36 通过 + 12 TOXIC 滑点失败** |
+| Backend API (safe) | `POST /api/swap/verify-all` `{"safe":true}` → BAD/BAIT/SDA 等大量 REJECT |
 | npm script | `cd backend && npm run verify:swaps` |
-| Foundry test | `forge test --match-contract SwapAll36Routes` |
+| Foundry test | `forge test --match-contract SwapAll36Routes` → **48/48** 直连 swap |
 | Foundry script | `forge script script/TestAll36Swaps.s.sol --rpc-url ...` |
-
-记录：[`tmp/swap-api-36-results.md`](../tmp/swap-api-36-results.md)
 
 ---
 
@@ -214,13 +222,12 @@ SHALLOW fallback 与交易量有关；normal profile 下 amount 100 是可复现
 | 文件 | 说明 |
 |------|------|
 | `shared/demo-data/routes.json` | Legacy mock（3 条） |
-| `backend/src/config/demoRoutes.ts` | 36 路由命名 / 解析 / routeId bytes32 |
-| `backend/src/services/chainQuoteService.ts` | 链上报价 |
-| `backend/src/services/agentService.ts` | 评分 + BAD/BAIT 硬拒绝 |
-| `backend/src/services/swapService.ts` | safe / force swap, router / direct |
-| `backend/src/services/agentSignService.ts` | Router EIP-712 签名 |
-| `contracts/src/demo/DemoSwapRouter.sol` | Vault + swap 合一 |
-| `contracts/src/demo/DemoScenarioDeployer.sol` | 36 池部署 |
+| `backend/src/config/demoRoutes.ts` | 48 路由命名 / 解析 / routeId bytes32 |
+| `backend/src/services/chainQuoteService.ts` | 链上报价 + SDA/TOXIC 元数据 |
+| `backend/src/services/agentService.ts` | 评分 + BAD/BAIT/SDA 硬拒绝 |
+| `backend/src/services/swapService.ts` | safe（无滑点）/ force（滑点）swap |
+| `frontend/src/components/TransactionPage.tsx` | Safe/Unsafe 执行流程 |
+| `frontend/src/lib/slippage.ts` | Unsafe 滑点预检 |
+| `contracts/src/demo/DemoScenarioDeployer.sol` | 48 池部署 |
 | `contracts/deployments/anvil-31337-demo.json` | 部署 manifest（自动生成） |
 | `scripts/start-demo.ps1` | Windows 一键启动 |
-| `contracts/script/GenerateQuoteTables.s.sol` | 报价表生成 |

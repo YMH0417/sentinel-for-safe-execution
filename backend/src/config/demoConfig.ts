@@ -5,7 +5,7 @@ import { getAddress } from "ethers";
 import { parseRouteName, tokenSymbolFromKey } from "./demoRoutes.js";
 
 export type DemoTokenSymbol = "USDC" | "GOOD" | "BAD" | "BAIT";
-export type DemoPoolLabel = "SAFE" | "SHALLOW" | "TOXIC";
+export type DemoPoolLabel = "SAFE" | "SHALLOW" | "TOXIC" | "SDA";
 
 export interface DemoPoolEntry {
   routeName: string;
@@ -24,6 +24,7 @@ export interface DemoDeploymentConfig {
   vaultExecution?: string;
   swapRouter?: string;
   scenarioDeployer?: string;
+  testUser?: string;
   tokens: Partial<Record<DemoTokenSymbol, string>>;
   pools: DemoPoolEntry[];
 }
@@ -91,6 +92,7 @@ export function loadDemoConfig(): DemoDeploymentConfig {
     vaultExecution: raw.vaultExecution ? getAddress(raw.vaultExecution) : undefined,
     swapRouter: raw.swapRouter ? getAddress(raw.swapRouter) : undefined,
     scenarioDeployer: raw.scenarioDeployer ? getAddress(raw.scenarioDeployer) : undefined,
+    testUser: raw.testUser ? getAddress(raw.testUser) : undefined,
     agentSigner: raw.agentSigner ? getAddress(raw.agentSigner) : undefined,
     tokens,
     pools: (raw.pools ?? []).map((pool) => ({
@@ -126,6 +128,7 @@ export function getTokenAddress(config: DemoDeploymentConfig, symbol: DemoTokenS
 export function labelFromNumber(label: number): DemoPoolLabel {
   if (label === 1) return "SHALLOW";
   if (label === 2) return "TOXIC";
+  if (label === 3) return "SDA";
   return "SAFE";
 }
 

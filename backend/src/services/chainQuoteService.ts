@@ -33,6 +33,7 @@ const POOL_META: Record<
   SAFE: { failureRate: 0.02, basePoolRisk: 12, supportsFallback: false },
   SHALLOW: { failureRate: 0.25, basePoolRisk: 55, supportsFallback: true },
   TOXIC: { failureRate: 0.35, basePoolRisk: 88, supportsFallback: true },
+  SDA: { failureRate: 0.45, basePoolRisk: 90, supportsFallback: true },
 };
 
 export interface QuoteParams {
@@ -71,6 +72,10 @@ export function deriveWarningFlags(
   if (poolLabel === "TOXIC") {
     flags.push("toxic_pool");
   }
+  if (poolLabel === "SDA") {
+    flags.push("sda_pool");
+    flags.push("execution_window_risk");
+  }
   if (quotedOut > expectedOut * 1.001) {
     flags.push("suspicious_quote");
   }
@@ -81,6 +86,7 @@ function derivePoolRiskScore(poolLabel: DemoPoolLabel, priceImpactBps: number): 
   const base = POOL_META[poolLabel].basePoolRisk;
   if (poolLabel === "SAFE") return Math.min(20, base + Math.round(priceImpactBps / 10));
   if (poolLabel === "SHALLOW") return Math.min(75, base + Math.round(priceImpactBps / 100));
+  if (poolLabel === "SDA") return Math.min(95, base + Math.round(priceImpactBps / 20));
   return Math.min(95, base);
 }
 

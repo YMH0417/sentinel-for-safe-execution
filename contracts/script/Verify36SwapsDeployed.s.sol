@@ -22,7 +22,7 @@ contract Verify36SwapsDeployed is Script {
 
         DemoPoolRegistry registry = DemoPoolRegistry(registryAddr);
         DemoPoolRegistry.PoolEntry[] memory pools = registry.getAllPools();
-        require(pools.length == 36, "expected 36 pools");
+        require(pools.length == 48, "expected 48 pools");
 
         console2.log("Registry:", registryAddr);
         console2.log("ScenarioDeployer:", scenarioDeployer);

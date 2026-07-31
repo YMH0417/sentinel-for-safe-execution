@@ -144,4 +144,10 @@ export interface SwapResult {
   slippageBps?: number;
   /** true = reverted on-chain (gas spent); false/undefined = blocked before broadcast */
   onChainFailure?: boolean;
+  sdaExecutionWindow?: boolean;
+  sdaWindowSeconds?: number;
+  sdaWaitedSeconds?: number;
+  sdaOpenTxHash?: string;
+  sdaReadyAt?: number;
+  quotedOutAtOpen?: number;
 }

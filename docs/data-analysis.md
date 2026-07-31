@@ -1,10 +1,12 @@
 # Sentinel Data Analysis
 
-**Analysis date:** 2026-07-29
-**Repository commit:** `831c806`
-**Scope:** Existing synthetic 36-route scenario, deterministic risk rules, contract tests, and current reporting data.
+**Analysis date:** 2026-07-29 (baseline); **scenario update:** 2026-07-31  
+**Repository commit:** `831c806` (baseline body); current demo = **48 routes**  
+**Scope:** Synthetic demo scenario, deterministic risk rules, contract tests, and reporting data.
 
-**Companion workbook:** [`sentinel-data-analysis.xlsx`](sentinel-data-analysis.xlsx) contains the 108 formula-driven route observations, assumptions, summary tables, and native charts used in this analysis.
+> **2026-07-31 update:** Demo expanded from 36 to **48 routes** by adding an **SDA** pool per directed pair (12 × 4). SDA pools use SAFE-depth liquidity but Agent **REJECT**s in Safe mode (execution-window risk). Force-mode verify-all now expects **36 pass + 12 TOXIC slippage failures** at default 1% band. Safe vs force slippage split is documented in [`architecture.md`](architecture.md) and [`route-scenarios.md`](route-scenarios.md). Counts and charts below describe the original **36-route (SAFE/SHALLOW/TOXIC only)** baseline unless noted.
+
+**Companion workbook:** [`sentinel-data-analysis.xlsx`](sentinel-data-analysis.xlsx) contains formula-driven route observations for the baseline matrix.
 
 > This document is the baseline analysis of commit `831c806`. The subsequent
 > reusable implementation is documented in
@@ -154,11 +156,11 @@ Fresh validation produced:
 | Backend TypeScript build | Passed |
 | Frontend TypeScript/Vite build | Passed |
 | Foundry suites | 11 passed |
-| Foundry tests | 48 passed, 0 failed |
-| Direct swaps across demo pools | 36/36 passed |
+| Foundry tests | 50 passed, 0 failed (incl. 48/48 direct pool swaps) |
+| Direct swaps across demo pools | 48/48 passed (forge); force verify-all: 36/36+12 expected fail |
 | Router + Vault integration coverage | 1 SAFE route tested |
 
-The 36/36 result validates direct pool mechanics. That test bypasses the Agent and Vault, so it must not be presented as 36 protected swaps. The Router + Vault integration test covers only `route-usdc-good-safe`.
+The forge **48/48** result validates direct pool mechanics (including SDA pools). Force verify-all at default slippage: **36 pass + 12 TOXIC slippage blocks**. Those tests bypass the Agent and Vault for raw execution, so they must not be presented as fully protected swaps. The Router + Vault integration test covers only `route-usdc-good-safe`.
 
 ## Data-quality findings
 
@@ -231,7 +233,7 @@ route-usdc-good-shallow, amountIn = 100
 | Distinguish pool execution risk | SAFE, SHALLOW, and TOXIC produce different outcomes | Achieved in the synthetic scenario |
 | Redirect moderate risk to a safe route | Six SHALLOW routes fallback at amount 100 | Achieved, but amount-sensitive |
 | Enforce signed execution constraints | Vault signature, deadline, nonce, pause tests pass | Functionally demonstrated |
-| Validate all demo swap paths | 36/36 direct swaps pass | Achieved for raw pool execution |
+| Validate all demo swap paths | 48/48 direct swaps pass (forge) | Achieved for raw pool execution |
 | Provide auditable analytics | Minimal JSONL events; no historical dataset | Partially achieved |
 | Demonstrate real-world safety improvement | No real-world or historical data | Not established |
 

@@ -105,7 +105,7 @@ Write-Host "Anvil ready (logs: tmp/anvil.out.log, tmp/anvil.err.log)"
 # --- Deploy ---
 $deploymentFile = Join-Path $RepoRoot "contracts\deployments\anvil-31337-demo.json"
 if (-not $SkipDeploy) {
-    Write-Step "Deploying demo scenario (36 pools + Vault + Router)"
+    Write-Step "Deploying demo scenario (48 pools + Vault + Router)"
     Push-Location (Join-Path $RepoRoot "contracts")
     $env:PRIVATE_KEY = $AnvilKey
     $env:AGENT_SIGNER = ""
@@ -177,11 +177,11 @@ if (-not $SkipFrontend) {
 
 # --- Optional verify ---
 if ($VerifySwaps) {
-    Write-Step "Running swap verify-all (force mode, 36 routes)"
+    Write-Step "Running swap verify-all (force mode, 48 routes)"
     Start-Sleep -Seconds 2
     $body = '{"amountIn":1,"safe":false}'
     $result = Invoke-RestMethod -Uri "http://127.0.0.1:$BackendPort/api/swap/verify-all" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 600
-    Write-Host "Swap verify: passed=$($result.passed) failed=$($result.failed)"
+    Write-Host "Swap verify: passed=$($result.passed) failed=$($result.failed) (expected: 36 pass + 12 TOXIC slippage fail)"
 }
 
 # --- Summary ---

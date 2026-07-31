@@ -21,7 +21,7 @@ contract DemoPoolsIntegrationTest is Test {
 
     function test_allPoolsHaveLiquidity() public view {
         DemoPoolRegistry.PoolEntry[] memory pools = scenario.registry.getAllPools();
-        assertEq(pools.length, 36);
+        assertEq(pools.length, 48);
         for (uint256 i = 0; i < pools.length; i++) {
             (uint112 r0, uint112 r1,) = IDemoPair(pools[i].pair).getReserves();
             assertGt(uint256(r0), 0);
@@ -29,8 +29,8 @@ contract DemoPoolsIntegrationTest is Test {
         }
     }
 
-    function test_registryPoolCountIs36() public view {
-        assertEq(scenario.registry.poolCount(), 36);
+    function test_registryPoolCountIs48() public view {
+        assertEq(scenario.registry.poolCount(), 48);
         assertTrue(scenario.registry.isSealed());
     }
 
@@ -53,6 +53,17 @@ contract DemoPoolsIntegrationTest is Test {
     function test_usdcGoodShallow_highImpact() public view {
         uint256 impact = _impactForRoute("route-usdc-good-shallow");
         assertGt(impact, 1000);
+    }
+
+    function test_usdcGoodSda_nearSafeQuote() public view {
+        uint256 safeOut = _quoteForRoute("route-usdc-good-safe");
+        uint256 sdaOut = _quoteForRoute("route-usdc-good-sda");
+        assertApproxEqRel(sdaOut, safeOut, 0.01e18);
+    }
+
+    function test_usdcGoodSda_lowImpact() public view {
+        uint256 impact = _impactForRoute("route-usdc-good-sda");
+        assertLt(impact, 100);
     }
 
     function test_usdcGoodOrdering_toxic_gt_safe_gt_shallow() public view {

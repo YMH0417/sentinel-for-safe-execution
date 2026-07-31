@@ -178,6 +178,20 @@ export async function evaluateRoute(
         evidence: decisionEvidence(route),
       };
     }
+
+    if (route.poolLabel === "SDA") {
+      return {
+        decision: "REJECT",
+        riskScore: 95,
+        reason:
+          "该路由为 SDA 池（执行窗口风险）：类比跨链桥延迟，签名与上链之间存在较长窗口，报价易失效，历史失败率偏高，Agent 拒绝直接执行。请改走同币对 SAFE 池。",
+        reasonTechnical: `sda_pool: poolLabel=SDA, failureRate=${route.historicalFailureRate}, poolRiskScore=${route.poolRiskScore}`,
+        routeId: route.routeId,
+        fallbackRouteId: route.fallbackRouteId,
+        flags: [...new Set([...route.warningFlags, "sda_pool", "execution_window_risk"])],
+        evidence: decisionEvidence(route),
+      };
+    }
   }
 
   const config = loadRiskConfig();

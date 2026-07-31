@@ -1,14 +1,14 @@
 # Documentation Index
 
-> **Last updated**: 2026-07-30
+> **Last updated**: 2026-07-31
 
 ## Start here
 
 | Doc | Audience | Content |
 |-----|----------|---------|
-| [`../README.md`](../README.md) | Everyone | Quick start, one-click deploy, API overview |
-| [`architecture.md`](architecture.md) | Developers | Safe swap flow, Router, modules, chain modes |
-| [`api-contract.md`](api-contract.md) | Frontend / integrators | HTTP schemas **v0.4** |
+| [`../README.md`](../README.md) | Everyone | Quick start, one-click deploy, Safe/Unsafe, API overview |
+| [`architecture.md`](architecture.md) | Developers | Safe vs force flow, Router, modules, chain modes |
+| [`api-contract.md`](api-contract.md) | Frontend / integrators | HTTP schemas **v0.5** |
 | [`analysis-pipeline.md`](analysis-pipeline.md) | Data / backend | Reusable ingestion, validation, metrics, CLI, and API |
 | [`data-analysis.md`](data-analysis.md) | Product / judges | Baseline findings and evidence limits |
 | [`sentinel-data-analysis.xlsx`](sentinel-data-analysis.xlsx) | Product / data | Formula-driven route observations and charts |
@@ -17,9 +17,8 @@
 
 | Doc | Content |
 |-----|---------|
-| [`route-scenarios.md`](route-scenarios.md) | Mock routes (Part I) + 36 demo routes (Part II) |
-| [`demo-script.md`](demo-script.md) | Presentation scripts (safe swap + fallback demo) |
-| [`../tmp/swap-api-36-results.md`](../tmp/swap-api-36-results.md) | 36/36 swap API verification log |
+| [`route-scenarios.md`](route-scenarios.md) | Mock routes (Part I) + **48** demo routes incl. SDA (Part II) |
+| [`demo-script.md`](demo-script.md) | Presentation scripts (Safe/Unsafe, Agent, slippage demo) |
 
 ## Windows 一键启动
 
@@ -27,7 +26,8 @@
 .\start-demo.ps1                 # 全量：Anvil + deploy + .env + backend + frontend
 .\start-demo.ps1 -SkipDeploy     # 保留链状态，只同步 .env 并重启服务
 .\start-demo.ps1 -SkipFrontend   # 只启 backend
-.\start-demo.ps1 -VerifySwaps    # 启动后自动跑 36 条 force swap
+.\start-demo.ps1 -VerifySwaps    # 启动后自动跑 48 条 force verify-all
+.\start-demo.ps1 -SkipInstall    # 跳过 npm install（二次启动更快）
 ```
 
 | 脚本 | 说明 |
@@ -43,15 +43,15 @@ Backend 配置：`backend/.env`（由 sync 脚本生成，dotenv 自动加载）
 
 | Doc | Content |
 |-----|---------|
-| [`../contracts/README.md`](../contracts/README.md) | Deploy, DemoSwapRouter, tests |
+| [`../contracts/README.md`](../contracts/README.md) | Deploy, DemoSwapRouter, 48-route tests |
 
 ## Change logs (historical + latest)
 
 | Doc | Date | Topic |
 |-----|------|-------|
-| [`dev-changes/dev-phase2-safe-swap.md`](dev-changes/dev-phase2-safe-swap.md) | 2026-07-28 | Safe swap, Router, JSONL events, pools-health |
-| [`dev-changes/dev-a-changes-demo-chain.md`](dev-changes/dev-a-changes-demo-chain.md) | 2026-07-28 | 36 池合约 |
-| [`dev-changes/dev-c-changes-demo-chain.md`](dev-changes/dev-c-changes-demo-chain.md) | 2026-07-28 | Demo 36 路由场景 |
+| [`dev-changes/dev-phase2-safe-swap.md`](dev-changes/dev-phase2-safe-swap.md) | 2026-07-28 / **07-31** | Safe swap, Router, 48 池 + SDA, frontend Safe/Unsafe |
+| [`dev-changes/dev-a-changes-demo-chain.md`](dev-changes/dev-a-changes-demo-chain.md) | 2026-07-28 | 36 池合约（历史） |
+| [`dev-changes/dev-c-changes-demo-chain.md`](dev-changes/dev-c-changes-demo-chain.md) | 2026-07-28 | Demo 36 路由场景（历史） |
 | [`dev-changes/dev-d-changes-demo-chain.md`](dev-changes/dev-d-changes-demo-chain.md) | 2026-07-28 | Swap API + demo chain |
 | [`dev-changes/dev-a-changes-thu.md`](dev-changes/dev-a-changes-thu.md) | 2026-07-23 | VaultExecution 初版 |
 | [`dev-changes/dev-c-changes-thu.md`](dev-changes/dev-c-changes-thu.md) | 2026-07-23 | Mock route 设计 |
@@ -62,7 +62,7 @@ Backend 配置：`backend/.env`（由 sync 脚本生成，dotenv 自动加载）
 
 ## Reference
 
-- 论文：[2501.17335v2](2501.17335v2.pdf)
+- 论文：[2501.17335v2](2501.17335v2.pdf) — SIA/SDA 跨链套利；demo 中 SDA 池映射执行窗口风险
 - EIP-712 schema：`../contracts/integration/execution-permit.json`
 
 ## Doc maintenance

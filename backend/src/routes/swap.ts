@@ -12,7 +12,7 @@ import {
 
   assertSwapConfigured,
 
-  executeAll36Swaps,
+  executeAllDemoSwaps,
 
   executeForceSwap,
 
@@ -377,7 +377,7 @@ router.post("/verify-all", async (req: Request, res: Response) => {
 
     assertSwapConfigured();
 
-    const batch = await executeAll36Swaps(amountIn, recipient, !useSafe);
+    const batch = await executeAllDemoSwaps(amountIn, recipient, !useSafe);
 
 
 
@@ -385,7 +385,7 @@ router.post("/verify-all", async (req: Request, res: Response) => {
 
       eventType: "SwapBatchCompleted",
 
-      message: `36-route verify (${useSafe ? "safe" : "force"}): ${batch.passed} passed, ${batch.failed} failed`,
+      message: `${batch.passed + batch.failed}-route verify (${useSafe ? "safe" : "force"}): ${batch.passed} passed, ${batch.failed} failed`,
 
       context: {
         account: recipient ?? getSwapWallet().address,

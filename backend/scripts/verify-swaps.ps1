@@ -1,4 +1,4 @@
-# Verify all 36 demo swap routes via backend API.
+# Verify all demo swap routes via backend API.
 # Prerequisites: Anvil + demo deploy + backend (CHAIN_MODE=demo, RPC_URL=http://127.0.0.1:8545)
 param(
   [string]$BaseUrl = "http://127.0.0.1:8080",

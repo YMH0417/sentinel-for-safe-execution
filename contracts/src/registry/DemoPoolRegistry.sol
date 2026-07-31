@@ -6,7 +6,8 @@ contract DemoPoolRegistry {
     enum PoolLabel {
         SAFE,
         SHALLOW,
-        TOXIC
+        TOXIC,
+        SDA
     }
 
     enum TokenRiskTag {
@@ -95,7 +96,7 @@ contract DemoPoolRegistry {
     }
 
     function seal() external onlyDeployer notSealed {
-        if (_pools.length != 36) revert InvalidInput();
+        if (_pools.length != 48) revert InvalidInput();
         isSealed = true;
         emit RegistrySealed(_tokens.length, _pools.length);
     }
