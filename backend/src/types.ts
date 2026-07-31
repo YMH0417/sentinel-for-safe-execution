@@ -247,6 +247,7 @@ export interface SwapResult {
   sdaOpenTxHash?: string;
   sdaReadyAt?: number;
   quotedOutAtOpen?: number;
+  quotedOutAtComplete?: number;
 }
 
 export interface SwapBatchResult {

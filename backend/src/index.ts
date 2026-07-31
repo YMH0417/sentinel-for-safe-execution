@@ -69,12 +69,12 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    GET  /api/config         — 读取 risk config`);
   console.log(`    GET  /api/quote/route/:id — 单条路由报价`);
   console.log(`    GET  /api/demo/tokens     — Demo 代币元数据`);
-  console.log(`    GET  /api/demo/pools      — Demo 36 池注册表`);
-  console.log(`    POST /api/swap            — Safe swap (evaluate + fallback)`);
-  console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
-  console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
-  console.log(`    POST /api/swap/verify-all — Batch 36 (default force; ?safe=true)`);
-  console.log(`    GET  /api/debug/pools-health — 36 池健康检查（带缓存）`);
+    console.log(`    GET  /api/demo/pools      — Demo 48 池注册表`);
+    console.log(`    POST /api/swap            — Safe swap (evaluate + fallback)`);
+    console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
+    console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
+    console.log(`    POST /api/swap/verify-all — Batch verify (default force; ?safe=true)`);
+    console.log(`    GET  /api/debug/pools-health — 池健康检查（带缓存）`);
   console.log(`    POST /api/debug/warm-cache   — 预热 pools-health 缓存`);
   console.log(`    GET  /api/swap/wallet     — Swap 钱包地址`);
   console.log(`    GET  /api/swap/balances   — Swap 钱包余额`);
