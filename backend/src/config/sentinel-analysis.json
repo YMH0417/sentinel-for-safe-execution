@@ -68,6 +68,7 @@
     "SwapExecuted",
     "SwapFailed",
     "SwapBatchCompleted",
+    "SdaExecutionWindowWaiting",
     "AIAnalysisCompleted"
   ],
   "allowedOutcomes": [

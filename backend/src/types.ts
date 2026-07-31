@@ -44,6 +44,7 @@ export type EventType =
   | "SwapExecuted"
   | "SwapFailed"
   | "SwapBatchCompleted"
+  | "SdaExecutionWindowWaiting"
   | "AIAnalysisCompleted";
 
 export interface Decision {
@@ -205,6 +206,8 @@ export interface SwapRequest {
   slippageBps?: number;
   /** Server-generated identifier used to join events from one operation. */
   correlationId?: string;
+  /** For SDA pools: fast-forward the execution window in demo/Anvil instead of wall-clock waiting. */
+  fastForwardSdaWindow?: boolean;
 }
 
 export interface SwapResult {
@@ -237,6 +240,13 @@ export interface SwapResult {
   balancesBefore: Partial<Record<string, TokenBalance>>;
   balancesAfter: Partial<Record<string, TokenBalance>>;
   balanceDelta: Partial<Record<string, number>>;
+  /** SDA delayed execution meta — present only when the swap went through an SDA pool. */
+  sdaExecutionWindow?: boolean;
+  sdaWindowSeconds?: number;
+  sdaWaitedSeconds?: number;
+  sdaOpenTxHash?: string;
+  sdaReadyAt?: number;
+  quotedOutAtOpen?: number;
 }
 
 export interface SwapBatchResult {
