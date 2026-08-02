@@ -54,6 +54,7 @@ import {
   waitForSdaExecutionWindow,
 } from "./sdaWindowService.js";
 import { withTimeout, waitForReceipt } from "../utils/withTimeout.js";
+import { withRpcRetry } from "../utils/rpcRetry.js";
 
 /** Serialize on-chain swaps — shared wallet nonce must not race */
 let swapChain = Promise.resolve();
@@ -281,13 +282,15 @@ async function readSwapReserves(
   pairAddress: string,
   tokenInAddress: string
 ): Promise<{ reserveIn: bigint; reserveOut: bigint; token0: string }> {
-  const pair = new Contract(pairAddress, demoPairAbi, provider);
-  const token0 = (await pair.token0()) as string;
-  const reserves = (await pair.getReserves()) as [bigint, bigint, number];
-  const tokenInIsToken0 = token0.toLowerCase() === tokenInAddress.toLowerCase();
-  return tokenInIsToken0
-    ? { reserveIn: reserves[0], reserveOut: reserves[1], token0 }
-    : { reserveIn: reserves[1], reserveOut: reserves[0], token0 };
+  return withRpcRetry(async () => {
+    const pair = new Contract(pairAddress, demoPairAbi, provider);
+    const token0 = (await pair.token0()) as string;
+    const reserves = (await pair.getReserves()) as [bigint, bigint, number];
+    const tokenInIsToken0 = token0.toLowerCase() === tokenInAddress.toLowerCase();
+    return tokenInIsToken0
+      ? { reserveIn: reserves[0], reserveOut: reserves[1], token0 }
+      : { reserveIn: reserves[1], reserveOut: reserves[0], token0 };
+  });
 }
 
 function findPool(config: DemoDeploymentConfig, routeId: string) {
@@ -454,7 +457,7 @@ export async function getTokenBalances(
     const address = live.tokens[symbol];
     if (!address) continue;
     const token = new Contract(address, demoErc20Abi, provider);
-    const raw = (await token.balanceOf(holder)) as bigint;
+    const raw = (await withRpcRetry(() => token.balanceOf(holder) as Promise<bigint>));
     const decimals = decimalsForSymbol(symbol);
     result[symbol] = {
       symbol,
@@ -612,7 +615,7 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
   const wallet = getSwapWallet();
   const signer = getSwapSigner();
   const recipient = params.recipient ? getAddress(params.recipient) : wallet.address;
-  const provider = wallet.provider as JsonRpcProvider;
+  const provider = new JsonRpcProvider(getRpcUrl());
 
   const decIn = decimalsForSymbol(tokenIn);
   const decOut = decimalsForSymbol(tokenOut);
@@ -942,6 +945,7 @@ export async function executeAllDemoSwaps(
           pairAddress: result.pairAddress,
         },
       });
+      await new Promise((resolve) => setTimeout(resolve, 150));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const failure = classifySwapFailure(err);

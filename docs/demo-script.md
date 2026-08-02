@@ -1,6 +1,30 @@
 # Demo Script — Sentinel for Safe Execution
 
-> **Last updated**: 2026-07-31 — 48 routes, SDA pool, Safe/Unsafe frontend, slippage-on-force-only.
+> **Last updated**: 2026-08-02 — 三 profile（anvil-local / fork / monad-testnet），48 routes，Safe/Unsafe。
+
+---
+
+## C. Demo Profiles（Anvil / Monad）
+
+| Profile | Chain ID | MetaMask | 启动 |
+|---------|----------|----------|------|
+| `anvil-local` | 31337 | Anvil Local (ETH) | `.\start-demo.ps1 -VerifySwaps` |
+| `anvil-fork-monad` | 10143 | Monad Testnet (Fork) / MON | `.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps` |
+| `monad-testnet` | 10143 | Monad Testnet (公网) | 先 `.\scripts\deploy-monad-testnet.ps1`，再 `.\scripts\switch-demo-profile.ps1 -Profile monad-testnet` |
+
+```powershell
+# 切换 backend（需重启 backend）
+.\scripts\switch-demo-profile.ps1 -Profile monad-testnet
+.\scripts\switch-demo-profile.ps1 -Profile anvil-local
+
+# 对比 manifest
+.\scripts\compare-profiles.ps1
+
+Invoke-RestMethod http://127.0.0.1:8080/api/debug/status
+# demoProfile, expectedChainId, deploymentTarget
+```
+
+Fork / local / testnet 的 **verify-all** 预期均为 **36 pass + 12 fail**（TOXIC 滑点拦截）。
 
 ---
 
@@ -133,6 +157,9 @@ For `CHAIN_MODE=mock` without Anvil.
 | Demo moment | API / UI |
 |-------------|----------|
 | One-click setup | `.\start-demo.ps1 -VerifySwaps` |
+| Fork Monad locally | `.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps` |
+| Deploy Monad testnet | `.\scripts\deploy-monad-testnet.ps1` |
+| Switch profile | `.\scripts\switch-demo-profile.ps1 -Profile <name>` |
 | Show 4 pool quotes | `GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100` |
 | BAD token reject | `POST /api/evaluate` `route-usdc-bad-safe` |
 | SDA reject (Safe) | `POST /api/evaluate` `route-usdc-good-sda` |

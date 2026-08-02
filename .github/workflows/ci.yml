@@ -33,3 +33,19 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  demo-local:
+    runs-on: ubuntu-latest
+    needs: [contracts, backend]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Anvil deploy + verify-all (anvil-local @31337)
+        run: bash scripts/ci-demo-local.sh

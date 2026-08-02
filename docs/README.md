@@ -1,6 +1,6 @@
 # Documentation Index
 
-> **Last updated**: 2026-07-31
+> **Last updated**: 2026-08-02
 
 ## Start here
 
@@ -23,21 +23,22 @@
 ## Windows 一键启动
 
 ```powershell
-.\start-demo.ps1                 # 全量：Anvil + deploy + .env + backend + frontend
-.\start-demo.ps1 -SkipDeploy     # 保留链状态，只同步 .env 并重启服务
-.\start-demo.ps1 -SkipFrontend   # 只启 backend
-.\start-demo.ps1 -VerifySwaps    # 启动后自动跑 48 条 force verify-all
-.\start-demo.ps1 -SkipInstall    # 跳过 npm install（二次启动更快）
+.\start-demo.ps1 -VerifySwaps              # 默认 anvil-local @31337
+.\start-demo.ps1 -Profile anvil-fork-monad   # fork Monad @10143
+.\scripts\switch-demo-profile.ps1 -Profile monad-testnet
+.\scripts\deploy-monad-testnet.ps1
 ```
 
 | 脚本 | 说明 |
 |------|------|
 | [`../start-demo.ps1`](../start-demo.ps1) | 根目录快捷入口 |
-| [`../scripts/start-demo.ps1`](../scripts/start-demo.ps1) | 主启动脚本 |
+| [`../switch-demo.ps1`](../switch-demo.ps1) | 切换 DEMO_PROFILE |
+| [`../scripts/start-demo.ps1`](../scripts/start-demo.ps1) | 主启动脚本（`-Profile`） |
+| [`../scripts/switch-demo-profile.ps1`](../scripts/switch-demo-profile.ps1) | manifest → `backend/.env`（不 redeploy） |
 | [`../scripts/sync-backend-env.ps1`](../scripts/sync-backend-env.ps1) | manifest → `backend/.env` |
 
-部署 manifest：`contracts/deployments/anvil-31337-demo.json`（forge 自动写入）  
-Backend 配置：`backend/.env`（由 sync 脚本生成，dotenv 自动加载）
+Profile 定义：[`../shared/demo-chain-profiles.json`](../shared/demo-chain-profiles.json)  
+Manifest：`local-31337-demo.json`（local）/ `monad-10143-demo.json`（remote）
 
 ## Contracts
 

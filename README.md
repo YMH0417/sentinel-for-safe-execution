@@ -54,17 +54,41 @@ Legacy mock 三条 route（`route-a/b/c`）仍可用于 **mock 模式** 快速�
 
 ## 快速启动
 
+### Demo Profile（Anvil / Monad 双链）
+
+定义见 [`shared/demo-chain-profiles.json`](shared/demo-chain-profiles.json)。
+
+| Profile | Chain ID | 用途 | 一键命令 |
+|---------|----------|------|----------|
+| `anvil-local`（默认） | **31337** | 本地开发，MetaMask **Anvil Local** / ETH | `.\start-demo.ps1 -Profile anvil-local -VerifySwaps` |
+| `anvil-fork-monad` | **10143** | Fork Monad testnet 状态，本地 MON | `.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps` |
+| `monad-testnet` | **10143** | 公网 Monad RPC | `.\scripts\deploy-monad-testnet.ps1` |
+
+切换 backend 指向（不重新部署，需重启 backend）：
+
+```powershell
+.\scripts\switch-demo-profile.ps1 -Profile monad-testnet
+.\scripts\switch-demo-profile.ps1 -Profile anvil-local
+.\scripts\compare-profiles.ps1
+```
+
+> **MetaMask**：本地用 **31337**（与公网 10143 分离，避免 RPC 混用）；上 testnet 时切 **Monad Testnet (10143)**。
+
+---
+
 ### 方式 B — Demo 链（推荐，Windows 一键）
 
 ```powershell
-# 仓库根目录
-.\start-demo.ps1
+# 仓库根目录（默认 anvil-local @31337）
+.\start-demo.ps1 -VerifySwaps
 ```
 
 自动完成：**Anvil → DeployAllDemo → 写 manifest → 写 backend/.env → 启 backend + frontend**
 
 | 参数 | 说明 |
 |------|------|
+| `-Profile anvil-local` | 默认；Chain ID **31337** |
+| `-Profile anvil-fork-monad` | Fork `testnet-rpc.monad.xyz`，Chain ID **10143** |
 | `-SkipDeploy` | 跳过重新部署（Anvil 未重启时） |
 | `-SkipFrontend` | 只启 backend |
 | `-SkipInstall` | 跳过 `npm install` |
@@ -74,8 +98,10 @@ Legacy mock 三条 route（`route-a/b/c`）仍可用于 **mock 模式** 快速�
 
 | 文件 | 内容 |
 |------|------|
-| `contracts/deployments/anvil-31337-demo.json` | registry、vault、swapRouter、scenarioDeployer、tokens（forge 自动写入） |
-| `backend/.env` | 链上地址 + Anvil #0 私钥（`scripts/sync-backend-env.ps1` 生成） |
+| `contracts/deployments/local-31337-demo.json` | local profile manifest（31337） |
+| `contracts/deployments/local-10143-demo.json` | fork profile manifest（10143） |
+| `contracts/deployments/monad-10143-demo.json` | Monad testnet 部署产物 |
+| `backend/.env` | `DEMO_PROFILE` + 链上地址 + 私钥（local 写 Anvil #0） |
 
 Backend 启动时通过 **dotenv** 自动加载 `.env`，无需手动 `$env:...`。
 
@@ -280,13 +306,19 @@ Demo 硬规则：tokenOut = BAD/BAIT → REJECT；SDA 池 → REJECT。详见 [`
 ```
 sentinel-for-safe-execution/
 ├── start-demo.ps1              # 根目录快捷入口
+├── switch-demo.ps1             # 切换 DEMO_PROFILE（转发 scripts/）
+├── shared/demo-chain-profiles.json
 ├── scripts/
-│   ├── start-demo.ps1          # Windows 一键启动
-│   └── sync-backend-env.ps1    # manifest → backend/.env
+│   ├── start-demo.ps1          # Windows 一键启动（-Profile）
+│   ├── switch-demo-profile.ps1 # 切换 backend 指向
+│   ├── deploy-monad-testnet.ps1
+│   ├── compare-profiles.ps1
+│   ├── sync-backend-env.ps1    # manifest → backend/.env
+│   └── ci-demo-local.sh        # CI: Anvil 31337 + verify-all
 ├── contracts/
 │   ├── src/demo/DemoSwapRouter.sol
 │   ├── script/DeployAllDemo.s.sol
-│   └── deployments/anvil-31337-demo.json   # 部署后自动生成（gitignore）
+│   └── deployments/local-31337-demo.json   # 部署后写入
 ├── backend/
 │   ├── .env                    # 自动生成（gitignore）
 │   ├── data/events.jsonl        # 事件持久化

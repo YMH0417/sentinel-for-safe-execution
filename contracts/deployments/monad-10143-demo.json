@@ -1,0 +1,22 @@
+{
+  "chainId": 10143,
+  "network": "monad-testnet",
+  "deploymentTarget": "remote",
+  "profile": "monad-testnet",
+  "deployer": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+  "agentSigner": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+  "registry": "0x1757dD1615885a44a2fB3aa5A39C504aB3BFbD07",
+  "vaultExecution": "0xce9F5bdCAfC36E5468F738845203Ce3064eB50f9",
+  "swapRouter": "0x69ED45779c05DE88CEE06d668Aa6b356C3f9Aad9",
+  "scenarioDeployer": "0x0C00008d3Df7EC6A365770437741Fa991C87c2D4",
+  "testUser": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+  "deploymentMode": "phased",
+  "poolsPerBatch": 12,
+  "tokens": {
+    "USDC": "0xD52b74c0a6aB06D51e09a7eC19F5B379b9ea72aF",
+    "GOOD": "0x230e61ec5e90DeA10495afD4F0E8E1bCDeaD0951",
+    "BAD": "0x898675E5B15E374a573e6B6D3d56f85FA85c82B5",
+    "BAIT": "0xA26C06AaBdE448EF5598FE0d5B5a867057404585"
+  },
+  "pools": []
+}

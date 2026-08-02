@@ -105,6 +105,7 @@ if (-not $SkipSyncBackend) {
     Write-Step "Writing backend/.env from Monad manifest"
     & (Join-Path $RepoRoot "scripts\sync-backend-env.ps1") `
         -RepoRoot $RepoRoot `
+        -Profile "monad-testnet" `
         -DeploymentFile $deploymentFile `
         -RpcUrl $rpcUrl | Out-Null
     Write-Host "Set SWAP/EXECUTOR/AGENT private keys in backend/.env for your Monad wallet."

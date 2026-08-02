@@ -1,0 +1,22 @@
+{
+  "chainId": 10143,
+  "network": "anvil-fork-monad",
+  "deploymentTarget": "local",
+  "profile": "anvil-fork-monad",
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "agentSigner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "registry": "0x5314AA848054285DFEB12e204C58Dbb3aaec3B16",
+  "vaultExecution": "0xAe2563b4315469bF6bdD41A6ea26157dE57Ed94e",
+  "swapRouter": "0x30426D33a78afdb8788597D5BFaBdADc3Be95698",
+  "scenarioDeployer": "0xC0BF43A4Ca27e0976195E6661b099742f10507e5",
+  "testUser": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+  "deploymentMode": "phased",
+  "poolsPerBatch": 12,
+  "tokens": {
+    "USDC": "0x7e1e0606626fF95c6758F4fc706b4c4e2c56ee42",
+    "GOOD": "0xe7EfAB942B2b5041E11933b3fFF8C3513da1926b",
+    "BAD": "0xFcBCDa1F3B7cBa9EeA0BA648257CD64bf8F55e25",
+    "BAIT": "0x896495F7D8F366a087Ee9853F0e10e3C4f87CF3C"
+  },
+  "pools": []
+}

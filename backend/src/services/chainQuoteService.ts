@@ -18,6 +18,7 @@ import {
 import { getLiveDemoConfig } from "./demoRegistryService.js";
 import { getRpcUrl } from "../config/chainConfig.js";
 import { Route, QuoteResponse } from "../types.js";
+import { withRpcRetry } from "../utils/rpcRetry.js";
 import {
   getAmountOut,
   getPriceImpactBps,
@@ -96,16 +97,12 @@ async function readSwapReserves(
   tokenInAddress: string
 ): Promise<{ reserveIn: bigint; reserveOut: bigint; token0: string }> {
   const pair = new Contract(pairAddress, demoPairAbi, provider);
-  const [token0, reserves] = await Promise.all([
-    pair.token0() as Promise<string>,
-    pair.getReserves() as Promise<[bigint, bigint, number]>,
-  ]);
-  const reserve0 = reserves[0];
-  const reserve1 = reserves[1];
+  const token0 = (await pair.token0()) as string;
+  const reserves = (await pair.getReserves()) as [bigint, bigint, number];
   const tokenInIsToken0 = token0.toLowerCase() === tokenInAddress.toLowerCase();
   return tokenInIsToken0
-    ? { reserveIn: reserve0, reserveOut: reserve1, token0 }
-    : { reserveIn: reserve1, reserveOut: reserve0, token0 };
+    ? { reserveIn: reserves[0], reserveOut: reserves[1], token0 }
+    : { reserveIn: reserves[1], reserveOut: reserves[0], token0 };
 }
 
 async function quotePool(
@@ -202,18 +199,21 @@ export async function getChainQuote(params: QuoteParams = {}): Promise<QuoteResp
   const referencePrice = getSpotPriceHuman(refIn, refOut, decIn, decOut);
   const expectedOutHuman = toHumanAmount(referenceOutRaw, decOut);
 
-  const routes = await Promise.all(
-    candidatePools.map((pool) =>
-      quotePool(
-        provider,
-        pool,
-        amountInRaw,
-        expectedOutHuman,
-        tokenInSymbol,
-        tokenOutSymbol
+  const routes: Route[] = [];
+  for (const pool of candidatePools) {
+    routes.push(
+      await withRpcRetry(() =>
+        quotePool(
+          provider,
+          pool,
+          amountInRaw,
+          expectedOutHuman,
+          tokenInSymbol,
+          tokenOutSymbol
+        )
       )
-    )
-  );
+    );
+  }
 
   routes.sort((a, b) => b.quotedOut - a.quotedOut);
 

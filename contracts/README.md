@@ -1,53 +1,70 @@
 # Contracts — Sentinel Demo + VaultExecution
 
-> **Last updated**: 2026-07-31
+> **Last updated**: 2026-08-02
 
 Solidity **0.8.24**, Foundry. Two deployment tracks:
 
 1. **VaultExecution** — EIP-712 execution gate (production path)
 2. **Demo scenario** — **48 pools** (12 pairs × SAFE/SHALLOW/TOXIC/SDA), 4 tokens, real swaps on Anvil (+ DemoSwapRouter)
 
+Profile 定义：[`shared/demo-chain-profiles.json`](../shared/demo-chain-profiles.json)
+
+| Profile | Chain ID | Manifest | `deploymentTarget` |
+|---------|----------|----------|-------------------|
+| `anvil-local` | **31337** | `local-31337-demo.json` | `local` |
+| `anvil-fork-monad` | **10143** | `local-10143-demo.json` | `local` |
+| `monad-testnet` | **10143** | `monad-10143-demo.json` | `remote` |
+
 ---
 
 ## Quick start (Windows, recommended)
 
 ```powershell
-# From repo root — Anvil @ chainId 10143 + deploy + backend/.env + services
-.\start-demo.ps1
-# Optional: fork Monad testnet state locally
-.\start-demo.ps1 -Profile anvil-fork-monad
+# 本地开发 — Anvil @31337（MetaMask「Anvil Local」）
+.\start-demo.ps1 -Profile anvil-local -VerifySwaps
+
+# Fork Monad testnet 状态 — Anvil @10143 + MON
+.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps
+
+# 公网 Monad testnet
+.\scripts\deploy-monad-testnet.ps1 -Verify
 ```
 
-Or deploy only:
+Or deploy only (manual):
 
 ```powershell
-anvil --chain-id 10143 --port 8545 --block-gas-limit 120000000
-
+# Local 31337
+anvil --chain-id 31337 --port 8545 --block-gas-limit 120000000
 cd contracts
 $env:DEMO_PROFILE = "anvil-local"
 forge script script/DeployAllDemo.s.sol:DeployAllDemo `
   --rpc-url http://127.0.0.1:8545 --broadcast -vvv
-
 powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1 -Profile anvil-local
 ```
 
-> Anvil restart invalidates state — re-run `.\start-demo.ps1` to redeploy and rewrite `.env`.  
-> **Deprecated:** `anvil-31337-demo.json` / chainId 31337 — use `local-10143-demo.json` @ chainId **10143** instead.
+> Anvil 重启后重新运行 `.\start-demo.ps1` 即可 redeploy + 重写 `.env`。  
+> Legacy 文件名 `anvil-31337-demo.json` 仅作 fallback；新部署写入 `local-31337-demo.json` 或 `local-10143-demo.json`。
 
 ---
 
-## Demo 48-Route Scenario (Anvil / Monad)
+## Demo 48-Route Scenario
 
-### Local (Anvil)
+### Local — `anvil-local` (31337)
+
+Manifest: **`deployments/local-31337-demo.json`** — native **ETH**, 与 MetaMask 默认 Anvil 网络一致。
+
+### Local fork — `anvil-fork-monad` (10143)
 
 ```powershell
-# Anvil @ Monad testnet chain ID — deploy uses phased txs (~17 broadcasts)
-anvil --chain-id 10143 --port 8545 --block-gas-limit 120000000
+.\start-demo.ps1 -Profile anvil-fork-monad
+# Anvil: --fork-url https://testnet-rpc.monad.xyz --chain-id 10143
 ```
 
-Manifest: **`deployments/local-10143-demo.json`** (`deploymentTarget: "local"`, `profile: "anvil-local"`).
+Manifest: **`deployments/local-10143-demo.json`** — native **MON**；与公网 testnet 同 chainId，但合约为本地新部署地址。
 
-Same script as Monad — **`DeployAllDemo`** splits scenario deploy into batches (≤30M gas per tx):
+### Monad testnet (10143, remote)
+
+Per-tx gas cap **30M**. Phased deploy gas (local fork / remote 相同):
 
 | Phase | Call | ~Gas |
 |-------|------|------|
@@ -57,32 +74,34 @@ Same script as Monad — **`DeployAllDemo`** splits scenario deploy into batches
 | 3 | `sealScenario()` | ~90K |
 | + | Vault, Router, auth, fund test user | ~1–2M each |
 
-### Monad testnet (chain ID 10143)
-
-Per-tx gas cap **30M**. Use the same phased flow:
-
 ```powershell
 # 1. Copy and fill contracts/.env (PRIVATE_KEY, optional AGENT_SIGNER / MONADSCAN_API_KEY)
 Copy-Item contracts\.env.example contracts\.env
 
-# 2. Deploy (~17 txs, ~8–10 MON at typical testnet gas price)
-.\scripts\deploy-monad-testnet.ps1
+# 2. Deploy (~17 txs)
+.\scripts\deploy-monad-testnet.ps1 -Verify
 
-# 3. Point backend at Monad RPC + set wallet keys in backend/.env
-cd backend; npm run dev
+# 3. Set remote wallet keys in backend/.env + DEMO_PROFILE=monad-testnet
+.\scripts\switch-demo-profile.ps1 -Profile monad-testnet
 ```
 
-Manifest: **`deployments/monad-10143-demo.json`** (`deploymentMode: "phased"`, `poolsPerBatch: 12`).
+Manifest: **`deployments/monad-10143-demo.json`** (`deploymentTarget: "remote"`).
 
 Foundry RPC alias: `forge script ... --rpc-url monad_testnet` (reads `MONAD_RPC_URL` from env).
 
 ### Deploy output
 
-Forge auto-writes **`deployments/local-10143-demo.json`** (local) or **`deployments/monad-10143-demo.json`** (remote):
+Forge 按 profile 写入 manifest（池列表由链上 registry 读取，`pools: []` 正常）：
+
+| Profile | 文件 | 典型 `chainId` |
+|---------|------|----------------|
+| `anvil-local` | `local-31337-demo.json` | 31337 |
+| `anvil-fork-monad` | `local-10143-demo.json` | 10143 |
+| `monad-testnet` | `monad-10143-demo.json` | 10143 |
 
 ```json
 {
-  "chainId": 10143,
+  "chainId": 31337,
   "network": "anvil-local",
   "deploymentTarget": "local",
   "profile": "anvil-local",
@@ -92,7 +111,6 @@ Forge auto-writes **`deployments/local-10143-demo.json`** (local) or **`deployme
   "scenarioDeployer": "0x...",
   "deploymentMode": "phased",
   "poolsPerBatch": 12,
-  "agentSigner": "0x...",
   "tokens": { "USDC": "0x...", "GOOD": "0x...", "BAD": "0x...", "BAIT": "0x..." },
   "pools": []
 }
@@ -215,7 +233,7 @@ Notable tests:
 - `DemoScenarioDeployer.t.sol` — phased deploy, Monad gas cap per batch
 - `DemoPoolRegistry.t.sol` — seal count, reference pool
 
-CI: `.github/workflows/ci.yml` runs `forge test` + backend build.
+CI: `.github/workflows/ci.yml` — `forge test` + backend build + **`demo-local`** job（Anvil 31337 + verify-all 36/12）。
 
 ---
 

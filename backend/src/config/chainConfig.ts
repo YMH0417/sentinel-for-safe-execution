@@ -122,10 +122,31 @@ export function getSwapExecutionConfig(): SwapExecutionConfig {
 let swapWalletSingleton: Wallet | null = null;
 let swapSignerSingleton: NonceManager | null = null;
 let swapProviderSingleton: JsonRpcProvider | null = null;
+let swapProviderRpcUrl: string | null = null;
+
+function resolveDemoChainId(): number | undefined {
+  try {
+    return loadDemoConfig().chainId;
+  } catch {
+    try {
+      return getDemoChainProfile().chainId;
+    } catch {
+      return undefined;
+    }
+  }
+}
 
 export function getSwapProvider(): JsonRpcProvider {
-  if (!swapProviderSingleton) {
-    swapProviderSingleton = new JsonRpcProvider(getRpcUrl());
+  const rpcUrl = getRpcUrl();
+  if (!swapProviderSingleton || swapProviderRpcUrl !== rpcUrl) {
+    swapProviderRpcUrl = rpcUrl;
+    const chainId = resolveDemoChainId();
+    swapProviderSingleton =
+      chainId != null
+        ? new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true })
+        : new JsonRpcProvider(rpcUrl);
+    swapWalletSingleton = null;
+    swapSignerSingleton = null;
   }
   return swapProviderSingleton;
 }
