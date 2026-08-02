@@ -37,7 +37,68 @@ export interface DemoSupplyOverview {
   pools: PoolReserveRow[];
 }
 
-export async function fetchDemoSupplyOverview(holder: string): Promise<DemoSupplyOverview> {
+export interface DemoSupplyProgress {
+  current: number;
+  total: number;
+  phase: "tokens" | "pools";
+  detail?: string;
+}
+
+type DemoSupplyStreamEvent =
+  | { event: "progress"; progress: DemoSupplyProgress }
+  | { event: "complete"; data: DemoSupplyOverview }
+  | { event: "error"; error: string };
+
+async function readSupplyStream(
+  holder: string,
+  onProgress?: (progress: DemoSupplyProgress) => void
+): Promise<DemoSupplyOverview> {
+  const res = await fetch(
+    `${API_BASE}/demo/supply?holder=${encodeURIComponent(holder)}&stream=1`
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(parseApiError((data as { error?: string }).error, "无法加载代币供应量"));
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error("无法读取供应数据流");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const event = JSON.parse(trimmed) as DemoSupplyStreamEvent;
+      if (event.event === "progress") {
+        onProgress?.(event.progress);
+      } else if (event.event === "complete") {
+        return event.data;
+      } else if (event.event === "error") {
+        throw new Error(parseApiError(event.error, "无法加载代币供应量"));
+      }
+    }
+  }
+
+  throw new Error("供应数据流意外结束");
+}
+
+export async function fetchDemoSupplyOverview(
+  holder: string,
+  onProgress?: (progress: DemoSupplyProgress) => void
+): Promise<DemoSupplyOverview> {
+  if (onProgress) {
+    return readSupplyStream(holder, onProgress);
+  }
+
   const res = await fetch(
     `${API_BASE}/demo/supply?holder=${encodeURIComponent(holder)}`
   );
@@ -46,6 +107,11 @@ export async function fetchDemoSupplyOverview(holder: string): Promise<DemoSuppl
     throw new Error(parseApiError(data.error, "无法加载代币供应量"));
   }
   return data as DemoSupplyOverview;
+}
+
+export function formatSupplyProgressLabel(progress: DemoSupplyProgress): string {
+  const phaseLabel = progress.phase === "tokens" ? "代币" : "池子";
+  return `${progress.current}/${progress.total}（${phaseLabel}）`;
 }
 
 export async function fetchScenarioDeployerAddress(): Promise<string> {
@@ -92,6 +158,21 @@ export async function burnDemoToken(params: {
   const contract = new Contract(params.tokenAddress, demoErc20Abi, signer);
   const amount = parseUnits(params.amountHuman, params.decimals);
   const tx = await contract.burn(amount);
+  const receipt = await tx.wait();
+  return receipt.hash as string;
+}
+
+export async function transferDemoToken(params: {
+  tokenAddress: string;
+  recipient: string;
+  amountHuman: string;
+  decimals: number;
+}): Promise<string> {
+  const provider = getBrowserProvider();
+  const signer = await provider.getSigner();
+  const contract = new Contract(params.tokenAddress, demoErc20Abi, signer);
+  const amount = parseUnits(params.amountHuman, params.decimals);
+  const tx = await contract.transfer(getAddress(params.recipient), amount);
   const receipt = await tx.wait();
   return receipt.hash as string;
 }

@@ -257,3 +257,40 @@ export interface SwapBatchResult {
   results: SwapResult[];
   errors: Array<{ routeId: string; error: string }>;
 }
+
+/** MetaMask wallet execution plan — no backend swap private key required. */
+export interface WalletSwapPlan {
+  requestedRouteId: string;
+  executedRouteId: string;
+  agentDecision: Decision;
+  agentBypassed: boolean;
+  safetyMode: "safe" | "force";
+  poolLabel: string;
+  executionStrategy: "router" | "direct" | "sda";
+  tokenIn: string;
+  tokenOut: string;
+  tokenInAddress: string;
+  amountIn: number;
+  quotedOut: number;
+  expectedOut: number;
+  amountOutMin?: number;
+  amountOutMax?: number;
+  slippageBps?: number;
+  recipient: string;
+  pairAddress: string;
+  token0Address: string;
+  routerAddress: string | null;
+  vaultAddress: string | null;
+  agentSigner: string | null;
+  userIsAgentSigner: boolean;
+  tokenInDecimals: number;
+  tokenOutDecimals: number;
+  amounts: {
+    amountInRaw: string;
+    quotedOutRaw: string;
+    amountOutMinRaw: string;
+    amount0OutRaw: string;
+    amount1OutRaw: string;
+  };
+  sdaSwapId?: string;
+}

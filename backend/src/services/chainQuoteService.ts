@@ -1,5 +1,4 @@
 import { Contract, JsonRpcProvider } from "ethers";
-import { demoPairAbi } from "../abi/demoAbis.js";
 import {
   DemoDeploymentConfig,
   DemoPoolLabel,
@@ -18,7 +17,10 @@ import {
 import { getLiveDemoConfig } from "./demoRegistryService.js";
 import { getRpcUrl } from "../config/chainConfig.js";
 import { Route, QuoteResponse } from "../types.js";
-import { withRpcRetry } from "../utils/rpcRetry.js";
+import {
+  readSwapReserves,
+  remoteRpcPace,
+} from "./demoPairReadService.js";
 import {
   getAmountOut,
   getPriceImpactBps,
@@ -89,20 +91,6 @@ function derivePoolRiskScore(poolLabel: DemoPoolLabel, priceImpactBps: number): 
   if (poolLabel === "SHALLOW") return Math.min(75, base + Math.round(priceImpactBps / 100));
   if (poolLabel === "SDA") return Math.min(95, base + Math.round(priceImpactBps / 20));
   return Math.min(95, base);
-}
-
-async function readSwapReserves(
-  provider: JsonRpcProvider,
-  pairAddress: string,
-  tokenInAddress: string
-): Promise<{ reserveIn: bigint; reserveOut: bigint; token0: string }> {
-  const pair = new Contract(pairAddress, demoPairAbi, provider);
-  const token0 = (await pair.token0()) as string;
-  const reserves = (await pair.getReserves()) as [bigint, bigint, number];
-  const tokenInIsToken0 = token0.toLowerCase() === tokenInAddress.toLowerCase();
-  return tokenInIsToken0
-    ? { reserveIn: reserves[0], reserveOut: reserves[1], token0 }
-    : { reserveIn: reserves[1], reserveOut: reserves[0], token0 };
 }
 
 async function quotePool(
@@ -202,17 +190,16 @@ export async function getChainQuote(params: QuoteParams = {}): Promise<QuoteResp
   const routes: Route[] = [];
   for (const pool of candidatePools) {
     routes.push(
-      await withRpcRetry(() =>
-        quotePool(
-          provider,
-          pool,
-          amountInRaw,
-          expectedOutHuman,
-          tokenInSymbol,
-          tokenOutSymbol
-        )
+      await quotePool(
+        provider,
+        pool,
+        amountInRaw,
+        expectedOutHuman,
+        tokenInSymbol,
+        tokenOutSymbol
       )
     );
+    await remoteRpcPace();
   }
 
   routes.sort((a, b) => b.quotedOut - a.quotedOut);

@@ -1,7 +1,7 @@
-# API Contract — Sentinel for Safe Execution v0.5
+# API Contract — Sentinel for Safe Execution v0.6
 
-> **Last updated**: 2026-07-31
-> 48 demo routes (SDA pool), Safe vs force slippage split, frontend Safe/Unsafe.
+> **Last updated**: 2026-08-02  
+> Profile switching (Settings + API), MetaMask wallet swap plan, supply streaming, Monad RPC retry notes.
 > Legacy mock routes (`route-a/b/c`) unchanged in mock mode.
 
 ## Base URL
@@ -25,14 +25,20 @@ Frontend: http://127.0.0.1:8081/api/*  (proxied via Vite)
 
 | File | Purpose |
 |------|---------|
-| `contracts/deployments/anvil-31337-demo.json` | registry, vault, swapRouter, tokens (forge) |
-| `backend/.env` | addresses + keys (`scripts/sync-backend-env.ps1`) |
+| `contracts/deployments/local-31337-demo.json` | anvil-local manifest |
+| `contracts/deployments/local-10143-demo.json` | anvil-fork-monad manifest |
+| `contracts/deployments/monad-10143-demo.json` | monad-testnet manifest |
+| `backend/.env` | addresses + keys (`scripts/sync-backend-env.ps1` or Settings profile switch) |
 
 Backend loads `.env` via dotenv on startup. Fallback: `DEMO_DEPLOYMENT_PATH` → read vault/router from JSON.
 
-Required for swap: `RPC_URL`, `DEMO_REGISTRY_ADDRESS` (or valid deployment file), `SWAP_PRIVATE_KEY` or Anvil #0 default.
+Required for **backend** swap: `RPC_URL`, `DEMO_REGISTRY_ADDRESS` (or valid deployment file), `SWAP_PRIVATE_KEY` or Anvil #0 default.
+
+**Wallet swap** (MetaMask): does not require `SWAP_PRIVATE_KEY`. Frontend calls `POST /swap/wallet/plan` then signs txs locally. Safe + Router path requires connected wallet = Vault `agentSigner`.
 
 Router one-tx swap additionally requires: `DEMO_SWAP_ROUTER_ADDRESS`, `VAULT_EXECUTION_ADDRESS`, `AGENT_PRIVATE_KEY` (must match Vault `agentSigner`).
+
+**Monad testnet RPC:** public endpoint ~15 req/s. Quote, pool health, and supply use sequential reads + `withRpcRetry` to avoid burst `missing revert data`.
 
 ---
 
@@ -499,9 +505,77 @@ Returns `404` when `CHAIN_MODE != demo`.
   "priceRatio": "USDC:GOOD:BAD:BAIT = 1:20:100:1",
   "swapReady": true,
   "swapWallet": "0xf39F...",
-  "swapEndpoints": ["POST /api/swap", "POST /api/swap/safe", "POST /api/swap/force", "..."]
+  "swapEndpoints": ["POST /api/swap", "POST /api/swap/safe", "POST /api/swap/force", "POST /api/swap/wallet/plan", "..."]
 }
 ```
+
+### GET /demo/profiles
+
+Lists demo profiles from `shared/demo-chain-profiles.json` with manifest existence and active flag.
+
+```json
+{
+  "profiles": [
+    {
+      "name": "anvil-local",
+      "chainId": 31337,
+      "chainName": "Anvil Local",
+      "rpcUrl": "http://127.0.0.1:8545",
+      "nativeSymbol": "ETH",
+      "deploymentTarget": "local",
+      "manifestPath": "contracts/deployments/local-31337-demo.json",
+      "manifestExists": true,
+      "active": true
+    }
+  ]
+}
+```
+
+### POST /demo/profile
+
+Switch active demo profile. Rewrites `backend/.env`, hot-updates `process.env`, clears registry / swap / pool-health caches.
+
+```http
+POST /api/demo/profile
+Content-Type: application/json
+
+{ "profile": "monad-testnet" }
+```
+
+| Field | Required | Values |
+|-------|----------|--------|
+| `profile` | yes | `anvil-local`, `anvil-fork-monad`, `monad-testnet` |
+
+Returns `{ profile, chainId, rpcUrl, manifestPath, ... }`. Local profiles inject Anvil #0 keys; remote profile omits `SWAP_PRIVATE_KEY` unless present in manifest workflow.
+
+| Status | Condition |
+|--------|-----------|
+| 400 | Unknown profile name |
+| 404 | Not demo mode |
+| 503 | Missing manifest for profile |
+
+### GET /demo/supply
+
+Token mint/burn overview for a holder address.
+
+```http
+GET /api/demo/supply?holder=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+```
+
+**Streaming progress** (Settings balance refresh):
+
+```http
+GET /api/demo/supply?holder=0x...&stream=1
+Content-Type: application/x-ndjson
+```
+
+Each line is a JSON object, e.g. `{ "event": "progress", "current": 3, "total": 48 }`, ending with `{ "event": "complete", "overview": { ... } }`.
+
+| Status | Condition |
+|--------|-----------|
+| 400 | Missing `holder` |
+| 404 | Not demo mode |
+| 503 | RPC / registry error |
 
 ---
 
@@ -605,6 +679,62 @@ Response includes `agentBypassed: true`, `safetyMode: "force"`. `agentDecision` 
 Same response shape as safe swap otherwise; slippage fields present when band enforced.
 
 > Legacy field `skipEvaluate: true` on `POST /api/swap` is deprecated — use `/swap/force`.
+
+### POST /swap/wallet/plan
+
+Returns an execution plan for **MetaMask wallet swap** (no backend-signed txs). Used when `SWAP_PRIVATE_KEY` is unset or frontend detects `!routerSwapAvailable && !swapConfigured`.
+
+Same body as `/swap/safe` or `/swap/force` (`force: true` for Unsafe). **`recipient` is required** (connected wallet address).
+
+```http
+POST /api/swap/wallet/plan
+Content-Type: application/json
+
+{
+  "routeId": "route-usdc-good-shallow",
+  "amountIn": 100,
+  "recipient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+}
+```
+
+**Response (excerpt):**
+
+```json
+{
+  "requestedRouteId": "route-usdc-good-shallow",
+  "executedRouteId": "route-usdc-good-safe",
+  "agentDecision": "FALLBACK_TO_SAFE_ROUTE",
+  "agentBypassed": false,
+  "safetyMode": "safe",
+  "poolLabel": "SAFE",
+  "executionStrategy": "router",
+  "tokenIn": "USDC",
+  "tokenOut": "GOOD",
+  "quotedOut": 4.98,
+  "recipient": "0xf39F...",
+  "pairAddress": "0x8633...",
+  "routerAddress": "0x...",
+  "vaultAddress": "0x...",
+  "agentSigner": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+  "userIsAgentSigner": false,
+  "amounts": { "amountInRaw": "...", "quotedOutRaw": "..." }
+}
+```
+
+| `executionStrategy` | Frontend behavior |
+|---------------------|-------------------|
+| `router` | EIP-712 permit + `DemoSwapRouter.swapWithPermit` (wallet must be `agentSigner` for Safe) |
+| `direct` | `fundSwapper` (backend) or pre-funded balance + user `transfer` + `pair.swap` |
+| `sda` | SDA-specific two-step swap flow |
+
+| Status | Condition |
+|--------|-----------|
+| 400 | Invalid request / missing `recipient` |
+| 409 | Slippage / quote deviation — force mode |
+| 422 | `SWAP_REJECTED_BY_AGENT`, `WALLET_SWAP_REQUIRES_AGENT` |
+| 502 | RPC / quote failure |
+
+Frontend: `frontend/src/lib/demoWalletSwap.ts` — `executeWalletDemoSwap()`.
 
 ### POST /swap/verify-all
 

@@ -16,6 +16,10 @@ export interface DebugStatus {
   expectedChainId?: number;
   chainName?: string;
   anvilRpcUrl?: string;
+  demoRpcUrl?: string;
+  demoProfile?: string | null;
+  deploymentTarget?: string | null;
+  nativeCurrency?: { name: string; symbol: string; decimals: number };
   swapRouter?: string;
   routerSwapAvailable?: boolean;
   demoPoolCount?: number;
@@ -28,6 +32,27 @@ export interface DebugStatus {
     ttlMs: number;
     error: string | null;
   };
+}
+
+export interface DemoProfileListItem {
+  name: string;
+  chainId: number;
+  chainName: string;
+  rpcUrl: string;
+  nativeSymbol: string;
+  deploymentTarget: "local" | "remote";
+  manifestPath: string;
+  manifestExists: boolean;
+  active: boolean;
+}
+
+export interface DemoProfileSwitchResult {
+  profile: string;
+  chainId: number;
+  chainName: string;
+  rpcUrl: string;
+  deploymentTarget: "local" | "remote";
+  warnings: string[];
 }
 
 export interface PoolHealthEntry {
@@ -228,6 +253,18 @@ export interface AnalysisReport {
 
 export const api = {
   debugStatus: () => getJson<DebugStatus>("/debug/status"),
+  listDemoProfiles: () =>
+    getJson<{ profiles: DemoProfileListItem[] }>("/demo/profiles"),
+  switchDemoProfile: (profile: string) =>
+    fetch(`${API}/demo/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile }),
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data.error, "切换 demo profile 失败"));
+      return data as DemoProfileSwitchResult;
+    }),
   events: async () => {
     const data = await getJson<{ events: Event[] }>("/events");
     return data.events ?? [];

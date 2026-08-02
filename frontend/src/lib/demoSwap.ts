@@ -1,6 +1,6 @@
 import { Contract, MaxUint256, parseUnits } from "ethers";
 import { assertMetaMaskMatchesDemoRpc } from "./demoRpc";
-import { fetchDemoExecutePreflight } from "./demoPreflight";
+import { fetchDemoChainPreflight } from "./demoPreflight";
 import {
   ensureDemoChain,
   getBrowserProvider,
@@ -20,7 +20,7 @@ export async function ensureUserTokenReady(params: {
   spender: string;
   amountHuman: string;
 }): Promise<void> {
-  const preflight = await fetchDemoExecutePreflight();
+  const preflight = await fetchDemoChainPreflight();
   const chain = preflight.chain;
 
   await ensureDemoChain(chain);

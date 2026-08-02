@@ -167,6 +167,14 @@ export function getSwapSigner(): NonceManager {
   return swapSignerSingleton;
 }
 
+/** Clear cached swap provider/wallet after demo profile or RPC change. */
+export function resetSwapRuntimeCache(): void {
+  swapProviderSingleton = null;
+  swapProviderRpcUrl = null;
+  swapWalletSingleton = null;
+  swapSignerSingleton = null;
+}
+
 function addressFromDeployment(
   getter: (cfg: ReturnType<typeof loadDemoConfig>) => string | undefined
 ): string | undefined {

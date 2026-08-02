@@ -9,6 +9,14 @@ import {
   loadDemoConfig,
 } from "../config/demoConfig.js";
 import { parseRouteName, routeNameFromRouteId, tokenSymbolFromKey } from "../config/demoRoutes.js";
+import { withRpcRetry } from "../utils/rpcRetry.js";
+
+const LIVE_CONFIG_TTL_MS = 30_000;
+let cachedLiveConfig: { config: DemoDeploymentConfig; fetchedAt: number } | null = null;
+
+export function clearLiveDemoConfigCache(): void {
+  cachedLiveConfig = null;
+}
 
 export async function hydrateDemoConfigFromChain(
   base: DemoDeploymentConfig
@@ -16,7 +24,15 @@ export async function hydrateDemoConfigFromChain(
   const provider = new JsonRpcProvider(getRpcUrl());
   const registry = new Contract(base.registry, demoPoolRegistryAbi, provider);
 
-  const poolEntries = (await registry.getAllPools()) as Array<{
+  const poolEntries = (await withRpcRetry(
+    () => registry.getAllPools() as Promise<Array<{
+      routeId: string;
+      pair: string;
+      tokenIn: string;
+      tokenOut: string;
+      label: number | bigint;
+    }>>
+  )) as Array<{
     routeId: string;
     pair: string;
     tokenIn: string;
@@ -50,6 +66,14 @@ export async function hydrateDemoConfigFromChain(
 }
 
 export async function getLiveDemoConfig(): Promise<DemoDeploymentConfig> {
+  if (
+    cachedLiveConfig &&
+    Date.now() - cachedLiveConfig.fetchedAt < LIVE_CONFIG_TTL_MS
+  ) {
+    return cachedLiveConfig.config;
+  }
   const base = loadDemoConfig();
-  return hydrateDemoConfigFromChain(base);
+  const config = await hydrateDemoConfigFromChain(base);
+  cachedLiveConfig = { config, fetchedAt: Date.now() };
+  return config;
 }

@@ -27,6 +27,7 @@ Thumbs.db
 
 # Foundry
 contracts/foundry.toml.bak
+contracts/broadcast/
 
 # Local Anvil deployment receipts are ephemeral; keep deployable-network records explicit.
 contracts/deployments/anvil-*.json

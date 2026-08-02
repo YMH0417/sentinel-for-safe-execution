@@ -6,6 +6,7 @@ export const demoErc20Abi = [
   "function totalSupply() view returns (uint256)",
   "function decimals() view returns (uint8)",
   "function burn(uint256 amount) external",
+  "function transfer(address to, uint256 amount) external returns (bool)",
 ] as const;
 
 export const demoScenarioDeployerAbi = [
@@ -13,4 +14,15 @@ export const demoScenarioDeployerAbi = [
   "function mintTokenToPool(address token, address pair, uint256 amount) external",
   "function burnTokenFromPool(address token, address pair, uint256 amount) external",
   "function authorizedMinters(address minter) view returns (bool)",
+] as const;
+
+export const demoSwapRouterAbi = [
+  "function swapWithPermit(address user, bytes32 routeId, uint256 amountIn, uint256 amountOutQuoted, uint256 amountOutMin, uint256 deadline, uint256 riskScore, uint8 decision, uint256 nonce, bytes signature, address recipient) external returns (uint256 amountOut)",
+  "function openSdaExecutionWindow(bytes32 swapId, address user, bytes32 routeId, uint256 amountIn, uint256 amountOutMin, address recipient) external returns (uint256 quotedOutAtOpen)",
+  "function completeSdaExecutionWindow(bytes32 swapId) external returns (uint256 amountOut)",
+  "function getSdaWindowReadyAt(bytes32 swapId) external view returns (uint256)",
+] as const;
+
+export const demoPairAbi = [
+  "function swap(uint256 amount0Out, uint256 amount1Out, address to) external",
 ] as const;

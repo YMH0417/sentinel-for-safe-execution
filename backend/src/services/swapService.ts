@@ -35,12 +35,13 @@ import {
   tokenSymbolFromKey,
 } from "../config/demoRoutes.js";
 import { getLiveDemoConfig } from "./demoRegistryService.js";
+import { readSwapReserves, remoteRpcPace } from "./demoPairReadService.js";
 import {
   getAmountOut,
   toHumanAmount,
   toRawAmount,
 } from "./poolQuoteMath.js";
-import type { Decision, DecisionType, SwapRequest, SwapResult } from "../types.js";
+import type { Decision, DecisionType, SwapRequest, SwapResult, WalletSwapPlan } from "../types.js";
 import { evaluateRoute, loadRiskConfig } from "./agentService.js";
 import { getChainRouteById } from "./chainQuoteService.js";
 import {
@@ -275,22 +276,6 @@ async function assertUserCanPay(
       }
     );
   }
-}
-
-async function readSwapReserves(
-  provider: JsonRpcProvider,
-  pairAddress: string,
-  tokenInAddress: string
-): Promise<{ reserveIn: bigint; reserveOut: bigint; token0: string }> {
-  return withRpcRetry(async () => {
-    const pair = new Contract(pairAddress, demoPairAbi, provider);
-    const token0 = (await pair.token0()) as string;
-    const reserves = (await pair.getReserves()) as [bigint, bigint, number];
-    const tokenInIsToken0 = token0.toLowerCase() === tokenInAddress.toLowerCase();
-    return tokenInIsToken0
-      ? { reserveIn: reserves[0], reserveOut: reserves[1], token0 }
-      : { reserveIn: reserves[1], reserveOut: reserves[0], token0 };
-  });
 }
 
 function findPool(config: DemoDeploymentConfig, routeId: string) {
@@ -573,6 +558,153 @@ async function executeSdaDelayedRouterSwap(params: {
     sdaReadyAt,
     sdaWaitedSeconds: waitedSeconds,
     quotedOutAtOpen,
+  };
+}
+
+const vaultAgentSignerAbi = ["function agentSigner() view returns (address)"];
+
+async function resolveAgentSigner(
+  config: DemoDeploymentConfig,
+  provider: JsonRpcProvider
+): Promise<string | null> {
+  if (config.agentSigner) return getAddress(config.agentSigner);
+  const vaultAddress = getOptionalVaultAddress();
+  if (!vaultAddress) return null;
+  try {
+    const vault = new Contract(vaultAddress, vaultAgentSignerAbi, provider);
+    return getAddress((await vault.agentSigner()) as string);
+  } catch {
+    return null;
+  }
+}
+
+/** Build a MetaMask execution plan without backend swap wallet keys. */
+export async function planWalletDemoSwap(params: SwapRequest): Promise<WalletSwapPlan> {
+  if (!params.routeId) {
+    throw new SwapExecutionError("INVALID_REQUEST", "routeId is required");
+  }
+  if (!params.amountIn || params.amountIn <= 0) {
+    throw new SwapExecutionError("INVALID_REQUEST", "amountIn must be positive");
+  }
+  if (!params.recipient) {
+    throw new SwapExecutionError("INVALID_REQUEST", "recipient is required for wallet swap");
+  }
+
+  const config = await getLiveDemoConfig();
+  const requestedRouteId = params.routeId;
+  const draftPool = findPool(config, requestedRouteId);
+  const { tokenIn, tokenOut } = resolveSymbols(requestedRouteId, draftPool, config, params);
+
+  const {
+    executedRouteId,
+    agentDecision,
+    agentBypassed,
+  } = await resolveExecutionPlan(params, tokenIn, tokenOut);
+  const pool = findPool(config, executedRouteId);
+  const poolLabel = labelFromNumber(pool.label);
+
+  const recipient = getAddress(params.recipient);
+  const provider = new JsonRpcProvider(getRpcUrl());
+  const decIn = decimalsForSymbol(tokenIn);
+  const decOut = decimalsForSymbol(tokenOut);
+  const amountInRaw = toRawAmount(params.amountIn, decIn);
+  const slippageEnforced = params.force === true;
+  const slippageBps = slippageEnforced ? resolveSlippageBps(params) : 0;
+
+  const { reserveIn, reserveOut, token0 } = await readSwapReserves(
+    provider,
+    pool.pair,
+    pool.tokenIn
+  );
+  const quotedOutRaw = getAmountOut(amountInRaw, reserveIn, reserveOut);
+  if (quotedOutRaw <= 0n) {
+    throw new SwapExecutionError("INSUFFICIENT_LIQUIDITY", "Quoted output is zero");
+  }
+
+  const routeQuote = await getChainRouteById(executedRouteId, {
+    tokenIn,
+    tokenOut,
+    amountIn: params.amountIn,
+  });
+  const expectedOutHuman = routeQuote?.expectedOut ?? toHumanAmount(quotedOutRaw, decOut);
+  const expectedOutRaw = toRawAmount(expectedOutHuman, decOut);
+
+  let amountOutMinRaw: bigint;
+  let amountOutMaxRaw: bigint;
+  if (slippageEnforced) {
+    ({ amountOutMinRaw, amountOutMaxRaw } = assertQuoteWithinSlippageBand(
+      quotedOutRaw,
+      expectedOutRaw,
+      slippageBps,
+      decOut
+    ));
+  } else {
+    amountOutMinRaw = 0n;
+    amountOutMaxRaw = expectedOutRaw;
+  }
+
+  const routerAddress = getOptionalSwapRouterAddress() ?? null;
+  const vaultAddress = getOptionalVaultAddress() ?? null;
+  const agentSigner = await resolveAgentSigner(config, provider);
+  const userIsAgentSigner = Boolean(
+    agentSigner && recipient.toLowerCase() === agentSigner.toLowerCase()
+  );
+
+  let executionStrategy: WalletSwapPlan["executionStrategy"];
+  if (poolLabel === "SDA") {
+    executionStrategy = "sda";
+  } else if (routerAddress && vaultAddress && userIsAgentSigner) {
+    executionStrategy = "router";
+  } else if (slippageEnforced) {
+    executionStrategy = "direct";
+  } else {
+    throw new SwapExecutionError(
+      "WALLET_SWAP_REQUIRES_AGENT",
+      userIsAgentSigner
+        ? "Router 或 Vault 未配置，无法执行 Safe swap"
+        : `Safe 模式需使用 Agent 钱包 ${agentSigner ?? "（未配置）"} 连接 MetaMask，或在 backend/.env 配置 AGENT_PRIVATE_KEY`,
+      { agentSigner, recipient }
+    );
+  }
+
+  const tokenOutIsToken0 = pool.tokenOut.toLowerCase() === token0.toLowerCase();
+  const amount0OutRaw = tokenOutIsToken0 ? quotedOutRaw : 0n;
+  const amount1OutRaw = tokenOutIsToken0 ? 0n : quotedOutRaw;
+
+  return {
+    requestedRouteId,
+    executedRouteId,
+    agentDecision,
+    agentBypassed: Boolean(agentBypassed),
+    safetyMode: params.force ? "force" : "safe",
+    poolLabel,
+    executionStrategy,
+    tokenIn,
+    tokenOut,
+    tokenInAddress: pool.tokenIn,
+    amountIn: params.amountIn,
+    quotedOut: toHumanAmount(quotedOutRaw, decOut),
+    expectedOut: expectedOutHuman,
+    amountOutMin: slippageEnforced ? toHumanAmount(amountOutMinRaw, decOut) : undefined,
+    amountOutMax: slippageEnforced ? toHumanAmount(amountOutMaxRaw, decOut) : undefined,
+    slippageBps: slippageEnforced ? slippageBps : undefined,
+    recipient,
+    pairAddress: pool.pair,
+    token0Address: token0,
+    routerAddress,
+    vaultAddress,
+    agentSigner,
+    userIsAgentSigner,
+    tokenInDecimals: decIn,
+    tokenOutDecimals: decOut,
+    amounts: {
+      amountInRaw: amountInRaw.toString(),
+      quotedOutRaw: quotedOutRaw.toString(),
+      amountOutMinRaw: amountOutMinRaw.toString(),
+      amount0OutRaw: amount0OutRaw.toString(),
+      amount1OutRaw: amount1OutRaw.toString(),
+    },
+    sdaSwapId: executionStrategy === "sda" ? buildSdaSwapId(recipient, executedRouteId) : undefined,
   };
 }
 

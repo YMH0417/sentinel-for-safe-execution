@@ -6,8 +6,13 @@ import { demoPoolRegistryAbi } from "../abi/demoAbis.js";
 import { getRpcUrl, getOptionalSwapRouterAddress } from "../config/chainConfig.js";
 import { getAddress } from "ethers";
 import { getLiveDemoConfig } from "../services/demoRegistryService.js";
-import { getDemoSupplyOverview } from "../services/demoSupplyService.js";
+import { getDemoSupplyOverview, streamDemoSupplyOverview } from "../services/demoSupplyService.js";
 import type { DemoTokenSymbol } from "../config/demoConfig.js";
+import {
+  listDemoProfiles,
+  switchDemoProfile,
+} from "../services/demoProfileSwitchService.js";
+import { isDemoProfileName } from "../config/demoProfile.js";
 
 const router = Router();
 
@@ -109,13 +114,70 @@ router.get("/supply", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Query parameter holder is required" });
   }
 
+  const streamProgress = req.query.stream === "1" || req.query.stream === "true";
+
   try {
     const holder = getAddress(holderParam);
+
+    if (streamProgress) {
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+
+      for await (const event of streamDemoSupplyOverview(holder)) {
+        if (req.socket.destroyed) break;
+        res.write(`${JSON.stringify(event)}\n`);
+      }
+      res.end();
+      return;
+    }
+
     const overview = await getDemoSupplyOverview(holder);
     res.json(overview);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load token supply overview";
+    if (streamProgress && res.headersSent) {
+      res.write(`${JSON.stringify({ event: "error", error: message })}\n`);
+      res.end();
+      return;
+    }
     res.status(503).json({ error: message });
+  }
+});
+
+router.get("/profiles", (_req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "Demo endpoints require demo chain mode" });
+  }
+
+  try {
+    const profiles = listDemoProfiles();
+    res.json({ profiles });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to list demo profiles";
+    res.status(503).json({ error: message });
+  }
+});
+
+router.post("/profile", (req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "Demo endpoints require demo chain mode" });
+  }
+
+  const profile = typeof req.body?.profile === "string" ? req.body.profile.trim() : "";
+  if (!profile || !isDemoProfileName(profile)) {
+    return res.status(400).json({
+      error: 'Body field "profile" must be one of: anvil-local, anvil-fork-monad, monad-testnet',
+    });
+  }
+
+  try {
+    const result = switchDemoProfile(profile);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to switch demo profile";
+    res.status(400).json({ error: message });
   }
 });
 

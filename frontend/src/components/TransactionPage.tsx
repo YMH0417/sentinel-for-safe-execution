@@ -6,7 +6,11 @@ import { encodeBytes32String, getAddress } from "ethers";
 import { ensureUserTokenReady } from "../lib/demoSwap";
 import { fetchJson, withTimeout } from "../lib/withTimeout";
 import { fetchDemoToken, fetchSwapRouterAddress, ensureDemoChain } from "../lib/wallet";
-import { fetchDemoExecutePreflight } from "../lib/demoPreflight";
+import { fetchDemoChainPreflight } from "../lib/demoPreflight";
+import {
+  executeWalletDemoSwap,
+  isBackendSwapExecutorAvailable,
+} from "../lib/demoWalletSwap";
 import { getErrorMessage } from "../lib/errorMessage";
 import { AccountCard } from "./shared/AccountCard";
 import { SecurityGauge } from "./shared/SecurityGauge";
@@ -324,14 +328,28 @@ export function TransactionPage({ safeMode }: Props) {
     return String(data.nonce);
   };
 
-  /** Demo swap via the MetaMask-connected wallet (any authorized account). */
+  /** Demo swap via MetaMask (wallet executor) or backend when configured. */
   const executeDemoSwap = async (routeId: string, force: boolean): Promise<SwapResult> => {
     if (!account) {
       throw new Error("请先连接 MetaMask 再执行链上交易");
     }
     const checksumAddr = getAddress(account);
-    const preflight = await fetchDemoExecutePreflight();
+    const preflight = await fetchDemoChainPreflight();
     await ensureDemoChain(preflight.chain);
+
+    const useBackendExecutor = await isBackendSwapExecutorAvailable();
+
+    if (!useBackendExecutor) {
+      return executeWalletDemoSwap({
+        routeId,
+        amountIn: amount,
+        tokenIn,
+        tokenOut,
+        recipient: checksumAddr,
+        force,
+        slippageBps: force ? slippageBps : undefined,
+      });
+    }
 
     const [tokenMeta, swapRouter] = await Promise.all([
       fetchDemoToken(tokenIn),

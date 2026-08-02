@@ -26,6 +26,8 @@ import {
 
   SwapExecutionError,
 
+  planWalletDemoSwap,
+
 } from "../services/swapService.js";
 
 import { addEvent } from "../services/eventService.js";
@@ -324,6 +326,38 @@ async function handleSwap(
 }
 
 
+
+router.post("/wallet/plan", async (req: Request, res: Response) => {
+  const safetyMode: "safe" | "force" = req.body?.force === true ? "force" : "safe";
+  const parsed = parseSwapBody(req.body as Partial<SwapRequest>, safetyMode);
+  if ("error" in parsed) {
+    return res.status(400).json({ error: parsed.error });
+  }
+  if (!parsed.recipient) {
+    return res.status(400).json({ error: "recipient is required for wallet swap" });
+  }
+
+  try {
+    const plan = await planWalletDemoSwap(parsed);
+    res.json(plan);
+  } catch (err) {
+    if (err instanceof SwapExecutionError) {
+      const status =
+        err.code === "SWAP_REJECTED_BY_AGENT" || err.code === "SWAP_FALLBACK_REQUIRED"
+          ? 422
+          : err.code === "SLIPPAGE_EXCEEDED" || err.code === "QUOTE_DEVIATION_EXCEEDED"
+            ? 409
+            : err.code === "WALLET_SWAP_REQUIRES_AGENT"
+              ? 422
+              : 400;
+      return res.status(status).json({
+        error: { code: err.code, message: err.message, details: err.details },
+      });
+    }
+    const message = err instanceof Error ? err.message : "Wallet swap plan failed";
+    res.status(502).json({ error: message });
+  }
+});
 
 /** Default: evaluate + fallback + slippage; uses router one-tx when configured */
 

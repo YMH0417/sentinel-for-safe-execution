@@ -21,6 +21,13 @@
         · POST /api/execute — 独立 Vault 闸门（EIP-712，不直接调 DEX）
     → Event 日志（JSONL 持久化 + 内存查询）
     → Analysis Pipeline（校验、去重、覆盖率、统计、Sentinel 安全洞察）
+
+**执行器选择（demo 模式）：**
+
+| 条件 | 执行方式 |
+|------|----------|
+| `SWAP_PRIVATE_KEY` + Router + Agent 已配置 | 后端 `POST /api/swap/safe` 或 `/force`（Router 一笔 tx 或 Direct 三笔 tx） |
+| 未配置 backend swap 密钥（典型：`monad-testnet`） | 前端 MetaMask：`POST /api/swap/wallet/plan` → 用户签名 permit / swap |
 ```
 
 ---
@@ -64,7 +71,7 @@ Legacy mock 三条 route（`route-a/b/c`）仍可用于 **mock 模式** 快速�
 | `anvil-fork-monad` | **10143** | Fork Monad testnet 状态，本地 MON | `.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps` |
 | `monad-testnet` | **10143** | 公网 Monad RPC | `.\scripts\deploy-monad-testnet.ps1` |
 
-切换 backend 指向（不重新部署，需重启 backend）：
+切换 backend 指向（重写 `backend/.env`，**Settings UI 可热切换无需重启**；CLI 需重启 backend）：
 
 ```powershell
 .\scripts\switch-demo-profile.ps1 -Profile monad-testnet
@@ -72,7 +79,10 @@ Legacy mock 三条 route（`route-a/b/c`）仍可用于 **mock 模式** 快速�
 .\scripts\compare-profiles.ps1
 ```
 
-> **MetaMask**：本地用 **31337**（与公网 10143 分离，避免 RPC 混用）；上 testnet 时切 **Monad Testnet (10143)**。
+前端 **Settings → 网络环境** 调用 `POST /api/demo/profile`，即时更新 backend 进程内 `process.env` 与链上缓存。
+
+> **MetaMask**：本地用 **31337**（与公网 10143 分离，避免 RPC 混用）；上 testnet 时切 **Monad Testnet (10143)**。  
+> **monad-testnet**：公网 RPC 约 **15 req/s**，报价/刷新余额采用串行 + 重试；未配置 `SWAP_PRIVATE_KEY` 时用 MetaMask 钱包路径执行 swap。
 
 ---
 
@@ -212,6 +222,10 @@ Base URL：`http://127.0.0.1:8080/api`
 | `GET` | `/demo/tokens` | 四代币 + 风险标签 |
 | `GET` | `/demo/pools` | 48 池 |
 | `GET` | `/demo/status` | demo + swap 就绪状态 |
+| `GET` | `/demo/profiles` | 可用 profile 列表（manifest 是否存在、当前 active） |
+| `POST` | `/demo/profile` | 切换 `DEMO_PROFILE`（写 `.env` + 热更新进程 env） |
+| `GET` | `/demo/supply?holder=0x…` | 代币 mint/burn 概览 |
+| `GET` | `/demo/supply?holder=0x…&stream=1` | NDJSON 流式进度（Settings 余额刷新 X/Y） |
 
 ### Swap（demo 模式，真实换币）
 
@@ -219,14 +233,21 @@ Base URL：`http://127.0.0.1:8080/api`
 |------|------|------|
 | `POST` | `/swap` 或 `/swap/safe` | **Safe 路径**：Agent 评估 → fallback → swap（**无滑点带宽**） |
 | `POST` | `/swap/force` | **Unsafe 路径**：跳过 Agent，仅滑点带宽校验 |
+| `POST` | `/swap/wallet/plan` | MetaMask 执行计划（Agent 评估 + 路由参数，**不发链上 tx**） |
 | `POST` | `/swap/verify-all` | 批量 48 条（默认 force：36 通过 + 12 TOXIC 拦截；`{"safe":true}` 走 Agent） |
 | `GET` | `/swap/wallet` | swap 钱包 + `routerAvailable` |
 | `GET` | `/swap/balances` | 四代币余额 |
 
 **执行模式：**
 
-- **Router 模式**（配置了 `DEMO_SWAP_ROUTER_ADDRESS` + Vault + `AGENT_PRIVATE_KEY`）：`DemoSwapRouter.swapWithPermit` 一笔 tx 完成 Vault + swap
-- **Direct 模式**（fallback）：`fundSwapper` → `transfer` → `pair.swap()`（3 tx）
+- **Backend 执行**（配置了 `SWAP_PRIVATE_KEY`）：
+  - **Router 模式**（`DEMO_SWAP_ROUTER_ADDRESS` + Vault + `AGENT_PRIVATE_KEY`）：`DemoSwapRouter.swapWithPermit` 一笔 tx
+  - **Direct 模式**（fallback）：`fundSwapper` → `transfer` → `pair.swap()`（3 tx）
+- **MetaMask 钱包执行**（`/swap/wallet/plan` + 前端 `demoWalletSwap.ts`）：
+  - Safe + Router：用户须为 Vault `agentSigner`（testnet 默认 `0x881915BE…`）
+  - Direct / SDA：用户 MetaMask 签名 transfer + swap（或 SDA 专用流程）
+
+**Settings 页（`/settings`）：** 切换 profile、MetaMask 转账、授权测试钱包 mint/burn、流式刷新余额。
 
 **Agent 规则：** tokenOut 为 BAD/BAIT → REJECT；SDA 池 → REJECT（执行窗口风险）；TOXIC / SHALLOW → 可 FALLBACK 到同币对 SAFE 池。
 
@@ -328,7 +349,9 @@ sentinel-for-safe-execution/
 │       ├── routes/analysis.ts
 │       ├── cli/analyze.ts
 │       └── services/
-│           ├── swapService.ts       # safe / force / router
+│           ├── swapService.ts       # safe / force / wallet plan
+│           ├── demoProfileSwitchService.ts
+│           ├── demoPairReadService.ts
 │           ├── agentSignService.ts  # EIP-712 签名
 │           └── poolHealthService.ts
 ├── frontend/
@@ -352,6 +375,7 @@ sentinel-for-safe-execution/
 - `/api/execute` 是 Vault 闸门，**不执行 DEX swap**；真实换币走 `/api/swap`
 - `fundSwapper` 仅 `authorizedFunders` 可调用（Router + deployer EOA），demo 专用
 - 同时只运行一个 backend 实例（8080），避免 swap 钱包 nonce 冲突
+- 公网 **Monad testnet RPC** 有速率限制；批量 `eth_call` 可能表现为 `missing revert data`，backend 已串行化并重试
 - 前端 Timeline 部分本地拼装；权威事件源 `GET /api/events` + `backend/data/events.jsonl`
 - 旧事件缺少的分析字段会显示为低覆盖率；不会从日志文本中猜测数值
 
@@ -362,5 +386,5 @@ sentinel-for-safe-execution/
 - 文档索引：[`docs/README.md`](docs/README.md)
 - 架构：[`docs/architecture.md`](docs/architecture.md)
 - API 契约：[`docs/api-contract.md`](docs/api-contract.md)
+- 变更记录：[`docs/CHANGELOG.md`](docs/CHANGELOG.md)
 - 合约：[`contracts/README.md`](contracts/README.md)
-- Phase 2 变更：[`docs/dev-changes/dev-phase2-safe-swap.md`](docs/dev-changes/dev-phase2-safe-swap.md)
