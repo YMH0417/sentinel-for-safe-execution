@@ -85,6 +85,7 @@ try {
     if ($env:MONADSCAN_API_KEY) {
         $forgeArgs += @("--verify", "--etherscan-api-key", $env:MONADSCAN_API_KEY)
     }
+    $env:DEMO_PROFILE = "monad-testnet"
     & forge @forgeArgs
     if ($LASTEXITCODE -ne 0) {
         throw "forge deploy failed (exit $LASTEXITCODE)"

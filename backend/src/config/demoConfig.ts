@@ -1,8 +1,7 @@
-import { fileURLToPath } from "url";
 import * as fs from "fs";
-import * as path from "path";
 import { getAddress } from "ethers";
 import { parseRouteName, tokenSymbolFromKey } from "./demoRoutes.js";
+import { resolveDefaultDeploymentPath } from "./demoProfile.js";
 
 export type DemoTokenSymbol = "USDC" | "GOOD" | "BAD" | "BAIT";
 export type DemoPoolLabel = "SAFE" | "SHALLOW" | "TOXIC" | "SDA";
@@ -18,6 +17,9 @@ export interface DemoPoolEntry {
 
 export interface DemoDeploymentConfig {
   chainId: number;
+  network?: string;
+  deploymentTarget?: "local" | "remote";
+  profile?: string;
   deployer: string;
   agentSigner?: string;
   registry: string;
@@ -29,13 +31,7 @@ export interface DemoDeploymentConfig {
   pools: DemoPoolEntry[];
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const defaultDeploymentPath = path.join(
-  __dirname,
-  "../../../contracts/deployments/anvil-31337-demo.json"
-);
+const defaultDeploymentPath = resolveDefaultDeploymentPath();
 
 let cachedConfig: DemoDeploymentConfig | null = null;
 

@@ -109,11 +109,37 @@ contract DeployAllDemo is Script {
         console2.log("  GOOD/BAD/BAIT:", TEST_USER_TOKEN);
     }
 
-    function _deploymentManifestName(uint256 chainId) private pure returns (string memory) {
-        if (chainId == MONAD_TESTNET_CHAIN_ID) {
+    function _demoProfile() private view returns (string memory) {
+        try vm.envString("DEMO_PROFILE") returns (string memory profile) {
+            return profile;
+        } catch {
+            return "anvil-local";
+        }
+    }
+
+    function _stringsEqual(string memory a, string memory b) private pure returns (bool) {
+        return keccak256(bytes(a)) == keccak256(bytes(b));
+    }
+
+    function _deploymentManifestName(uint256 chainId) private view returns (string memory) {
+        if (_stringsEqual(_demoProfile(), "monad-testnet")) {
             return "monad-10143-demo.json";
         }
-        return string.concat("anvil-", vm.toString(chainId), "-demo.json");
+        return string.concat("local-", vm.toString(chainId), "-demo.json");
+    }
+
+    function _networkLabel(uint256 /* chainId */) private view returns (string memory) {
+        string memory profile = _demoProfile();
+        if (_stringsEqual(profile, "monad-testnet")) return "monad-testnet";
+        if (_stringsEqual(profile, "anvil-fork-monad")) return "anvil-fork-monad";
+        return "anvil-local";
+    }
+
+    function _deploymentTarget(uint256 /* chainId */) private view returns (string memory) {
+        if (_stringsEqual(_demoProfile(), "monad-testnet")) {
+            return "remote";
+        }
+        return "local";
     }
 
     function _writeDeploymentJson(DeploymentArtifacts memory artifacts, address agentSigner) private {
@@ -128,7 +154,13 @@ contract DeployAllDemo is Script {
             vm.toString(artifacts.chainId),
             ",\n",
             '  "network": "',
-            artifacts.chainId == MONAD_TESTNET_CHAIN_ID ? "monad-testnet" : "anvil-local",
+            _networkLabel(artifacts.chainId),
+            '",\n',
+            '  "deploymentTarget": "',
+            _deploymentTarget(artifacts.chainId),
+            '",\n',
+            '  "profile": "',
+            _demoProfile(),
             '",\n',
             '  "deployer": "',
             vm.toString(artifacts.deployer),

@@ -1,7 +1,8 @@
 import { Contract, MaxUint256, parseUnits } from "ethers";
+import { assertMetaMaskMatchesDemoRpc } from "./demoRpc";
+import { fetchDemoExecutePreflight } from "./demoPreflight";
 import {
   ensureDemoChain,
-  fetchDemoChainConfig,
   getBrowserProvider,
 } from "./wallet";
 
@@ -19,26 +20,29 @@ export async function ensureUserTokenReady(params: {
   spender: string;
   amountHuman: string;
 }): Promise<void> {
-  const chain = await fetchDemoChainConfig();
-  if (chain) {
-    await ensureDemoChain(chain);
-  }
+  const preflight = await fetchDemoExecutePreflight();
+  const chain = preflight.chain;
+
+  await ensureDemoChain(chain);
 
   const provider = getBrowserProvider();
   const network = await provider.getNetwork();
-  if (chain && network.chainId !== BigInt(chain.chainId)) {
+  if (network.chainId !== BigInt(chain.chainId)) {
     throw new Error(
-      `MetaMask 网络不正确（当前 ${network.chainId}，需要 ${chain.chainId}）。请在 MetaMask 中切换到 ${chain.chainName}`
+      `MetaMask 网络不正确（当前 Chain ID ${network.chainId}，需要 ${chain.chainId}）。请在 MetaMask 中切换到「${chain.chainName}」`
     );
   }
 
   const tokenAddr = params.tokenAddress;
-  const code = await provider.getCode(tokenAddr);
-  if (!code || code === "0x") {
-    throw new Error(
-      `代币 ${params.tokenSymbol} 在当前网络无合约（${tokenAddr}）。请切换到本地 Anvil 链并重新运行 start-demo.ps1`
-    );
-  }
+  const metaMaskCode = await provider.getCode(tokenAddr);
+  await assertMetaMaskMatchesDemoRpc({
+    rpcUrl: chain.rpcUrl,
+    chainId: chain.chainId,
+    chainName: chain.chainName,
+    address: tokenAddr,
+    metaMaskCode,
+    tokenSymbol: params.tokenSymbol,
+  });
 
   const signer = await provider.getSigner();
   const token = new Contract(tokenAddr, erc20Abi, provider);
@@ -55,7 +59,7 @@ export async function ensureUserTokenReady(params: {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("BAD_DATA") || msg.includes("could not decode")) {
       throw new Error(
-        `无法读取 ${params.tokenSymbol} 余额：MetaMask 可能未连接到 Anvil（Chain ID 31337）。请切换网络后重试`
+        `无法读取 ${params.tokenSymbol} 余额：MetaMask RPC 与 Demo 链不一致。请切换到「${chain.chainName}」（Chain ID ${chain.chainId}，RPC ${chain.rpcUrl}）`
       );
     }
     throw err;
@@ -63,7 +67,8 @@ export async function ensureUserTokenReady(params: {
 
   if (balance < amountRaw) {
     throw new Error(
-      `${params.tokenSymbol} 余额不足（需要 ${params.amountHuman}，当前 ${formatHuman(balance, params.tokenDecimals, params.tokenSymbol)}）。本地测试可在重新部署后获得初始代币`
+      `${params.tokenSymbol} 余额不足（需要 ${params.amountHuman}，当前 ${formatHuman(balance, params.tokenDecimals, params.tokenSymbol)}）。` +
+        `测试钱包需为部署时注资的地址（默认 0x8819…b2c），或重新运行 start-demo.ps1`
     );
   }
 

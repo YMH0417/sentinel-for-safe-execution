@@ -7,12 +7,13 @@ import React, {
 } from "react";
 import { getAddress } from "ethers";
 import { connectMetaMaskWallet, revokeMetaMaskAccess } from "../lib/wallet";
+import { getErrorMessage } from "../lib/errorMessage";
 
 interface WalletContextValue {
   account: string | null;
   isConnecting: boolean;
   setAccount: (account: string | null) => void;
-  /** MetaMask eth_requestAccounts + switch/add Anvil when in demo mode */
+  /** MetaMask eth_requestAccounts + switch/add demo chain when in demo mode */
   connectWallet: () => Promise<string>;
   disconnectWallet: () => void;
 }
@@ -34,6 +35,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const address = await connectMetaMaskWallet();
       setAccount(address);
       return address;
+    } catch (err) {
+      throw new Error(getErrorMessage(err, "连接 MetaMask 失败"));
     } finally {
       setIsConnecting(false);
     }

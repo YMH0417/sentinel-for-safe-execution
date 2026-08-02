@@ -1,5 +1,7 @@
 # Sentinel Demo — Windows one-click: Anvil + deploy + sync .env + backend (+ optional frontend)
 param(
+    [ValidateSet("anvil-local", "anvil-fork-monad")]
+    [string]$Profile = "anvil-local",
     [switch]$SkipDeploy,
     [switch]$SkipFrontend,
     [switch]$SkipInstall,
@@ -34,17 +36,31 @@ function Test-Command([string]$Name) {
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Get-DemoChainProfile {
+    param([string]$Name)
+    $profilesPath = Join-Path $RepoRoot "shared\demo-chain-profiles.json"
+    if (-not (Test-Path $profilesPath)) {
+        throw "Demo chain profiles not found: $profilesPath"
+    }
+    $profiles = Get-Content $profilesPath -Raw | ConvertFrom-Json
+    $profile = $profiles.$Name
+    if (-not $profile) {
+        throw "Unknown DEMO profile '$Name'"
+    }
+    return $profile
+}
+
 function Wait-Rpc([string]$Url, [int]$MaxSeconds = 45) {
     $body = '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
     for ($i = 0; $i -lt $MaxSeconds; $i++) {
         try {
             $resp = Invoke-RestMethod -Uri $Url -Method POST -Body $body -ContentType "application/json" -TimeoutSec 2
-            if ($resp.result) { return $true }
+            if ($resp.result) { return $resp.result }
         } catch {
             Start-Sleep -Seconds 1
         }
     }
-    return $false
+    return $null
 }
 
 function Get-NpmPath {
@@ -68,9 +84,14 @@ function Stop-PortListener([int]$Port) {
     }
 }
 
+$chainProfile = Get-DemoChainProfile -Name $Profile
+$deploymentFile = Join-Path $RepoRoot ($chainProfile.manifestPath -replace "/", "\")
+$ChainId = [int]$chainProfile.chainId
+
 Write-Host ""
 Write-Host "Sentinel Demo — Windows one-click startup" -ForegroundColor Green
 Write-Host "Repo: $RepoRoot"
+Write-Host "Profile: $Profile (chainId $ChainId)"
 
 # --- Prerequisites ---
 Write-Step "Checking prerequisites"
@@ -86,29 +107,43 @@ if (-not (Test-Command "npm")) {
 Write-Host "forge, anvil, npm OK"
 
 # --- Anvil ---
-Write-Step "Starting Anvil on $RpcUrl"
+Write-Step "Starting Anvil on $RpcUrl (profile: $Profile)"
 Stop-PortListener -Port $AnvilPort
 New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "tmp") | Out-Null
 $anvilArgs = @(
-    "--chain-id", "31337",
+    "--chain-id", "$ChainId",
     "--port", "$AnvilPort",
     "--block-gas-limit", "120000000"
 )
+if ($Profile -eq "anvil-fork-monad") {
+    $forkUrl = if ($env:MONAD_RPC_URL) { $env:MONAD_RPC_URL } else { $chainProfile.forkUrl }
+    if (-not $forkUrl) {
+        throw "anvil-fork-monad profile requires forkUrl in demo-chain-profiles.json or MONAD_RPC_URL"
+    }
+    $anvilArgs += @("--fork-url", $forkUrl)
+    Write-Host "Fork URL: $forkUrl"
+}
 $anvilLogOut = Join-Path $RepoRoot "tmp\anvil.out.log"
 $anvilLogErr = Join-Path $RepoRoot "tmp\anvil.err.log"
 Start-Process -FilePath "anvil" -ArgumentList $anvilArgs -RedirectStandardOutput $anvilLogOut -RedirectStandardError $anvilLogErr -WindowStyle Hidden
-if (-not (Wait-Rpc -Url $RpcUrl)) {
+$chainIdHex = Wait-Rpc -Url $RpcUrl
+if (-not $chainIdHex) {
     throw "Anvil did not become ready. See tmp/anvil.err.log"
 }
-Write-Host "Anvil ready (logs: tmp/anvil.out.log, tmp/anvil.err.log)"
+$expectedHex = "0x" + $ChainId.ToString("x")
+if ($chainIdHex.ToLower() -ne $expectedHex) {
+    throw "Anvil chainId mismatch: got $chainIdHex, expected $expectedHex"
+}
+Start-Sleep -Seconds 2
+Write-Host "Anvil ready — chainId $chainIdHex (logs: tmp/anvil.out.log, tmp/anvil.err.log)"
 
 # --- Deploy ---
-$deploymentFile = Join-Path $RepoRoot "contracts\deployments\anvil-31337-demo.json"
 if (-not $SkipDeploy) {
     Write-Step "Deploying demo scenario (phased: 48 pools + Vault + Router, <=30M gas/tx)"
     Push-Location (Join-Path $RepoRoot "contracts")
     $env:PRIVATE_KEY = $AnvilKey
     $env:AGENT_SIGNER = ""
+    $env:DEMO_PROFILE = $Profile
     & forge script script/DeployAllDemo.s.sol:DeployAllDemo --rpc-url $RpcUrl --broadcast -vvv
     if ($LASTEXITCODE -ne 0) {
         Pop-Location
@@ -127,7 +162,11 @@ if (-not $SkipDeploy) {
 
 # --- Sync backend .env ---
 Write-Step "Writing backend/.env from deployment manifest"
-& (Join-Path $RepoRoot "scripts\sync-backend-env.ps1") -RepoRoot $RepoRoot -DeploymentFile $deploymentFile -AnvilPrivateKey $AnvilKey | Out-Null
+& (Join-Path $RepoRoot "scripts\sync-backend-env.ps1") `
+    -RepoRoot $RepoRoot `
+    -Profile $Profile `
+    -DeploymentFile $deploymentFile `
+    -AnvilPrivateKey $AnvilKey | Out-Null
 
 # --- npm install ---
 if (-not $SkipInstall) {
@@ -189,7 +228,10 @@ Write-Step "Ready"
 $deployment = Get-Content $deploymentFile -Raw | ConvertFrom-Json
 Write-Host @"
 
+  Profile       : $Profile
+  Chain ID      : $ChainId
   Anvil RPC     : $RpcUrl
+  Manifest      : $($chainProfile.manifestPath)
   Backend       : http://127.0.0.1:$BackendPort
   Frontend      : http://127.0.0.1:$FrontendPort  $(if ($SkipFrontend) { '(not started)' } else { '' })
   Registry      : $($deployment.registry)
@@ -206,8 +248,8 @@ Write-Host @"
 
   Logs: tmp/anvil.out.log, tmp/backend.out.log$(if (-not $SkipFrontend) { ', tmp/frontend.out.log' } else { '' })
 
-  Re-run deploy only:  .\scripts\start-demo.ps1
-  Skip redeploy:       .\scripts\start-demo.ps1 -SkipDeploy
-  Stop Anvil/backend:  close hidden processes or reboot ports via script re-run
+  Re-run deploy only:  .\start-demo.ps1 -Profile $Profile
+  Skip redeploy:       .\start-demo.ps1 -Profile $Profile -SkipDeploy
+  Fork Monad locally:  .\start-demo.ps1 -Profile anvil-fork-monad
 
 "@ -ForegroundColor Green

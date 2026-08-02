@@ -1,5 +1,5 @@
 ﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { DashboardPage } from './components/DashboardPage';
 import { TransactionPage } from './components/TransactionPage';
@@ -13,6 +13,7 @@ import { AuthRoute } from './components/AuthRoute';
 import { AppLayout } from './components/layout/AppLayout';
 import { SafeUnsafeToggle } from './components/SafeUnsafeToggle';
 import { WalletProvider } from './contexts/WalletContext';
+import { fetchDemoChainConfig } from './lib/wallet';
 
 export default function App() {
   return (
@@ -54,22 +55,39 @@ export default function App() {
 
 function TransactionRouter() {
   const [safeMode, setSafeMode] = useState(true);
+  const [demoBanner, setDemoBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetchDemoChainConfig().then((chain) => {
+      if (!chain) {
+        setDemoBanner(null);
+        return;
+      }
+      setDemoBanner(
+        `请用 MetaMask 连接钱包并切换到 ${chain.chainName}（Chain ID ${chain.chainId}，RPC ${chain.rpcUrl}，${chain.nativeCurrency.symbol}）。` +
+          `执行 swap 前会弹出 Approve 授权；请使用已注资的测试钱包 0x8819…b2c。`
+      );
+    });
+  }, []);
+
   return (
     <>
-      <div
-        className="sentinel-card"
-        style={{
-          marginBottom: 20,
-          padding: "12px 16px",
-          borderColor: "rgba(210, 153, 34, 0.35)",
-          background: "rgba(210, 153, 34, 0.06)",
-          fontSize: 13,
-          color: "var(--yellow)",
-          lineHeight: 1.5,
-        }}
-      >
-        <strong>Demo 链模式</strong> — 请用 MetaMask 连接钱包并切换到 Anvil Local（Chain ID 31337）。执行 swap 时会弹出授权（Approve）确认；代币从您连接的钱包扣除。
-      </div>
+      {demoBanner ? (
+        <div
+          className="sentinel-card"
+          style={{
+            marginBottom: 20,
+            padding: "12px 16px",
+            borderColor: "rgba(210, 153, 34, 0.35)",
+            background: "rgba(210, 153, 34, 0.06)",
+            fontSize: 13,
+            color: "var(--yellow)",
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Demo 链模式</strong> — {demoBanner}
+        </div>
+      ) : null}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 className="sentinel-title" style={{ margin: 0 }}>交易检测</h2>
         <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />

@@ -4,6 +4,7 @@ import { useWallet } from "../../contexts/WalletContext";
 import { useToast } from "../Toast";
 import { getAddress } from "ethers";
 import { api } from "../../api/client";
+import { getErrorMessage } from "../../lib/errorMessage";
 import logo from "../../imgs/logo.svg"
 
 const NAV = [
@@ -31,7 +32,7 @@ export function AppLayout() {
       await connectWallet();
       showToast({ type: "success", message: "MetaMask 已连接" });
     } catch (e) {
-      showToast({ type: "error", message: e instanceof Error ? e.message : "连接失败" });
+      showToast({ type: "error", message: getErrorMessage(e, "连接失败") });
     }
   };
 

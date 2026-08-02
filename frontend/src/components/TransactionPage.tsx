@@ -6,6 +6,8 @@ import { encodeBytes32String, getAddress } from "ethers";
 import { ensureUserTokenReady } from "../lib/demoSwap";
 import { fetchJson, withTimeout } from "../lib/withTimeout";
 import { fetchDemoToken, fetchSwapRouterAddress, ensureDemoChain } from "../lib/wallet";
+import { fetchDemoExecutePreflight } from "../lib/demoPreflight";
+import { getErrorMessage } from "../lib/errorMessage";
 import { AccountCard } from "./shared/AccountCard";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { SafetyPanel } from "./SafetyPanel";
@@ -328,7 +330,8 @@ export function TransactionPage({ safeMode }: Props) {
       throw new Error("请先连接 MetaMask 再执行链上交易");
     }
     const checksumAddr = getAddress(account);
-    await ensureDemoChain();
+    const preflight = await fetchDemoExecutePreflight();
+    await ensureDemoChain(preflight.chain);
 
     const [tokenMeta, swapRouter] = await Promise.all([
       fetchDemoToken(tokenIn),
@@ -345,7 +348,7 @@ export function TransactionPage({ safeMode }: Props) {
         amountHuman: amount,
       }),
       45_000,
-      "MetaMask 代币授权超时，请在弹窗中确认 approve"
+      "MetaMask 代币授权超时：请在弹窗中点击「确认」完成 Approve"
     );
 
     const endpoint = force ? `${API_BASE}/swap/force` : `${API_BASE}/swap/safe`;
@@ -373,6 +376,11 @@ export function TransactionPage({ safeMode }: Props) {
     );
     if (!res.ok) {
       const errPayload = data.error;
+      if (typeof errPayload === "object" && errPayload?.code === "INSUFFICIENT_ALLOWANCE") {
+        throw new Error(
+          "USDC 尚未授权 DemoSwapRouter。请在 MetaMask 中确认 Approve 交易后重试"
+        );
+      }
       if (typeof errPayload === "object" && errPayload?.code) {
         throw new SwapApiError(
           parseSwapError(data),
@@ -632,9 +640,9 @@ export function TransactionPage({ safeMode }: Props) {
         });
         return;
       }
-      const msg = e instanceof Error ? e.message : "Execute failed";
+      const msg = getErrorMessage(e, "Execute failed");
       setError(`Execute failed: ${msg}`);
-      showToast({ type: "error", message: `Execution failed: ${msg}` });
+      showToast({ type: "error", message: msg });
     } finally {
       stopExecutionTimer();
       setLoading("");
@@ -678,7 +686,7 @@ export function TransactionPage({ safeMode }: Props) {
 
       await executeRoute(latestDecision, targetRouteId);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "完整流程执行失败";
+      const msg = getErrorMessage(e, "完整流程执行失败");
       setError(msg);
       showToast({ type: "error", message: msg });
     } finally {
@@ -689,9 +697,9 @@ export function TransactionPage({ safeMode }: Props) {
   const handleConnectWallet = async () => {
     try {
       await connectWallet();
-      showToast({ type: "success", message: "MetaMask 已连接并切换到本地链" });
+      showToast({ type: "success", message: "MetaMask 已连接并切换到 Anvil Local (31337)" });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "连接失败";
+      const msg = getErrorMessage(e, "连接失败");
       setError(msg);
       showToast({ type: "error", message: msg });
     }

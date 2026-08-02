@@ -12,23 +12,27 @@ Solidity **0.8.24**, Foundry. Two deployment tracks:
 ## Quick start (Windows, recommended)
 
 ```powershell
-# From repo root — Anvil + deploy + backend/.env + services
+# From repo root — Anvil @ chainId 10143 + deploy + backend/.env + services
 .\start-demo.ps1
+# Optional: fork Monad testnet state locally
+.\start-demo.ps1 -Profile anvil-fork-monad
 ```
 
 Or deploy only:
 
 ```powershell
-anvil --chain-id 31337 --port 8545 --block-gas-limit 120000000
+anvil --chain-id 10143 --port 8545 --block-gas-limit 120000000
 
 cd contracts
+$env:DEMO_PROFILE = "anvil-local"
 forge script script/DeployAllDemo.s.sol:DeployAllDemo `
   --rpc-url http://127.0.0.1:8545 --broadcast -vvv
 
-powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1
+powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1 -Profile anvil-local
 ```
 
-> Anvil restart invalidates state — re-run `.\start-demo.ps1` to redeploy and rewrite `.env`.
+> Anvil restart invalidates state — re-run `.\start-demo.ps1` to redeploy and rewrite `.env`.  
+> **Deprecated:** `anvil-31337-demo.json` / chainId 31337 — use `local-10143-demo.json` @ chainId **10143** instead.
 
 ---
 
@@ -37,9 +41,11 @@ powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1
 ### Local (Anvil)
 
 ```powershell
-# Anvil — high block gas still recommended for forge tests; deploy uses phased txs (~17 broadcasts)
-anvil --chain-id 31337 --port 8545 --block-gas-limit 120000000
+# Anvil @ Monad testnet chain ID — deploy uses phased txs (~17 broadcasts)
+anvil --chain-id 10143 --port 8545 --block-gas-limit 120000000
 ```
+
+Manifest: **`deployments/local-10143-demo.json`** (`deploymentTarget: "local"`, `profile: "anvil-local"`).
 
 Same script as Monad — **`DeployAllDemo`** splits scenario deploy into batches (≤30M gas per tx):
 
@@ -72,11 +78,14 @@ Foundry RPC alias: `forge script ... --rpc-url monad_testnet` (reads `MONAD_RPC_
 
 ### Deploy output
 
-Forge auto-writes **`deployments/anvil-31337-demo.json`**:
+Forge auto-writes **`deployments/local-10143-demo.json`** (local) or **`deployments/monad-10143-demo.json`** (remote):
 
 ```json
 {
-  "chainId": 31337,
+  "chainId": 10143,
+  "network": "anvil-local",
+  "deploymentTarget": "local",
+  "profile": "anvil-local",
   "registry": "0x...",
   "vaultExecution": "0x...",
   "swapRouter": "0x...",

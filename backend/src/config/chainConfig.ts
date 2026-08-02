@@ -1,6 +1,7 @@
 import { getAddress, isHexString, Wallet, NonceManager } from "ethers";
 import { JsonRpcProvider } from "ethers";
 import { loadDemoConfig, isDemoChainMode } from "./demoConfig.js";
+import { getDemoChainProfile } from "./demoProfile.js";
 
 export interface ChainConfig {
   rpcUrl: string;
@@ -23,9 +24,27 @@ export class ChainConfigurationError extends Error {
   }
 }
 
-/** Anvil account #0 — local demo only */
+/** Anvil account #0 — fallback only for local demo deployments */
 export const ANVIL_DEFAULT_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+function isLocalDemoDeployment(): boolean {
+  if (process.env.CHAIN_MODE?.trim().toLowerCase() === "mock") return false;
+
+  try {
+    const demo = loadDemoConfig();
+    if (demo.deploymentTarget === "remote") return false;
+    if (demo.deploymentTarget === "local") return true;
+  } catch {
+    /* fall through to profile */
+  }
+
+  try {
+    return getDemoChainProfile().deploymentTarget === "local";
+  } catch {
+    return isDemoChainMode();
+  }
+}
 
 export function isMockChainMode(): boolean {
   return process.env.CHAIN_MODE?.trim().toLowerCase() === "mock";
@@ -75,20 +94,20 @@ export function getChainExecutionConfig(): ChainExecutionConfig {
 }
 
 function resolvePrivateKey(explicit: string | undefined, label: string): string {
-  const fromEnv =
-    process.env.SWAP_PRIVATE_KEY?.trim() ||
-    explicit ||
-    (process.env.CHAIN_MODE?.trim().toLowerCase() !== "mock"
-      ? ANVIL_DEFAULT_PRIVATE_KEY
-      : undefined);
+  const fromEnv = process.env.SWAP_PRIVATE_KEY?.trim() || explicit;
 
-  if (!fromEnv) {
-    throw new ChainConfigurationError(`${label} or SWAP_PRIVATE_KEY is required`);
+  if (fromEnv) {
+    if (!isHexString(fromEnv, 32)) {
+      throw new ChainConfigurationError(`${label} must be a 32-byte hex private key`);
+    }
+    return fromEnv;
   }
-  if (!isHexString(fromEnv, 32)) {
-    throw new ChainConfigurationError(`${label} must be a 32-byte hex private key`);
+
+  if (isLocalDemoDeployment()) {
+    return ANVIL_DEFAULT_PRIVATE_KEY;
   }
-  return fromEnv;
+
+  throw new ChainConfigurationError(`${label} or SWAP_PRIVATE_KEY is required`);
 }
 
 export function getSwapExecutionConfig(): SwapExecutionConfig {

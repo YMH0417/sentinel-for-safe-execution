@@ -3,8 +3,10 @@ import { Router, Request, Response } from "express";
 import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as path from "path";
-import { isMockChainMode, getOptionalVaultAddress, getSwapWallet, getOptionalSwapRouterAddress } from "../config/chainConfig.js";
+import { isMockChainMode, getOptionalVaultAddress, getSwapWallet, getOptionalSwapRouterAddress, getRpcUrl } from "../config/chainConfig.js";
 import { isDemoChainMode, loadDemoConfig } from "../config/demoConfig.js";
+import { getDemoChainProfile, getDemoProfile } from "../config/demoProfile.js";
+import { JsonRpcProvider } from "ethers";
 import { getLiveDemoConfig } from "../services/demoRegistryService.js";
 import { loadRiskConfig } from "../services/agentService.js";
 import { getEvents } from "../services/eventService.js";
@@ -17,6 +19,58 @@ const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const routesFilePath = path.join(__dirname, "../../../shared/demo-data/routes.json");
+
+function resolveDemoChainStatusFields(): {
+  expectedChainId: number | null;
+  chainName: string | null;
+  demoRpcUrl: string | null;
+  nativeCurrency: { name: string; symbol: string; decimals: number } | null;
+  demoProfile: string | null;
+  deploymentTarget: string | null;
+} {
+  if (!isDemoChainMode()) {
+    return {
+      expectedChainId: null,
+      chainName: null,
+      demoRpcUrl: null,
+      nativeCurrency: null,
+      demoProfile: null,
+      deploymentTarget: null,
+    };
+  }
+
+  try {
+    const profile = getDemoChainProfile();
+    let chainId = profile.chainId;
+    let deploymentTarget = profile.deploymentTarget;
+
+    try {
+      const demo = loadDemoConfig();
+      chainId = demo.chainId;
+      if (demo.deploymentTarget) deploymentTarget = demo.deploymentTarget;
+    } catch {
+      /* manifest optional for status until deploy completes */
+    }
+
+    return {
+      expectedChainId: chainId,
+      chainName: profile.chainName,
+      demoRpcUrl: process.env.RPC_URL?.trim() || profile.rpcUrl,
+      nativeCurrency: profile.nativeCurrency,
+      demoProfile: getDemoProfile(),
+      deploymentTarget,
+    };
+  } catch {
+    return {
+      expectedChainId: null,
+      chainName: "Demo Chain",
+      demoRpcUrl: process.env.RPC_URL?.trim() || null,
+      nativeCurrency: { name: "Monad", symbol: "MON", decimals: 18 },
+      demoProfile: process.env.DEMO_PROFILE?.trim() || null,
+      deploymentTarget: null,
+    };
+  }
+}
 
 router.get("/status", async (_req: Request, res: Response) => {
   const config = loadRiskConfig();
@@ -70,13 +124,20 @@ router.get("/status", async (_req: Request, res: Response) => {
     }
   }
 
+  const demoChain = resolveDemoChainStatusFields();
+
   res.json({
     service: "sentinel-backend",
     version: "0.1.0",
     chainMode,
-    expectedChainId: isDemoChainMode() ? 31337 : null,
-    chainName: isDemoChainMode() ? "Anvil Local" : null,
-    anvilRpcUrl: isDemoChainMode() ? (process.env.RPC_URL?.trim() || "http://127.0.0.1:8545") : null,
+    expectedChainId: demoChain.expectedChainId,
+    chainName: demoChain.chainName,
+    demoRpcUrl: demoChain.demoRpcUrl,
+    /** @deprecated use demoRpcUrl */
+    anvilRpcUrl: demoChain.demoRpcUrl,
+    nativeCurrency: demoChain.nativeCurrency,
+    demoProfile: demoChain.demoProfile,
+    deploymentTarget: demoChain.deploymentTarget,
     rpcConfigured,
     vaultConfigured,
     swapConfigured,
@@ -117,6 +178,39 @@ router.get("/status", async (_req: Request, res: Response) => {
       "GET /api/debug/status",
     ],
   });
+});
+
+router.get("/rpc-check", async (_req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "rpc-check requires demo chain mode" });
+  }
+  try {
+    const demo = loadDemoConfig();
+    const profile = getDemoChainProfile();
+    const rpcUrl = getRpcUrl();
+    const provider = new JsonRpcProvider(rpcUrl);
+    const [registryCode, usdcCode] = await Promise.all([
+      provider.getCode(demo.registry),
+      demo.tokens.USDC ? provider.getCode(demo.tokens.USDC) : Promise.resolve("0x"),
+    ]);
+    const registryDeployed = registryCode !== "0x";
+    const usdcDeployed = usdcCode !== "0x";
+    res.json({
+      ok: registryDeployed && usdcDeployed,
+      rpcUrl,
+      expectedChainId: demo.chainId,
+      chainName: profile.chainName,
+      demoProfile: getDemoProfile(),
+      deploymentTarget: demo.deploymentTarget ?? profile.deploymentTarget,
+      registry: demo.registry,
+      usdc: demo.tokens.USDC ?? null,
+      registryDeployed,
+      usdcDeployed,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "RPC check failed";
+    res.status(503).json({ ok: false, error: message });
+  }
 });
 
 router.get("/pools-health", async (req: Request, res: Response) => {

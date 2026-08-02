@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { buildSwapResultFromEvents } from "../lib/swapResult";
+import { fetchDemoChainConfig } from "../lib/wallet";
 import type { Decision, Event, SwapResult } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { AccountCard } from "./shared/AccountCard";
@@ -24,11 +25,18 @@ export function ExecutionResultPage() {
   const state = (location.state ?? {}) as LocationState;
   const [events, setEvents] = useState<Event[]>([]);
   const [loadedFromChain, setLoadedFromChain] = useState(false);
+  const [demoChainName, setDemoChainName] = useState("Demo 链");
 
   const txFromUrl = searchParams.get("tx") ?? undefined;
 
   useEffect(() => {
     api.events().then(setEvents).catch(() => setEvents([]));
+  }, []);
+
+  useEffect(() => {
+    void fetchDemoChainConfig().then((chain) => {
+      if (chain?.chainName) setDemoChainName(chain.chainName);
+    });
   }, []);
 
   const swap = useMemo(() => {
@@ -106,7 +114,7 @@ export function ExecutionResultPage() {
         eventType: "ExecutionAttempted",
         timestamp: Date.now() - 5000,
         routeId: swap.executedRouteId ?? swap.routeId,
-        message: "Unsafe 模式：跳过 Safety Agent，直连 Anvil swap",
+        message: `Unsafe 模式：跳过 Safety Agent，直连 ${demoChainName} swap`,
       });
     } else if (decision || swap.agentDecision) {
       steps.push({
@@ -131,7 +139,7 @@ export function ExecutionResultPage() {
     });
 
     return steps;
-  }, [swap, events, decision, success, agentBypassed]);
+  }, [swap, events, decision, success, agentBypassed, demoChainName]);
 
   return (
     <div>
@@ -343,7 +351,7 @@ function GasUsagePanel({
         </div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
           {gasUsed > 0
-            ? `${modeLabel} 已完成；实收来自 Anvil 链上 balance 差值。`
+            ? `${modeLabel} 已完成；实收来自链上 balance 差值。`
             : "结算校验通过，但未记录 Gas 数据。"}
         </div>
       </div>
