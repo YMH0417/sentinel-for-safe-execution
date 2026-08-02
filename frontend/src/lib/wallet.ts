@@ -69,15 +69,35 @@ export async function ensureDemoChain(config?: DemoChainConfig | null): Promise<
   }
 }
 
-/** Request MetaMask accounts, switch to demo chain if needed, return checksummed address. */
-export async function connectMetaMaskWallet(): Promise<string> {
+export async function revokeMetaMaskAccess(): Promise<void> {
+  if (!window.ethereum) return;
+  try {
+    await window.ethereum.request({
+      method: "wallet_revokePermissions",
+      params: [{ eth_accounts: {} }],
+    });
+  } catch {
+    // Unsupported or already disconnected — next eth_requestAccounts may still prompt.
+  }
+}
+
+/** Read connected account; optionally prompt if the site has no active connection. */
+export async function getMetaMaskAccount(options?: {
+  requestIfNeeded?: boolean;
+}): Promise<string> {
   if (!window.ethereum) {
     throw new Error("请先安装 MetaMask 浏览器插件");
   }
 
-  const accounts = (await window.ethereum.request({
-    method: "eth_requestAccounts",
+  let accounts = (await window.ethereum.request({
+    method: "eth_accounts",
   })) as string[];
+
+  if (!accounts?.length && options?.requestIfNeeded !== false) {
+    accounts = (await window.ethereum.request({
+      method: "eth_requestAccounts",
+    })) as string[];
+  }
 
   if (!accounts?.length) {
     throw new Error("MetaMask 未返回账户，请解锁钱包后重试");
@@ -85,6 +105,17 @@ export async function connectMetaMaskWallet(): Promise<string> {
 
   await ensureDemoChain();
   return getAddress(accounts[0]);
+}
+
+/** Explicit connect from UI — revoke first so MetaMask shows account picker. */
+export async function connectMetaMaskWallet(): Promise<string> {
+  await revokeMetaMaskAccess();
+  return getMetaMaskAccount({ requestIfNeeded: true });
+}
+
+/** Swap execution — reuse existing MetaMask session; never revoke site access. */
+export async function ensureMetaMaskAccountForTransaction(): Promise<string> {
+  return getMetaMaskAccount({ requestIfNeeded: true });
 }
 
 export async function fetchDemoToken(symbol: string): Promise<DemoTokenMeta> {

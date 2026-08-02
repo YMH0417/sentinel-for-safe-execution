@@ -6,29 +6,7 @@ import React, {
   useEffect,
 } from "react";
 import { getAddress } from "ethers";
-import { connectMetaMaskWallet } from "../lib/wallet";
-
-const STORE_KEY = "__sentinel_account__";
-
-function getStoredAccount(): string | null {
-  try {
-    return localStorage.getItem(STORE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function setStoredAccount(account: string | null) {
-  try {
-    if (account) {
-      localStorage.setItem(STORE_KEY, account);
-    } else {
-      localStorage.removeItem(STORE_KEY);
-    }
-  } catch {
-    /* ignore */
-  }
-}
+import { connectMetaMaskWallet, revokeMetaMaskAccess } from "../lib/wallet";
 
 interface WalletContextValue {
   account: string | null;
@@ -42,12 +20,11 @@ interface WalletContextValue {
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [account, setAccountState] = useState<string | null>(getStoredAccount);
+  const [account, setAccountState] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
   const setAccount = useCallback((a: string | null) => {
     setAccountState(a);
-    setStoredAccount(a);
     window.dispatchEvent(new CustomEvent("sentinel:wallet:change"));
   }, []);
 
@@ -63,8 +40,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [setAccount]);
 
   const disconnectWallet = useCallback(() => {
+    void revokeMetaMaskAccess();
     setAccount(null);
   }, [setAccount]);
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem("__sentinel_account__");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     const eth = window.ethereum;
@@ -84,7 +70,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
 
     const onChainChanged = () => {
-      window.location.reload();
+      void (async () => {
+        try {
+          const list = (await eth.request({ method: "eth_accounts" })) as string[];
+          if (!list?.length) {
+            setAccount(null);
+            return;
+          }
+          setAccount(getAddress(list[0]));
+        } catch {
+          setAccount(null);
+        }
+      })();
     };
 
     eth.on?.("accountsChanged", onAccountsChanged);
@@ -95,15 +92,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       eth.removeListener?.("chainChanged", onChainChanged);
     };
   }, [setAccount]);
-
-  useEffect(() => {
-    const handler = () => {
-      const val = getStoredAccount();
-      if (val !== account) setAccountState(val);
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, [account]);
 
   return (
     <WalletContext.Provider

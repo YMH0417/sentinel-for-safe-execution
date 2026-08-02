@@ -5,7 +5,7 @@ import { useToast } from "./Toast";
 import { encodeBytes32String, getAddress } from "ethers";
 import { ensureUserTokenReady } from "../lib/demoSwap";
 import { fetchJson, withTimeout } from "../lib/withTimeout";
-import { fetchDemoToken, fetchSwapRouterAddress, connectMetaMaskWallet } from "../lib/wallet";
+import { fetchDemoToken, fetchSwapRouterAddress, ensureDemoChain } from "../lib/wallet";
 import { AccountCard } from "./shared/AccountCard";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { SafetyPanel } from "./SafetyPanel";
@@ -155,7 +155,7 @@ function riskLevel(score: number): "low" | "moderate" | "high" {
 
 export function TransactionPage({ safeMode }: Props) {
   const navigate = useNavigate();
-  const { account, connectWallet, setAccount, isConnecting } = useWallet();
+  const { account, connectWallet, isConnecting } = useWallet();
   const { showToast } = useToast();
   const [tokenIn, setTokenIn] = useState("USDC");
   const [tokenOut, setTokenOut] = useState("GOOD");
@@ -324,12 +324,11 @@ export function TransactionPage({ safeMode }: Props) {
 
   /** Demo swap via the MetaMask-connected wallet (any authorized account). */
   const executeDemoSwap = async (routeId: string, force: boolean): Promise<SwapResult> => {
-    const checksumAddr = await withTimeout(
-      connectMetaMaskWallet(),
-      30_000,
-      "连接 MetaMask 超时，请确认插件已解锁"
-    );
-    setAccount(checksumAddr);
+    if (!account) {
+      throw new Error("请先连接 MetaMask 再执行链上交易");
+    }
+    const checksumAddr = getAddress(account);
+    await ensureDemoChain();
 
     const [tokenMeta, swapRouter] = await Promise.all([
       fetchDemoToken(tokenIn),
@@ -530,7 +529,12 @@ export function TransactionPage({ safeMode }: Props) {
         if (!window.ethereum) {
           throw new Error("请先安装 MetaMask 浏览器插件");
         }
-        setLoading("等待 MetaMask 确认（连接 / 授权 / 签名）...");
+        if (!account) {
+          setError("链上执行需要连接 MetaMask 钱包。您仍可游客预览报价与风险评估。");
+          showToast({ type: "error", message: "请先连接 MetaMask 再执行链上交易" });
+          return;
+        }
+        setLoading("等待 MetaMask 确认（代币授权 / 签名）...");
         const swap = await executeDemoSwap(routeId, !safeMode);
 
         const finalDecision: Decision | null = safeMode
@@ -728,7 +732,7 @@ export function TransactionPage({ safeMode }: Props) {
           }}
         >
           <span style={{ color: "var(--text-muted)", fontSize: 14 }}>
-            链上 swap 需用 MetaMask 连接钱包并授权代币（测试链上需有足够测试币）
+            请先连接 MetaMask（可选账户）；获取报价无需钱包，执行 swap 时仅需代币 Approve 确认
           </span>
           <button
             type="button"
