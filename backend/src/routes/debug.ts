@@ -11,6 +11,7 @@ import { getLiveDemoConfig } from "../services/demoRegistryService.js";
 import { loadRiskConfig } from "../services/agentService.js";
 import { getEvents } from "../services/eventService.js";
 import { assertSwapConfigured, isRouterSwapAvailable } from "../services/swapService.js";
+import { isAgentSigningConfigured } from "../services/agentSignService.js";
 import { getEventsFilePath } from "../services/eventService.js";
 import { getPoolsHealthCacheMeta, getCachedPoolsHealth, warmPoolsHealthCache } from "../services/poolHealthCacheService.js";
 
@@ -111,14 +112,16 @@ router.get("/status", async (_req: Request, res: Response) => {
   let swapWallet: string | null = null;
   let swapConfigured = false;
   let routerSwapAvailable = false;
+  let agentSigningAvailable = false;
   let swapRouter: string | null = null;
   if (isDemoChainMode() && rpcConfigured) {
+    agentSigningAvailable = isAgentSigningConfigured();
+    routerSwapAvailable = isRouterSwapAvailable();
+    swapRouter = getOptionalSwapRouterAddress() ?? null;
     try {
       assertSwapConfigured();
       swapWallet = getSwapWallet().address;
       swapConfigured = true;
-      routerSwapAvailable = isRouterSwapAvailable();
-      swapRouter = getOptionalSwapRouterAddress() ?? null;
     } catch {
       swapConfigured = false;
     }
@@ -142,6 +145,7 @@ router.get("/status", async (_req: Request, res: Response) => {
     vaultConfigured,
     swapConfigured,
     routerSwapAvailable,
+    agentSigningAvailable,
     swapRouter,
     swapWallet,
     eventsPersistPath: getEventsFilePath(),

@@ -5,6 +5,7 @@ import { isAddress, getAddress } from "ethers";
 
 import { isDemoChainMode } from "../config/demoConfig.js";
 import { loadRiskConfig } from "../services/agentService.js";
+import { AgentSignError } from "../services/agentSignService.js";
 
 import { getSwapWallet, ChainConfigurationError } from "../config/chainConfig.js";
 
@@ -347,11 +348,20 @@ router.post("/wallet/plan", async (req: Request, res: Response) => {
           ? 422
           : err.code === "SLIPPAGE_EXCEEDED" || err.code === "QUOTE_DEVIATION_EXCEEDED"
             ? 409
-            : err.code === "WALLET_SWAP_REQUIRES_AGENT"
+            : err.code === "WALLET_SWAP_REQUIRES_AGENT" ||
+                err.code === "WALLET_SWAP_AGENT_SIGN_UNAVAILABLE"
               ? 422
               : 400;
       return res.status(status).json({
         error: { code: err.code, message: err.message, details: err.details },
+      });
+    }
+    if (err instanceof AgentSignError) {
+      return res.status(503).json({
+        error: {
+          code: "WALLET_SWAP_AGENT_SIGN_UNAVAILABLE",
+          message: err.message,
+        },
       });
     }
     const message = err instanceof Error ? err.message : "Wallet swap plan failed";

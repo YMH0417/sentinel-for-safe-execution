@@ -55,6 +55,14 @@ export interface WalletSwapPlan {
     amount1OutRaw: string;
   };
   sdaSwapId?: string;
+  agentPermit?: {
+    signature: string;
+    deadline: number;
+    nonce: string;
+    decision: number;
+    routeIdBytes32: string;
+    riskScore: number;
+  };
 }
 
 async function fetchWalletSwapPlan(params: {
@@ -105,53 +113,6 @@ async function fetchBalances(address: string): Promise<Record<string, { human: n
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function signVaultPermit(params: {
-  user: string;
-  routeName: string;
-  vaultAddress: string;
-  chainId: number;
-  amountInRaw: bigint;
-  quotedOutRaw: bigint;
-  deadline: number;
-  riskScore: number;
-  nonce: string;
-}): Promise<string> {
-  const provider = getBrowserProvider();
-  const signer = await provider.getSigner();
-  const routeIdBytes32 = id(params.routeName);
-
-  return signer.signTypedData(
-    {
-      name: "Sentinel Vault Execution",
-      version: "1",
-      chainId: params.chainId,
-      verifyingContract: params.vaultAddress,
-    },
-    {
-      ExecutionPermit: [
-        { name: "user", type: "address" },
-        { name: "routeId", type: "bytes32" },
-        { name: "amountIn", type: "uint256" },
-        { name: "amountOutQuoted", type: "uint256" },
-        { name: "deadline", type: "uint256" },
-        { name: "riskScore", type: "uint256" },
-        { name: "decision", type: "uint8" },
-        { name: "nonce", type: "uint256" },
-      ],
-    },
-    {
-      user: params.user,
-      routeId: routeIdBytes32,
-      amountIn: params.amountInRaw,
-      amountOutQuoted: params.quotedOutRaw,
-      deadline: params.deadline,
-      riskScore: params.riskScore,
-      decision: 0,
-      nonce: params.nonce,
-    }
-  );
 }
 
 async function ensureRouterAllowance(
@@ -262,36 +223,20 @@ export async function executeWalletDemoSwap(params: {
   const balancesBefore = await fetchBalances(recipient);
   const provider = getBrowserProvider();
   const signer = await provider.getSigner();
-  const network = await provider.getNetwork();
 
   let receipt: { hash: string; blockNumber: number; gasUsed: bigint };
   let executionMode: "router" | "direct" = "router";
   let sdaMeta: Partial<SwapResult> = {};
 
   if (plan.executionStrategy === "router" && plan.routerAddress && plan.vaultAddress) {
-    const nonceRes = await fetch(
-      `${API_BASE}/execute/nonce?user=${encodeURIComponent(recipient)}`
-    );
-    const nonceData = await nonceRes.json();
-    if (!nonceRes.ok) {
-      throw new Error(parseApiError(nonceData.error?.message ?? nonceData.error, "无法读取 Vault nonce"));
+    if (!plan.agentPermit) {
+      throw new Error(
+        "Backend 未返回 Agent 签名。Safe MetaMask swap 需在 backend/.env 配置 AGENT_PRIVATE_KEY（与 Vault agentSigner 一致）"
+      );
     }
-
-    const deadline = Math.floor(Date.now() / 1000) + 600;
-    const signature = await signVaultPermit({
-      user: recipient,
-      routeName: plan.executedRouteId,
-      vaultAddress: plan.vaultAddress,
-      chainId: Number(network.chainId),
-      amountInRaw: BigInt(plan.amounts.amountInRaw),
-      quotedOutRaw: BigInt(plan.amounts.quotedOutRaw),
-      deadline,
-      riskScore: plan.agentDecision.riskScore,
-      nonce: String(nonceData.nonce),
-    });
+    const { signature, deadline, nonce, decision, routeIdBytes32, riskScore } = plan.agentPermit;
 
     const router = new Contract(plan.routerAddress, demoSwapRouterAbi, signer);
-    const routeIdBytes32 = id(plan.executedRouteId);
     const tx = await router.swapWithPermit(
       recipient,
       routeIdBytes32,
@@ -299,9 +244,9 @@ export async function executeWalletDemoSwap(params: {
       BigInt(plan.amounts.quotedOutRaw),
       BigInt(plan.amounts.amountOutMinRaw),
       deadline,
-      plan.agentDecision.riskScore,
-      0,
-      nonceData.nonce,
+      riskScore,
+      decision,
+      nonce,
       signature,
       recipient
     );
@@ -388,7 +333,6 @@ export async function executeWalletDemoSwap(params: {
 }
 
 export async function isBackendSwapExecutorAvailable(): Promise<boolean> {
-  const res = await fetch(`${API_BASE}/debug/status`);
-  const data = await res.json();
-  return Boolean(data.swapConfigured && data.routerSwapAvailable);
+  // UI always uses MetaMask for user gas + token approve; backend only supplies Agent permit signatures.
+  return false;
 }

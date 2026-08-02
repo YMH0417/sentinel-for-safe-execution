@@ -1,5 +1,10 @@
 import { id, JsonRpcProvider, Wallet } from "ethers";
-import { getOptionalVaultAddress, getRpcUrl, ANVIL_DEFAULT_PRIVATE_KEY } from "../config/chainConfig.js";
+import {
+  getOptionalVaultAddress,
+  getRpcUrl,
+  ANVIL_DEFAULT_PRIVATE_KEY,
+  isLocalDemoDeployment,
+} from "../config/chainConfig.js";
 import { getVaultNonce } from "./chainService.js";
 import type { Decision, DecisionType, ExecutionPermit } from "../types.js";
 
@@ -17,11 +22,16 @@ const contractDecision: Record<DecisionType, 0 | 1 | 2> = {
 };
 
 export function getAgentPrivateKey(): string {
-  const fromEnv =
-    process.env.AGENT_PRIVATE_KEY?.trim() ||
-    process.env.EXECUTOR_PRIVATE_KEY?.trim() ||
-    ANVIL_DEFAULT_PRIVATE_KEY;
-  return fromEnv;
+  const agentKey = process.env.AGENT_PRIVATE_KEY?.trim();
+  if (agentKey) return agentKey;
+
+  if (isLocalDemoDeployment()) {
+    return process.env.EXECUTOR_PRIVATE_KEY?.trim() || ANVIL_DEFAULT_PRIVATE_KEY;
+  }
+
+  throw new AgentSignError(
+    "AGENT_PRIVATE_KEY is required for Agent signing on remote demo profiles"
+  );
 }
 
 export function isAgentSigningConfigured(): boolean {

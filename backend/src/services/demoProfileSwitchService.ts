@@ -1,4 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
 import { resolveEnvFilePath } from "./llmEnvConfigService.js";
 import { clearDemoConfigCache } from "../config/demoConfig.js";
 import {
@@ -13,6 +15,8 @@ import {
 import { resetSwapRuntimeCache } from "../config/chainConfig.js";
 import { invalidatePoolsHealthCache } from "./poolHealthCacheService.js";
 import { clearLiveDemoConfigCache } from "./demoRegistryService.js";
+
+const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
 const ANVIL_DEFAULT_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -132,10 +136,19 @@ function mergeDemoEnvFile(updates: Record<string, string | undefined>): void {
 
 function applyDemoEnvToProcess(updates: Record<string, string | undefined>): void {
   for (const [key, value] of Object.entries(updates)) {
-    if (value !== undefined && value !== "") {
+    if (value === undefined) continue;
+    if (value === "") {
+      delete process.env[key];
+    } else {
       process.env[key] = value;
     }
   }
+}
+
+function tryLoadContractsPrivateKey(repoRoot: string): string | undefined {
+  const path = resolve(repoRoot, "contracts/.env");
+  if (!existsSync(path)) return undefined;
+  return parseEnvLines(readFileSync(path, "utf-8")).get("PRIVATE_KEY")?.trim();
 }
 
 export function listDemoProfiles(): DemoProfileListItem[] {
@@ -213,11 +226,16 @@ export function switchDemoProfile(profileName: string): {
     updates.EXECUTOR_PRIVATE_KEY = ANVIL_DEFAULT_PRIVATE_KEY;
     updates.AGENT_PRIVATE_KEY = ANVIL_DEFAULT_PRIVATE_KEY;
   } else {
-    const swapKey = existingEnv.get("SWAP_PRIVATE_KEY")?.trim();
-    const execKey = existingEnv.get("EXECUTOR_PRIVATE_KEY")?.trim();
-    if (!swapKey && !execKey) {
+    updates.SWAP_PRIVATE_KEY = "";
+    updates.EXECUTOR_PRIVATE_KEY = "";
+    const agentKey =
+      existingEnv.get("AGENT_PRIVATE_KEY")?.trim() || tryLoadContractsPrivateKey(REPO_ROOT);
+    if (agentKey) {
+      updates.AGENT_PRIVATE_KEY = agentKey;
+    } else {
+      updates.AGENT_PRIVATE_KEY = "";
       warnings.push(
-        "未配置 SWAP_PRIVATE_KEY / EXECUTOR_PRIVATE_KEY，后端 swap 路由可能不可用（MetaMask 转账仍可用）"
+        "未配置 AGENT_PRIVATE_KEY：Safe MetaMask swap 需 Agent 签名。请将 deploy 私钥写入 backend/.env 的 AGENT_PRIVATE_KEY，或保留 contracts/.env 的 PRIVATE_KEY"
       );
     }
   }

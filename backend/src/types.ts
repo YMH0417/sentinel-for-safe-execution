@@ -293,4 +293,13 @@ export interface WalletSwapPlan {
     amount1OutRaw: string;
   };
   sdaSwapId?: string;
+  /** Backend Agent EIP-712 signature — user MetaMask submits swapWithPermit. */
+  agentPermit?: {
+    signature: string;
+    deadline: number;
+    nonce: string;
+    decision: number;
+    routeIdBytes32: string;
+    riskScore: number;
+  };
 }

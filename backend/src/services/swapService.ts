@@ -646,25 +646,53 @@ export async function planWalletDemoSwap(params: SwapRequest): Promise<WalletSwa
   const routerAddress = getOptionalSwapRouterAddress() ?? null;
   const vaultAddress = getOptionalVaultAddress() ?? null;
   const agentSigner = await resolveAgentSigner(config, provider);
-  const userIsAgentSigner = Boolean(
-    agentSigner && recipient.toLowerCase() === agentSigner.toLowerCase()
-  );
+  const agentSignReady = isAgentSigningConfigured();
 
   let executionStrategy: WalletSwapPlan["executionStrategy"];
   if (poolLabel === "SDA") {
     executionStrategy = "sda";
-  } else if (routerAddress && vaultAddress && userIsAgentSigner) {
+  } else if (routerAddress && vaultAddress && !slippageEnforced && agentSignReady) {
     executionStrategy = "router";
   } else if (slippageEnforced) {
     executionStrategy = "direct";
+  } else if (routerAddress && vaultAddress && !agentSignReady) {
+    throw new SwapExecutionError(
+      "WALLET_SWAP_AGENT_SIGN_UNAVAILABLE",
+      `Safe MetaMask swap 需要 backend 配置 AGENT_PRIVATE_KEY（Vault agentSigner: ${agentSigner ?? "未知"}）`,
+      { agentSigner }
+    );
   } else {
     throw new SwapExecutionError(
       "WALLET_SWAP_REQUIRES_AGENT",
-      userIsAgentSigner
-        ? "Router 或 Vault 未配置，无法执行 Safe swap"
-        : `Safe 模式需使用 Agent 钱包 ${agentSigner ?? "（未配置）"} 连接 MetaMask，或在 backend/.env 配置 AGENT_PRIVATE_KEY`,
+      "Router 或 Vault 未配置，无法执行 Safe swap",
       { agentSigner, recipient }
     );
+  }
+
+  let agentPermit: WalletSwapPlan["agentPermit"];
+  if (executionStrategy === "router") {
+    const permitDecision: Decision = {
+      ...agentDecision,
+      decision: "ALLOW",
+      routeId: executedRouteId,
+    };
+    const deadline = defaultSwapDeadline();
+    const { permit, signature, routeIdBytes32 } = await signExecutionPermit({
+      user: recipient,
+      routeName: executedRouteId,
+      amountInRaw,
+      amountOutQuotedRaw: quotedOutRaw,
+      deadline,
+      decision: permitDecision,
+    });
+    agentPermit = {
+      signature,
+      deadline,
+      nonce: permit.nonce,
+      decision: permit.decision,
+      routeIdBytes32,
+      riskScore: Number(permit.riskScore),
+    };
   }
 
   const tokenOutIsToken0 = pool.tokenOut.toLowerCase() === token0.toLowerCase();
@@ -694,7 +722,7 @@ export async function planWalletDemoSwap(params: SwapRequest): Promise<WalletSwa
     routerAddress,
     vaultAddress,
     agentSigner,
-    userIsAgentSigner,
+    userIsAgentSigner: false,
     tokenInDecimals: decIn,
     tokenOutDecimals: decOut,
     amounts: {
@@ -705,6 +733,7 @@ export async function planWalletDemoSwap(params: SwapRequest): Promise<WalletSwa
       amount1OutRaw: amount1OutRaw.toString(),
     },
     sdaSwapId: executionStrategy === "sda" ? buildSdaSwapId(recipient, executedRouteId) : undefined,
+    agentPermit,
   };
 }
 

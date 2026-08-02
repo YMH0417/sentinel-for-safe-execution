@@ -79,13 +79,33 @@ if ($isLocal) {
         ""
     )
 } else {
-    $lines += @(
-        "# Remote profile — set your Monad wallet private keys (never commit real keys):",
-        "SWAP_PRIVATE_KEY=",
-        "EXECUTOR_PRIVATE_KEY=",
-        "AGENT_PRIVATE_KEY=",
-        ""
-    )
+    $agentKey = ""
+    $contractsEnv = Join-Path $RepoRoot "contracts\.env"
+    if (Test-Path $contractsEnv) {
+        Get-Content $contractsEnv | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -match '^PRIVATE_KEY=(.+)$') {
+                $agentKey = $Matches[1].Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    if ($agentKey) {
+        $lines += @(
+            "# Remote — backend Agent signs permits; user swaps via MetaMask",
+            "SWAP_PRIVATE_KEY=",
+            "EXECUTOR_PRIVATE_KEY=",
+            "AGENT_PRIVATE_KEY=$agentKey",
+            ""
+        )
+    } else {
+        $lines += @(
+            "# Remote — set AGENT_PRIVATE_KEY for Safe MetaMask swap (Agent EIP-712 signing)",
+            "SWAP_PRIVATE_KEY=",
+            "EXECUTOR_PRIVATE_KEY=",
+            "AGENT_PRIVATE_KEY=",
+            ""
+        )
+    }
 }
 
 Set-Content -Path $envPath -Value ($lines -join "`n") -Encoding ASCII

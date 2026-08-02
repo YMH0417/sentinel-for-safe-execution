@@ -28,7 +28,7 @@ export class ChainConfigurationError extends Error {
 export const ANVIL_DEFAULT_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
-function isLocalDemoDeployment(): boolean {
+export function isLocalDemoDeployment(): boolean {
   if (process.env.CHAIN_MODE?.trim().toLowerCase() === "mock") return false;
 
   try {
