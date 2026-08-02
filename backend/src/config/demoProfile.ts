@@ -107,7 +107,6 @@ export function resolveDefaultDeploymentPath(): string {
     return profilePath;
   }
   const legacyPaths = [
-    path.join(repoRoot, "contracts/deployments/local-101437-demo.json"),
     path.join(repoRoot, "contracts/deployments/local-10143-demo.json"),
     legacyDeploymentPath,
   ];

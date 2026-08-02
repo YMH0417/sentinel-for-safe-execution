@@ -159,11 +159,7 @@ forge test --match-contract SwapAll36Routes -vvv
 forge test --match-contract DemoPoolsIntegration -vvv
 forge test --match-contract DemoSwapRouter -vvv
 
-# On-chain swap script (needs deployed registry)
-forge script script/TestAll36Swaps.s.sol:TestAll36Swaps `
-  --rpc-url http://127.0.0.1:8545 -vvv
-
-# Post-deploy sanity
+# Post-deploy sanity (deployed registry on RPC)
 forge script script/Verify36SwapsDeployed.s.sol:Verify36SwapsDeployed `
   --rpc-url http://127.0.0.1:8545 -vvv
 ```

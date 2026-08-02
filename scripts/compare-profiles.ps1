@@ -6,7 +6,6 @@ param(
 $ErrorActionPreference = "Stop"
 
 $localPath = Join-Path $RepoRoot "contracts\deployments\local-31337-demo.json"
-$localLegacyPath = Join-Path $RepoRoot "contracts\deployments\local-101437-demo.json"
 $remotePath = Join-Path $RepoRoot "contracts\deployments\monad-10143-demo.json"
 
 Write-Host ""
@@ -16,10 +15,6 @@ Write-Host "  Remote: $remotePath"
 Write-Host ""
 
 $localExists = Test-Path $localPath
-if (-not $localExists -and (Test-Path $localLegacyPath)) {
-    $localPath = $localLegacyPath
-    $localExists = $true
-}
 $remoteExists = Test-Path $remotePath
 
 if (-not $localExists -and -not $remoteExists) {

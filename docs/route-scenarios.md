@@ -211,9 +211,7 @@ Safe 模式**不启用滑点带宽**（`minOut=0`）；路由策略完全由 Age
 | 一键启动 + 验证 | `.\start-demo.ps1 -VerifySwaps` |
 | Backend API (force) | `POST /api/swap/verify-all` → **36 通过 + 12 TOXIC 滑点失败** |
 | Backend API (safe) | `POST /api/swap/verify-all` `{"safe":true}` → BAD/BAIT/SDA 等大量 REJECT |
-| npm script | `cd backend && npm run verify:swaps` |
 | Foundry test | `forge test --match-contract SwapAll36Routes` → **48/48** 直连 swap |
-| Foundry script | `forge script script/TestAll36Swaps.s.sol --rpc-url ...` |
 
 ---
 
