@@ -4,6 +4,7 @@ import {
   type AnalysisReport,
   type NumberStatistics,
 } from "../api/client";
+import { GlobalLoading } from "./GlobalLoading";
 
 type LoadState =
   | { status: "loading" }
@@ -63,9 +64,19 @@ function AnalysisReportView({
   report: AnalysisReport;
   onRefresh: () => Promise<void>;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
   const decisions = report.insights.decisions;
   const execution = report.insights.execution;
   const evidence = report.insights.evidence;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (report.quality.receivedRows === 0) {
     return (
@@ -79,7 +90,7 @@ function AnalysisReportView({
         <button
           type="button"
           className="sentinel-btn sentinel-btn-ghost"
-          onClick={() => void onRefresh()}
+          onClick={() => void handleRefresh()}
         >
           Refresh
         </button>
@@ -100,7 +111,7 @@ function AnalysisReportView({
         <button
           type="button"
           className="sentinel-btn sentinel-btn-ghost"
-          onClick={() => void onRefresh()}
+          onClick={() => void handleRefresh()}
         >
           Refresh analysis
         </button>

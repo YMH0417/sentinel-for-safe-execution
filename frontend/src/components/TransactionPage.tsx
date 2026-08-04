@@ -12,9 +12,10 @@ import {
   isBackendSwapExecutorAvailable,
 } from "../lib/demoWalletSwap";
 import { getErrorMessage } from "../lib/errorMessage";
-import { AccountCard } from "./shared/AccountCard";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { SafetyPanel } from "./SafetyPanel";
+import { SafeUnsafeToggle } from "./SafeUnsafeToggle";
+import { GlobalLoading } from "./GlobalLoading";
 import type {
   Route as RouteType,
   Decision,
@@ -130,6 +131,7 @@ function buildUnsafeSlippageError(
 
 interface Props {
   safeMode: boolean;
+  onSafeModeChange: (v: boolean) => void;
 }
 
 function generateDummySignature(): string {
@@ -159,7 +161,7 @@ function riskLevel(score: number): "low" | "moderate" | "high" {
   return "low";
 }
 
-export function TransactionPage({ safeMode }: Props) {
+export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
   const navigate = useNavigate();
   const { account, connectWallet, isConnecting } = useWallet();
   const { showToast } = useToast();
@@ -741,7 +743,7 @@ export function TransactionPage({ safeMode }: Props) {
 
   return (
     <div>
-      <AccountCard />
+      <GlobalLoading active={!!loading} message={loading || undefined} />
 
       {!account && (
         <div
@@ -795,6 +797,7 @@ export function TransactionPage({ safeMode }: Props) {
               <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Amount</label>
               <input className="sentinel-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
+            <SafeUnsafeToggle safeMode={safeMode} onChange={onSafeModeChange} />
             {safeMode ? (
               <div
                 style={{
@@ -891,47 +894,51 @@ export function TransactionPage({ safeMode }: Props) {
         </div>
 
         <div className="sentinel-card">
-          <div className="sentinel-label">风险指标</div>
-          <div className="sentinel-grid-2" style={{ marginBottom: 16 }}>
-            <RiskIndicator
-              label="池子风险"
-              value={selectedRouteData?.poolRiskScore ?? "—"}
-              level={selectedRouteData ? riskLevel(selectedRouteData.poolRiskScore) : "low"}
-            />
-            <RiskIndicator
-              label="报价偏差"
-              value={selectedRouteData?.warningFlags.includes("quote_deviation") ? "高" : "低"}
-              level={selectedRouteData?.warningFlags.includes("quote_deviation") ? "high" : "low"}
-            />
-            <RiskIndicator
-              label="Agent 决策"
-              value={safeMode ? (decision?.decision ?? "待评估") : "已绕过"}
-              level={
-                safeMode
-                  ? decision?.decision === "REJECT"
-                    ? "high"
-                    : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
-                      ? "moderate"
-                      : "low"
-                  : "high"
-              }
-            />
-            <RiskIndicator
-              label="安全模式"
-              value={safeMode ? "Safe" : "Unsafe"}
-              level={safeMode ? "low" : "high"}
-            />
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              marginBottom: 16,
+            }}
+          >
+            风险指标
           </div>
-          <SafetyPanel decision={decision} safeMode={safeMode} onSwitchToFallback={switchToFallbackRoute} />
-        </div>
-
-        <div className="sentinel-card">
-          <SecurityGauge score={gaugeScore} size={120} label="路由安全分" />
-          {quoteMeta.referencePrice !== undefined && (
-            <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-muted)" }}>
-              参考价: <strong style={{ color: "var(--text)" }}>{quoteMeta.referencePrice}</strong>
+          <div className="tx-risk-box">
+            <div className="tx-risk-flex">
+              <RiskIndicator
+                label="池子风险"
+                value={selectedRouteData?.poolRiskScore ?? "—"}
+                level={selectedRouteData ? riskLevel(selectedRouteData.poolRiskScore) : "low"}
+              />
+              <RiskIndicator
+                label="报价偏差"
+                value={selectedRouteData?.warningFlags.includes("quote_deviation") ? "高" : "低"}
+                level={selectedRouteData?.warningFlags.includes("quote_deviation") ? "high" : "low"}
+              />
             </div>
-          )}
+            <div className="tx-risk-flex">
+              <RiskIndicator
+                label="Agent 决策"
+                value={safeMode ? (decision?.decision ?? "待评估") : "已绕过"}
+                level={
+                  safeMode
+                    ? decision?.decision === "REJECT"
+                      ? "high"
+                      : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
+                        ? "moderate"
+                        : "low"
+                    : "high"
+                }
+              />
+              <RiskIndicator
+                label="安全模式"
+                value={safeMode ? "Safe" : "Unsafe"}
+                level={safeMode ? "low" : "high"}
+              />
+            </div>
+            
+          </div>
         </div>
       </div>
 
@@ -1057,11 +1064,11 @@ function RiskIndicator({
   value: string | number;
   level: "low" | "moderate" | "high";
 }) {
-  const color = level === "high" ? "var(--red)" : level === "moderate" ? "var(--yellow)" : "var(--green)";
+  const color = level === "high" ? "var(--red)" : level === "moderate" ? "var(--yellow)" : "var(--cyan)";
   return (
-    <div style={{ padding: 12, background: "#0d1117", borderRadius: 8, border: "1px solid var(--border)" }}>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 700, color }}>{value}</div>
+    <div className={`tx-risk-card tx-risk-card-${level}`}>
+      <div className="tx-risk-card-label" style={{ color }}>{label}</div>
+      <div className="tx-risk-card-value" style={{ color }}>{value}</div>
     </div>
   );
 }

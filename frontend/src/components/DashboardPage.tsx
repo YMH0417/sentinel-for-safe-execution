@@ -14,6 +14,7 @@ import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { useWallet } from "../contexts/WalletContext";
 import { useDashboardData } from "../hooks/useDashboardData";
+import { GlobalLoading } from "./GlobalLoading";
 
 type AiState =
   | { status: "idle" }
@@ -89,189 +90,144 @@ export function DashboardPage() {
     : "未连接钱包";
 
   return (
-    <div className="dashboard-cockpit">
-      {refreshing && (
-        <div className="dashboard-sync-bar">数据同步中…</div>
-      )}
-      <div className="dashboard-grid">
+    <div className="dashboard-box">
+      <GlobalLoading active={refreshing || aiLoading} message={refreshing ? "刷新数据中..." : aiLoading ? "AI 分析中..." : undefined} />
+      <div className="dashboard-main">
+        <div className="dashboard-main-top">
         {/* 左上：安全评分 */}
         <div className="dashboard-card dashboard-score-cell">
           <div className="dashboard-card-title">
-            <span>🛡️ 安全性评分</span>
+            <span>安全性评分</span>
           </div>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <SecurityGauge score={score} size={150} label="" />
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -8 }}>综合评估分数</div>
+          <div className="dashboard-score-gauge">
+            <SecurityGauge score={score} size={180} label="" />
           </div>
-          <div className="dashboard-legend-row">
-            <LegendBar label="高风险组" pct={legend.highRisk} color="var(--red)" />
-            <LegendBar label="策略组" pct={legend.strategy} color="var(--cyan)" />
-            <LegendBar label="风险警报" pct={legend.warning} color="var(--yellow)" />
+          <div className="dashboard-legend-grid">
+            <LegendDot label="高风险拦截" pct={legend.highRisk} color="var(--cyan)" />
+            <LegendDot label="策略预警" pct={legend.strategy} color="var(--red)" />
+            <LegendDot label="风险警告" pct={legend.warning} color="var(--yellow)" />
+          </div>
+        </div>
+        {/* 中上：链条状态 + 主动警报 */}
+        <div className="dashboard-card">
+          <div className="dashboard-card-title">
+            <span>链条状态{poolsPending ? " · 同步池数据" : ""}</span>
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-ghost"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{ padding: "4px 10px", fontSize: 11 }}
+            >
+              {refreshing ? "刷新中" : "↻ 刷新"}
+            </button>
+          </div>
+          <div className="dashboard-chain-list">
+            {chainRows.map((row) => (
+              <div key={row.label} className="dashboard-chain-row">
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className={`dashboard-dot ${DOT_CLASS[row.dot]}`} />
+                  {row.label}
+                </span>
+                <span className="dashboard-chain-score">{row.score.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="dashboard-status-strip">
+            {(decisionChips.length > 0 ? decisionChips : placeholderChips()).map((chip, i) => (
+              <div key={chip.id ?? i} className="dashboard-status-chip">
+                <div style={{ fontWeight: 600, color: chipColor(chip.decision), marginBottom: 4 }}>
+                  {chipLabel(chip.decision)}
+                </div>
+                <div style={{ color: "var(--text-dim)" }}>{formatDate(chip.timestamp)}</div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* 中上：链条状态 + 主动警报 */}
-        <div className="dashboard-middle">
-          <div className="dashboard-card">
-            <div className="dashboard-card-title">
-              <span>🔗 链条状态{poolsPending ? " · 同步池数据" : ""}</span>
-              <button
-                type="button"
-                className="sentinel-btn sentinel-btn-ghost"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                style={{ padding: "4px 10px", fontSize: 11 }}
-              >
-                {refreshing ? "刷新中" : "↻ 刷新"}
-              </button>
-            </div>
-            <div className="dashboard-chain-list">
-              {chainRows.map((row) => (
-                <div key={row.label} className="dashboard-chain-row">
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className={`dashboard-dot ${DOT_CLASS[row.dot]}`} />
-                    {row.label}
-                  </span>
-                  <span className="dashboard-chain-score">{row.score.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="dashboard-status-strip">
-              {(decisionChips.length > 0 ? decisionChips : placeholderChips()).map((chip, i) => (
-                <div key={chip.id ?? i} className="dashboard-status-chip">
-                  <div style={{ fontWeight: 600, color: chipColor(chip.decision), marginBottom: 4 }}>
-                    {chipLabel(chip.decision)}
-                  </div>
-                  <div style={{ color: "var(--text-dim)" }}>{formatDate(chip.timestamp)}</div>
-                </div>
-              ))}
-            </div>
+        <div className="dashboard-card">
+          <div className="dashboard-card-title">
+            <span>主动警报</span>
+            {alerts.length > 0 && (
+              <span className="sentinel-badge sentinel-badge-red">{alerts.length} News</span>
+            )}
           </div>
-
-          <div className="dashboard-card">
-            <div className="dashboard-card-title">
-              <span>🔔 主动警报</span>
-              {alerts.length > 0 && (
-                <span className="sentinel-badge sentinel-badge-red">{alerts.length} News</span>
-              )}
-            </div>
-            <div className="dashboard-alert-list">
-              {alerts.length === 0 ? (
-                <div className="dashboard-alert-item info" style={{ borderLeftColor: "var(--green)" }}>
-                  <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>Normal</div>
-                  <div style={{ color: "var(--text-muted)" }}>暂无告警，系统运行正常</div>
-                </div>
-              ) : (
-                alerts.map((a, i) => (
-                  <div key={a.id ?? i} className={`dashboard-alert-item ${alertLevel(a)}`}>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                      {alertLevel(a) === "critical" ? "Critical" : alertLevel(a) === "warn" ? "Warn" : "Info"}
-                      {a.routeId ? `: ${a.routeId}` : ""}
-                    </div>
-                    <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
-                      {a.message?.slice(0, 80)}
-                    </div>
-                    <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 4 }}>
-                      {formatDate(a.timestamp)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="dashboard-ai-box">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontWeight: 600, color: "var(--green)" }}>AI 警报分析</span>
-                {aiState.status === "idle" && (
-                  <button
-                    type="button"
-                    className="sentinel-btn sentinel-btn-ghost"
-                    onClick={handleAiAnalysis}
-                    disabled={aiLoading}
-                    style={{ padding: "2px 10px", fontSize: 11 }}
-                  >
-                    AI 深度分析
-                  </button>
-                )}
+          <div className="dashboard-alert-list">
+            {alerts.length === 0 ? (
+              <div className="dashboard-alert-item info" style={{ borderLeftColor: "var(--green)" }}>
+                <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>Normal</div>
+                <div style={{ color: "var(--text-muted)" }}>暂无告警，系统运行正常</div>
               </div>
-              {aiState.status === "idle" && summary}
-              {aiState.status === "loading" && (
-                <div style={{ color: "var(--text-muted)" }}>
-                  AI 分析中…（通常数秒内完成）
-                </div>
-              )}
-              {aiState.status === "done" && (
-                <AiAnalysisContent result={aiState.result} onRerun={handleAiAnalysis} loading={aiLoading} />
-              )}
-              {aiState.status === "error" && (
-                <div>
-                  <div style={{ color: "var(--red)", marginBottom: 6 }}>AI 分析调用失败</div>
-                  <div style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 8, wordBreak: "break-word" }}>
-                    {aiState.message}
+            ) : (
+              alerts.map((a, i) => (
+                <div key={a.id ?? i} className={`dashboard-alert-item ${alertLevel(a)}`}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {alertLevel(a) === "critical" ? "Critical" : alertLevel(a) === "warn" ? "Warn" : "Info"}
+                    {a.routeId ? `: ${a.routeId}` : ""}
                   </div>
-                  <button
-                    type="button"
-                    className="sentinel-btn sentinel-btn-ghost"
-                    onClick={handleAiAnalysis}
-                    disabled={aiLoading}
-                    style={{ padding: "2px 10px", fontSize: 11 }}
-                  >
-                    重试
-                  </button>
+                  <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+                    {a.message?.slice(0, 80)}
+                  </div>
+                  <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 4 }}>
+                    {formatDate(a.timestamp)}
+                  </div>
                 </div>
+              ))
+            )}
+          </div>
+          <div className="dashboard-ai-box">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, color: "var(--green)" }}>AI 警报分析</span>
+              {aiState.status === "idle" && (
+                <button
+                  type="button"
+                  className="sentinel-btn sentinel-btn-ghost"
+                  onClick={handleAiAnalysis}
+                  disabled={aiLoading}
+                  style={{ padding: "2px 10px", fontSize: 11 }}
+                >
+                  AI 深度分析
+                </button>
               )}
             </div>
+            {aiState.status === "idle" && summary}
+            {aiState.status === "loading" && (
+              <div style={{ color: "var(--text-muted)" }}>
+                AI 分析中…（通常数秒内完成）
+              </div>
+            )}
+            {aiState.status === "done" && (
+              <AiAnalysisContent result={aiState.result} onRerun={handleAiAnalysis} loading={aiLoading} />
+            )}
+            {aiState.status === "error" && (
+              <div>
+                <div style={{ color: "var(--red)", marginBottom: 6 }}>AI 分析调用失败</div>
+                <div style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 8, wordBreak: "break-word" }}>
+                  {aiState.message}
+                </div>
+                <button
+                  type="button"
+                  className="sentinel-btn sentinel-btn-ghost"
+                  onClick={handleAiAnalysis}
+                  disabled={aiLoading}
+                  style={{ padding: "2px 10px", fontSize: 11 }}
+                >
+                  重试
+                </button>
+              </div>
+            )}
             <button
               type="button"
               className="sentinel-btn sentinel-btn-primary"
               style={{ width: "100%", marginTop: 10, padding: "10px 12px", fontSize: 13 }}
               onClick={() => navigate("/transaction")}
             >
-              立即处理并进行新交易 ↗
+              立即处理并进行新交易
             </button>
           </div>
         </div>
-
-        {/* 右侧栏 */}
-        <div className="dashboard-sidebar">
-          <div className="dashboard-sidebar-scroll">
-            <div className="dashboard-stat-card" style={{ background: "linear-gradient(135deg, #121820, #1a1030)" }}>
-              <div className="sentinel-label" style={{ marginBottom: 8 }}>Account Key</div>
-              <div style={{ fontFamily: "monospace", fontSize: 14, color: "var(--cyan)", wordBreak: "break-all" }}>
-                {shortAddr}
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <span className="sentinel-badge sentinel-badge-green">Sentinel Premium</span>
-              </div>
-            </div>
-
-            <SidebarStat
-              label="累计 Swap 量"
-              value={`$${stats.safeVolumeUsd.toLocaleString()}`}
-              hint="Demo 估算"
-            />
-            <SidebarStat
-              label="拦截 / 失败"
-              value={String(stats.rejectCount)}
-              accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
-            />
-            <SidebarStat
-              label="USDC 余额"
-              value={usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              accent="var(--green)"
-            />
-
-            <div className="dashboard-stat-card" style={{ flex: 1, minHeight: 100 }}>
-              <div className="sentinel-label">最新状态 / 公告栏</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.7 }}>
-                <div>链模式：{status?.chainName ?? status?.chainMode ?? "—"}</div>
-                <div>Demo 池数：{pools?.poolCount ?? status?.demoPoolCount ?? "—"}</div>
-                <div>健康 / 降级 / 空池：{pools ? `${pools.healthy} / ${pools.degraded} / ${pools.empty}` : "—"}</div>
-                <div>事件总数：{events.length}</div>
-              </div>
-            </div>
-          </div>
         </div>
-
+        <div className="dashboard-chart">
         {/* 底部柱状图 */}
         <div className="dashboard-card dashboard-chart-cell">
           <div className="dashboard-card-title">
@@ -301,6 +257,35 @@ export function DashboardPage() {
             ))}
           </div>
         </div>
+      </div>
+      </div>
+      <div className="dashboard-sidebar">
+
+            <SidebarStat
+              label="累计 Swap 量"
+              value={`$${stats.safeVolumeUsd.toLocaleString()}`}
+              hint="Demo 估算"
+            />
+            <SidebarStat
+              label="拦截 / 失败"
+              value={String(stats.rejectCount)}
+              accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
+            />
+            <SidebarStat
+              label="USDC 余额"
+              value={usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              accent="var(--green)"
+            />
+
+            <div className="dashboard-stat-card" style={{ flex: 1, minHeight: 100 }}>
+              <div className="sentinel-label">最新状态 / 公告栏</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div>链模式：{status?.chainName ?? status?.chainMode ?? "—"}</div>
+                <div>Demo 池数：{pools?.poolCount ?? status?.demoPoolCount ?? "—"}</div>
+                <div>健康 / 降级 / 空池：{pools ? `${pools.healthy} / ${pools.degraded} / ${pools.empty}` : "—"}</div>
+                <div>事件总数：{events.length}</div>
+              </div>
+            </div>
       </div>
     </div>
   );
@@ -368,14 +353,12 @@ function AiAnalysisContent({
   );
 }
 
-function LegendBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+function LegendDot({ label, pct, color }: { label: string; pct: number; color: string }) {
   return (
-    <div className="dashboard-legend-item">
-      <span style={{ width: 56 }}>{label}</span>
-      <div className="dashboard-legend-bar">
-        <div className="dashboard-legend-fill" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span style={{ width: 32, textAlign: "right" }}>{pct}%</span>
+    <div className="dashboard-legend-dot-item">
+      <span className="dashboard-legend-dot" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+      <span className="dashboard-legend-dot-label">{label}</span>
+      <span className="dashboard-legend-dot-pct" style={{ color }}>{pct}%</span>
     </div>
   );
 }
@@ -393,7 +376,7 @@ function SidebarStat({
 }) {
   return (
     <div className="dashboard-stat-card">
-      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+      <div style={{ fontSize: 16, color: "var(--text-muted)" }}>
         {label}
         {hint && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--text-dim)" }}>({hint})</span>}
       </div>

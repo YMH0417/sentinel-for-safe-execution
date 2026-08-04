@@ -1,7 +1,7 @@
 ﻿import { useNavigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
-import img from "../imgs/lock.png"
+import img from "../imgs/lock.svg"
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -48,7 +48,7 @@ export function LandingPage() {
               onClick={handleConnect}
               disabled={isConnecting}
             >
-              ⬡ {isConnecting ? "CONNECTING..." : "CONNECT WALLET"}
+              {isConnecting ? "CONNECTING..." : "CONNECT WALLET"}
             </button>
           )}
         </div>

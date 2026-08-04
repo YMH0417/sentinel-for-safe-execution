@@ -531,7 +531,7 @@ export function SettingsPage() {
               value={poolAmounts[key]?.mint ?? ""}
               onChange={(e) => setPoolTokenAmount(pool.routeName, tokenSide, "mint", e.target.value)}
               disabled={!canOperate || mintBusy}
-              style={{ width: 88, padding: "6px 8px", fontSize: 13 }}
+              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
             />
             <button
               type="button"
@@ -552,7 +552,7 @@ export function SettingsPage() {
               value={poolAmounts[key]?.burn ?? ""}
               onChange={(e) => setPoolTokenAmount(pool.routeName, tokenSide, "burn", e.target.value)}
               disabled={!canOperate || burnBusy}
-              style={{ width: 88, padding: "6px 8px", fontSize: 13 }}
+              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
             />
             <button
               type="button"
@@ -585,7 +585,7 @@ export function SettingsPage() {
                 <li>链名称：<strong>{status.chainName ?? "—"}</strong></li>
                 <li>
                   RPC：
-                  <code style={{ fontSize: 12 }}>
+                  <code style={{ fontSize: 14 }}>
                     {status.demoRpcUrl ?? status.anvilRpcUrl ?? "—"}
                   </code>
                 </li>
@@ -605,7 +605,7 @@ export function SettingsPage() {
                 <>
                   <div
                     style={{
-                      fontSize: 13,
+                      fontSize: 16,
                       color: "var(--text-muted)",
                       marginBottom: 10,
                     }}
@@ -651,12 +651,12 @@ export function SettingsPage() {
                     })}
                   </div>
                   {profileMsg && (
-                    <p style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>
+                    <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>
                       {profileMsg}
                     </p>
                   )}
                   {profileError && (
-                    <p style={{ marginTop: 12, fontSize: 13, color: "var(--red)" }}>
+                    <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>
                       {profileError}
                     </p>
                   )}
@@ -670,29 +670,29 @@ export function SettingsPage() {
 
         <div className="sentinel-card">
           <div className="sentinel-label">开发者</div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16 }}>
             清空内存 + JSONL 事件日志（仅本地 demo 使用）。
           </p>
           <button type="button" className="sentinel-btn sentinel-btn-danger" onClick={clearEvents} disabled={clearing}>
             {clearing ? "清除中..." : "清空事件日志"}
           </button>
-          {msg && <p style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>{msg}</p>}
+          {msg && <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>{msg}</p>}
         </div>
       </div>
 
       <div className="sentinel-card" style={{ marginTop: 20 }}>
         <div className="sentinel-label">大模型（AI 警报分析）</div>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
           配置 Groq 等 OpenAI 兼容接口，写入 <code>backend/.env</code>。
           Dashboard「AI 深度分析」读取此处配置；保存后立即生效。
         </p>
 
         {llmLoading && !llmSettings ? (
-          <p style={{ color: "var(--text-dim)", fontSize: 13 }}>加载配置中…</p>
+          <p style={{ color: "var(--text-dim)", fontSize: 16 }}>加载配置中…</p>
         ) : (
           <>
             {llmSettings && (
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
+              <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 12 }}>
                 配置文件：<code>{llmSettings.envFile}</code>
                 {llmSettings.apiKeyConfigured && llmSettings.apiKeyMasked ? (
                   <span style={{ marginLeft: 12 }}>
@@ -712,7 +712,7 @@ export function SettingsPage() {
                 marginBottom: 16,
               }}
             >
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 16 }}>
                 <span style={{ color: "var(--text-muted)" }}>API Key</span>
                 <input
                   type="password"
@@ -725,10 +725,10 @@ export function SettingsPage() {
                   value={llmApiKeyInput}
                   onChange={(e) => setLlmApiKeyInput(e.target.value)}
                   disabled={llmSaving}
-                  style={{ padding: "8px 10px", fontSize: 13 }}
+                  style={{ padding: "8px 10px", fontSize: 16 }}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 16 }}>
                 <span style={{ color: "var(--text-muted)" }}>Base URL</span>
                 <input
                   type="url"
@@ -736,10 +736,10 @@ export function SettingsPage() {
                   value={llmBaseUrl}
                   onChange={(e) => setLlmBaseUrl(e.target.value)}
                   disabled={llmSaving}
-                  style={{ padding: "8px 10px", fontSize: 13 }}
+                  style={{ padding: "8px 10px", fontSize: 16 }}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 16 }}>
                 <span style={{ color: "var(--text-muted)" }}>Model</span>
                 <input
                   type="text"
@@ -747,17 +747,17 @@ export function SettingsPage() {
                   value={llmModel}
                   onChange={(e) => setLlmModel(e.target.value)}
                   disabled={llmSaving}
-                  style={{ padding: "8px 10px", fontSize: 13 }}
+                  style={{ padding: "8px 10px", fontSize: 16 }}
                 />
               </label>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>
+              <div style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 8 }}>
                 分析输出语言
               </div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 16, cursor: "pointer" }}>
                   <input
                     type="radio"
                     name="llm-response-language"
@@ -768,7 +768,7 @@ export function SettingsPage() {
                   />
                   中文
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 16, cursor: "pointer" }}>
                   <input
                     type="radio"
                     name="llm-response-language"
@@ -780,7 +780,7 @@ export function SettingsPage() {
                   English
                 </label>
               </div>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8, marginBottom: 0 }}>
+              <p style={{ fontSize: 14, color: "var(--text-dim)", marginTop: 8, marginBottom: 0 }}>
                 写入 <code>LLM_RESPONSE_LANGUAGE</code>，Dashboard「AI 深度分析」按此语言生成 narrative 与建议。
               </p>
             </div>
@@ -790,7 +790,7 @@ export function SettingsPage() {
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                fontSize: 13,
+                fontSize: 16,
                 marginBottom: 16,
                 cursor: "pointer",
               }}
@@ -834,10 +834,10 @@ export function SettingsPage() {
             </div>
 
             {llmMsg && (
-              <p style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>{llmMsg}</p>
+              <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>{llmMsg}</p>
             )}
             {llmError && (
-              <p style={{ marginTop: 12, fontSize: 13, color: "var(--red)" }}>{llmError}</p>
+              <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>{llmError}</p>
             )}
           </>
         )}
@@ -846,7 +846,7 @@ export function SettingsPage() {
       {isDemoMode && (
         <div className="sentinel-card" style={{ marginTop: 20 }}>
           <div className="sentinel-label">代币增发 / 销毁（测试钱包专用）</div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
             仅授权钱包 <code>{DEMO_TEST_USER}</code> 可连接 MetaMask 操作。
             支持对<strong>测试钱包余额</strong>和<strong>各池子储备</strong>分别增发或销毁；其他钱包登录后按钮不可用。
           </p>
@@ -857,7 +857,7 @@ export function SettingsPage() {
                 连接 MetaMask
               </button>
             ) : (
-              <span style={{ fontSize: 13 }}>
+              <span style={{ fontSize: 16 }}>
                 已连接：<code>{account}</code>
                 {connectedIsTestUser ? (
                   <strong style={{ color: "var(--green)", marginLeft: 8 }}>✓ 测试钱包</strong>
@@ -881,14 +881,14 @@ export function SettingsPage() {
           </div>
 
           {supplyLoading && supplyProgress && (
-            <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
+            <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 12 }}>
               正在读取链上数据 {formatSupplyProgressLabel(supplyProgress)}
               {supplyProgress.detail ? ` · ${supplyProgress.detail}` : ""}
             </p>
           )}
 
           {supply && (
-            <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
+            <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 12 }}>
               ScenarioDeployer：<code>{supply.scenarioDeployer}</code>
               {" · "}
               增发权限：
@@ -899,7 +899,7 @@ export function SettingsPage() {
           )}
 
           {supplyError && (
-            <p style={{ fontSize: 13, color: "var(--red)", marginBottom: 12 }}>{supplyError}</p>
+            <p style={{ fontSize: 16, color: "var(--red)", marginBottom: 12 }}>{supplyError}</p>
           )}
 
           {supply?.tokens && (
@@ -908,7 +908,7 @@ export function SettingsPage() {
                 测试钱包代币
               </h3>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
                     <th style={{ padding: "8px 6px" }}>代币</th>
@@ -930,7 +930,7 @@ export function SettingsPage() {
                       <tr key={token.symbol} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                         <td style={{ padding: "10px 6px", fontWeight: 600 }}>{token.symbol}</td>
                         <td style={{ padding: "10px 6px" }}>
-                          <code style={{ fontSize: 11 }}>{token.address}</code>
+                          <code style={{ fontSize: 14 }}>{token.address}</code>
                         </td>
                         <td style={{ padding: "10px 6px" }}>
                           {formatTokenAmount(token.holderBalanceHuman, token.decimals)}
@@ -947,7 +947,7 @@ export function SettingsPage() {
                               value={amounts[token.symbol]?.mint ?? ""}
                               onChange={(e) => setTokenAmount(token.symbol, "mint", e.target.value)}
                               disabled={disabled || mintBusy}
-                              style={{ width: 88, padding: "6px 8px", fontSize: 13 }}
+                              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
                             />
                             <button
                               type="button"
@@ -968,7 +968,7 @@ export function SettingsPage() {
                               value={amounts[token.symbol]?.burn ?? ""}
                               onChange={(e) => setTokenAmount(token.symbol, "burn", e.target.value)}
                               disabled={disabled || burnBusy}
-                              style={{ width: 88, padding: "6px 8px", fontSize: 13 }}
+                              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
                             />
                             <button
                               type="button"
@@ -995,12 +995,12 @@ export function SettingsPage() {
                 池子储备
               </h3>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                <label style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 16, display: "flex", flexDirection: "column", gap: 4 }}>
                   选择池子
                   <select
                     value={selectedPool.routeName}
                     onChange={(e) => setSelectedPoolRoute(e.target.value)}
-                    style={{ minWidth: 280, padding: "8px 10px", fontSize: 13 }}
+                    style={{ minWidth: 280, padding: "8px 10px", fontSize: 16 }}
                   >
                     {filteredPools.map((pool) => (
                       <option key={pool.routeName} value={pool.routeName}>
@@ -1014,10 +1014,10 @@ export function SettingsPage() {
                   placeholder="筛选 route / label"
                   value={poolFilter}
                   onChange={(e) => setPoolFilter(e.target.value)}
-                  style={{ alignSelf: "flex-end", width: 220, padding: "8px 10px", fontSize: 13 }}
+                  style={{ alignSelf: "flex-end", width: 220, padding: "8px 10px", fontSize: 16 }}
                 />
               </div>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+              <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 10 }}>
                 Pair：<code>{selectedPool.pair}</code>
                 {" · "}
                 {selectedPool.tokenIn} → {selectedPool.tokenOut}
@@ -1025,7 +1025,7 @@ export function SettingsPage() {
                 {selectedPool.label}
               </p>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
                   <thead>
                     <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
                       <th style={{ padding: "8px 6px" }}>池内代币</th>
@@ -1060,7 +1060,7 @@ export function SettingsPage() {
       {isDemoMode && (
         <div className="sentinel-card" style={{ marginTop: 20 }}>
           <div className="sentinel-label">代币转账</div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
             使用当前连接的钱包通过 MetaMask 发送 demo ERC20（任意有余额的钱包均可操作）。
           </p>
 
@@ -1070,11 +1070,11 @@ export function SettingsPage() {
                 连接 MetaMask
               </button>
             ) : (
-              <span style={{ fontSize: 13 }}>
+              <span style={{ fontSize: 16 }}>
                 转出方：<code>{account}</code>
               </span>
             )}
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, flex: 1, minWidth: 280 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 16, flex: 1, minWidth: 280 }}>
               <span style={{ color: "var(--text-muted)" }}>收款地址</span>
               <input
                 type="text"
@@ -1082,7 +1082,7 @@ export function SettingsPage() {
                 value={transferRecipient}
                 onChange={(e) => setTransferRecipient(e.target.value)}
                 disabled={!account}
-                style={{ padding: "8px 10px", fontSize: 13 }}
+                style={{ padding: "8px 10px", fontSize: 16 }}
               />
             </label>
             <button
@@ -1100,7 +1100,7 @@ export function SettingsPage() {
           </div>
 
           {transferLoading && transferProgress && (
-            <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
+            <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 12 }}>
               正在读取链上数据 {formatSupplyProgressLabel(transferProgress)}
               {transferProgress.detail ? ` · ${transferProgress.detail}` : ""}
             </p>
@@ -1108,7 +1108,7 @@ export function SettingsPage() {
 
           {transferSupply?.tokens && (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
                     <th style={{ padding: "8px 6px" }}>代币</th>
@@ -1142,7 +1142,7 @@ export function SettingsPage() {
                                 }))
                               }
                               disabled={!account || transferBusy}
-                              style={{ width: 88, padding: "6px 8px", fontSize: 13 }}
+                              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
                             />
                             <button
                               type="button"

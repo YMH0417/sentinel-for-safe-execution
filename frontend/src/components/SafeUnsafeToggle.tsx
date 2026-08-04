@@ -11,16 +11,16 @@ export function SafeUnsafeToggle({ safeMode, onChange }: Props) {
         display: "flex",
         alignItems: "center",
         gap: 10,
-        background: "#161b22",
+        background: "var(--bg-inset)",
         padding: "6px 14px",
         borderRadius: 8,
-        border: "1px solid #30363d",
+        border: "1px solid var(--border)",
       }}
     >
       <span
         style={{
           fontSize: 13,
-          color: safeMode ? "#3fb950" : "#484f58",
+          color: safeMode ? "var(--green)" : "var(--text-dim)",
           fontWeight: safeMode ? 700 : 400,
         }}
       >
@@ -35,7 +35,7 @@ export function SafeUnsafeToggle({ safeMode, onChange }: Props) {
           width: 44,
           height: 24,
           borderRadius: 12,
-          background: safeMode ? "#238636" : "#da3633",
+          background: safeMode ? "var(--green-dark)" : "var(--red)",
           cursor: "pointer",
           position: "relative",
           transition: "background 0.2s",
@@ -58,7 +58,7 @@ export function SafeUnsafeToggle({ safeMode, onChange }: Props) {
       <span
         style={{
           fontSize: 13,
-          color: !safeMode ? "#f85149" : "#484f58",
+          color: !safeMode ? "var(--red)" : "var(--text-dim)",
           fontWeight: !safeMode ? 700 : 400,
         }}
       >
@@ -70,9 +70,9 @@ export function SafeUnsafeToggle({ safeMode, onChange }: Props) {
           padding: "2px 8px",
           borderRadius: 10,
           marginLeft: 4,
-          background: safeMode ? "rgba(35,134,54,0.15)" : "rgba(218,54,51,0.15)",
-          color: safeMode ? "#3fb950" : "#f85149",
-          border: `1px solid ${safeMode ? "rgba(35,134,54,0.35)" : "rgba(218,54,51,0.35)"}`,
+          background: safeMode ? "rgba(0, 255, 136, 0.1)" : "rgba(248, 81, 73, 0.1)",
+          color: safeMode ? "var(--green)" : "var(--red)",
+          border: `1px solid ${safeMode ? "rgba(0, 255, 136, 0.2)" : "rgba(248, 81, 73, 0.2)"}`,
         }}
       >
         当前: {safeMode ? "Agent 保护" : "仅滑点保护"}

@@ -1,0 +1,57 @@
+﻿.dashboard-box {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+}
+
+.dashboard-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2%;
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-main-top {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dashboard-main-top > .dashboard-card:nth-child(1) {
+  width: 500px;
+  flex-shrink: 0;
+}
+
+.dashboard-main-top > .dashboard-card:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-main-top > .dashboard-card:nth-child(3) {
+  position: relative;
+  width: 35%;
+  flex-shrink: 0;
+}
+
+.dashboard-chart {
+  flex-shrink: 0;
+}
+
+.dashboard-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 15%;
+  flex-shrink: 0;
+}
+
+.badget-wall {
+  display: flex;
+  justify-content: space-between;
+}
+
+.badget-item {
+  width: 18%;
+}

@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { DashboardPage } from './components/DashboardPage';
@@ -11,7 +11,6 @@ import { AnalysisPage } from './components/AnalysisPage';
 import { ToastProvider } from './components/Toast';
 import { AuthRoute } from './components/AuthRoute';
 import { AppLayout } from './components/layout/AppLayout';
-import { SafeUnsafeToggle } from './components/SafeUnsafeToggle';
 import { WalletProvider } from './contexts/WalletContext';
 import { fetchDemoChainConfig } from './lib/wallet';
 
@@ -31,10 +30,38 @@ export default function App() {
                   </AuthRoute>
                 }
               />
-              <Route path="/transaction" element={<TransactionRouter />} />
-              <Route path="/execution" element={<ExecutionResultPage />} />
-              <Route path="/risk-rules" element={<RiskRulesPage />} />
-              <Route path="/analysis" element={<AnalysisPage />} />
+              <Route
+                path="/transaction"
+                element={
+                  <AuthRoute>
+                    <TransactionRouter />
+                  </AuthRoute>
+                }
+              />
+              <Route
+                path="/execution"
+                element={
+                  <AuthRoute>
+                    <ExecutionResultPage />
+                  </AuthRoute>
+                }
+              />
+              <Route
+                path="/risk-rules"
+                element={
+                  <AuthRoute>
+                    <RiskRulesPage />
+                  </AuthRoute>
+                }
+              />
+              <Route
+                path="/analysis"
+                element={
+                  <AuthRoute>
+                    <AnalysisPage />
+                  </AuthRoute>
+                }
+              />
               <Route
                 path="/profile"
                 element={
@@ -43,7 +70,14 @@ export default function App() {
                   </AuthRoute>
                 }
               />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route
+                path="/settings"
+                element={
+                  <AuthRoute>
+                    <SettingsPage />
+                  </AuthRoute>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
@@ -88,11 +122,10 @@ function TransactionRouter() {
           <strong>Demo 链模式</strong> — {demoBanner}
         </div>
       ) : null}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ marginBottom: 20 }}>
         <h2 className="sentinel-title" style={{ margin: 0 }}>交易检测</h2>
-        <SafeUnsafeToggle safeMode={safeMode} onChange={setSafeMode} />
       </div>
-      <TransactionPage safeMode={safeMode} />
+      <TransactionPage safeMode={safeMode} onSafeModeChange={setSafeMode} />
     </>
   );
 }

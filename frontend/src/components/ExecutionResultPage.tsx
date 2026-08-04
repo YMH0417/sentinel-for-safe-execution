@@ -5,7 +5,6 @@ import { buildSwapResultFromEvents } from "../lib/swapResult";
 import { fetchDemoChainConfig } from "../lib/wallet";
 import type { Decision, Event, SwapResult } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
-import { AccountCard } from "./shared/AccountCard";
 import { Timeline } from "./Timeline";
 
 interface LocationState {
@@ -143,7 +142,6 @@ export function ExecutionResultPage() {
 
   return (
     <div>
-      <AccountCard />
       <h2 className="sentinel-title">执行结果</h2>
 
       {loadedFromChain && (

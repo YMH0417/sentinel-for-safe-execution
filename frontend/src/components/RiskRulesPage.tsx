@@ -14,7 +14,7 @@ export function RiskRulesPage() {
   return (
     <div>
       <h2 className="sentinel-title">风控规则</h2>
-      <p style={{ color: "var(--text-muted)", marginBottom: 24, fontSize: 14 }}>
+      <p style={{ color: "var(--text-muted)", marginBottom: 24, fontSize: 16 }}>
         Demo 阶段规则来自 backend 配置与 Agent 硬编码策略（只读展示）。
       </p>
 
@@ -24,7 +24,7 @@ export function RiskRulesPage() {
         <div className="sentinel-card">
           <div className="sentinel-label">全局配置</div>
           {config ? (
-            <ul style={{ listStyle: "none", fontSize: 14, lineHeight: 2 }}>
+            <ul style={{ listStyle: "none", fontSize: 16, lineHeight: 2 }}>
               <li>默认 Profile：<strong>{config.defaultProfile}</strong></li>
               <li>系统暂停：<strong style={{ color: config.paused ? "var(--red)" : "var(--green)" }}>{config.paused ? "是" : "否"}</strong></li>
               <li>最大滑点：<strong>{config.maxSlippageBps ?? 100} bps</strong></li>
@@ -51,7 +51,7 @@ export function RiskRulesPage() {
 
         <div className="sentinel-card">
           <div className="sentinel-label">Vault 硬约束</div>
-          <ul style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.9, paddingLeft: 18 }}>
+          <ul style={{ fontSize: 16, color: "var(--text-muted)", lineHeight: 1.9, paddingLeft: 18 }}>
             <li>EIP-712 Agent 签名 permit</li>
             <li>nonce 防重放</li>
             <li>maxLossBps 滑点/损失上限</li>
@@ -69,9 +69,9 @@ function RuleRow({ token, level, color, desc }: { token: string; level: string; 
     <div style={{ padding: "10px 0", borderBottom: "1px solid #1a2332" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <strong>{token}</strong>
-        <span style={{ color, fontSize: 12, fontWeight: 600 }}>{level}</span>
+        <span style={{ color, fontSize: 14, fontWeight: 600 }}>{level}</span>
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>{desc}</div>
+      <div style={{ fontSize: 14, color: "var(--text-dim)", marginTop: 4 }}>{desc}</div>
     </div>
   );
 }

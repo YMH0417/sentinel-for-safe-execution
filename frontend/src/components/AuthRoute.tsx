@@ -7,7 +7,7 @@ interface Props {
 }
 
 /**
- * AuthRoute — guards dashboard routes. If no wallet is connected,
+ * AuthRoute — guards authenticated routes. If no wallet is connected,
  * immediately redirect to /.
  */
 export function AuthRoute({ children }: Props) {
