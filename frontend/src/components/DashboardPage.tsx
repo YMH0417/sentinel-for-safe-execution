@@ -1,6 +1,5 @@
 ﻿import { useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { getAddress } from "ethers";
 import {
   api,
   buildAlertSummary,
@@ -85,9 +84,6 @@ export function DashboardPage() {
 
   const summary = buildAlertSummary(alerts, score);
   const usdc = balances.USDC?.human ?? 0;
-  const shortAddr = account
-    ? `${getAddress(account).slice(0, 7)}...${getAddress(account).slice(-5)}`
-    : "未连接钱包";
 
   return (
     <div className="dashboard-box">

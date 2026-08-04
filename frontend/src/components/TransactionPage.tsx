@@ -12,8 +12,6 @@ import {
   isBackendSwapExecutorAvailable,
 } from "../lib/demoWalletSwap";
 import { getErrorMessage } from "../lib/errorMessage";
-import { SecurityGauge } from "./shared/SecurityGauge";
-import { SafetyPanel } from "./SafetyPanel";
 import { SafeUnsafeToggle } from "./SafeUnsafeToggle";
 import { GlobalLoading } from "./GlobalLoading";
 import type {
@@ -218,12 +216,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     !safeMode && selectedRouteData?.expectedOut !== undefined
       ? computeMinOut(selectedRouteData.expectedOut, slippageBps)
       : null;
-  const gaugeScore =
-    safeMode && decision
-      ? Math.max(0, 100 - decision.riskScore)
-      : selectedRouteData
-        ? Math.max(0, 100 - selectedRouteData.poolRiskScore)
-        : 72;
 
   const loadRoutes = async (options?: {
     preserveSelection?: boolean;
@@ -305,12 +297,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     } finally {
       setLoading("");
     }
-  };
-
-  const switchToFallbackRoute = async (fallbackRouteId: string) => {
-    setSelectedRoute(fallbackRouteId);
-    setRecommendedRouteId(fallbackRouteId);
-    await evaluateRoute(fallbackRouteId);
   };
 
   const getChainMode = async (): Promise<"mock" | "demo" | "rpc"> => {

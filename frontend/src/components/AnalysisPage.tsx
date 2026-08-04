@@ -99,7 +99,9 @@ function AnalysisReportView({
   }
 
   return (
-    <div className="analysis-page">
+    <>
+      <GlobalLoading active={refreshing} message={refreshing ? "Refreshing analysis..." : undefined} />
+      <div className="analysis-page">
       <header className="analysis-header">
         <div>
           <h1>Collected Data Analysis</h1>
@@ -215,6 +217,7 @@ function AnalysisReportView({
         <RouteTable report={report} />
       </section>
     </div>
+    </>
   );
 }
 
