@@ -31,6 +31,11 @@ const DEFAULT_NATIVE: NativeCurrency = {
   decimals: 18,
 };
 
+export async function fetchNativeCurrencySymbol(): Promise<string> {
+  const chain = await fetchDemoChainConfig();
+  return chain?.nativeCurrency.symbol ?? DEFAULT_NATIVE.symbol;
+}
+
 export async function fetchDemoChainConfig(): Promise<DemoChainConfig | null> {
   const res = await fetch(`${API_BASE}/debug/status`);
   const data = await res.json();

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAddress } from "ethers";
-import { api, type DebugStatus, type DemoProfileListItem, type LlmSettingsView } from "../api/client";
+import { api, type DebugStatus, type LlmSettingsView, type TokenBalance } from "../api/client";
 import { useWallet } from "../contexts/WalletContext";
 import { DEMO_TEST_USER } from "../lib/demoConstants";
-import { ensureDemoChain, fetchDemoChainConfig } from "../lib/wallet";
+import { claimUsdcFromFaucet } from "../lib/demoFaucet";
+import { ensureDemoChain, fetchDemoChainConfig, type DemoTokenMeta } from "../lib/wallet";
 import {
   burnDemoToken,
   burnDemoTokenFromPool,
@@ -22,11 +23,16 @@ import {
 type TokenAction = "mint" | "burn" | "transfer";
 type BusyTarget = { scope: "wallet" | "pool"; id: string; action: TokenAction };
 
+const DEFAULT_DEMO_PROFILE = "monad-testnet";
+const TRANSFER_TOKEN_ORDER = ["USDC", "GOOD", "BAD", "BAIT"] as const;
+
 export function SettingsPage() {
   const { account, connectWallet } = useWallet();
   const [status, setStatus] = useState<DebugStatus | null>(null);
-  const [clearing, setClearing] = useState(false);
   const [msg, setMsg] = useState("");
+  const [faucetBusy, setFaucetBusy] = useState(false);
+  const [faucetMsg, setFaucetMsg] = useState("");
+  const [faucetError, setFaucetError] = useState("");
   const [supply, setSupply] = useState<DemoSupplyOverview | null>(null);
   const [supplyLoading, setSupplyLoading] = useState(false);
   const [supplyProgress, setSupplyProgress] = useState<DemoSupplyProgress | null>(null);
@@ -49,16 +55,14 @@ export function SettingsPage() {
   const [llmEnabled, setLlmEnabled] = useState(true);
   const [llmResponseLanguage, setLlmResponseLanguage] = useState<"en" | "zh">("zh");
 
-  const [demoProfiles, setDemoProfiles] = useState<DemoProfileListItem[]>([]);
-  const [profileSwitching, setProfileSwitching] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState("");
-  const [profileMsg, setProfileMsg] = useState("");
+  const profileEnsuringRef = useRef(false);
 
   const [transferRecipient, setTransferRecipient] = useState("");
   const [transferAmounts, setTransferAmounts] = useState<Record<string, string>>({});
-  const [transferSupply, setTransferSupply] = useState<DemoSupplyOverview | null>(null);
+  const [transferBalances, setTransferBalances] = useState<Record<string, TokenBalance>>({});
+  const [transferTokens, setTransferTokens] = useState<DemoTokenMeta[]>([]);
   const [transferLoading, setTransferLoading] = useState(false);
-  const [transferProgress, setTransferProgress] = useState<DemoSupplyProgress | null>(null);
+  const [transferMsg, setTransferMsg] = useState("");
 
   const applyLlmForm = useCallback((view: LlmSettingsView) => {
     setLlmSettings(view);
@@ -174,58 +178,58 @@ export function SettingsPage() {
     return next;
   }, []);
 
-  const refreshDemoProfiles = useCallback(async () => {
-    try {
-      const { profiles } = await api.listDemoProfiles();
-      setDemoProfiles(profiles);
-    } catch {
-      setDemoProfiles([]);
-    }
-  }, []);
-
   useEffect(() => {
     void refreshStatus();
     void refreshLlmSettings();
   }, [refreshLlmSettings, refreshStatus]);
 
-  useEffect(() => {
-    if (isDemoMode) void refreshDemoProfiles();
-  }, [isDemoMode, refreshDemoProfiles]);
-
-  useEffect(() => {
-    if (!isDemoMode) return;
-    const holder = connectedIsTestUser && account ? account : DEMO_TEST_USER;
-    void refreshSupply(holder, true);
-  }, [isDemoMode, connectedIsTestUser, account, refreshSupply]);
-
-  const refreshTransferSupply = useCallback(async (holder: string, showProgress = false) => {
+  const refreshTransferBalances = useCallback(async (holder: string) => {
     setTransferLoading(true);
-    if (showProgress) setTransferProgress(null);
     try {
-      const overview = await fetchDemoSupplyOverview(
-        holder,
-        showProgress
-          ? (progress) => {
-              setTransferProgress(progress);
-            }
-          : undefined
-      );
-      setTransferSupply(overview);
+      const checksum = getAddress(holder);
+      const [balanceRes, tokensRes] = await Promise.all([
+        api.balances(checksum),
+        fetch("/api/demo/tokens").then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "无法加载 demo 代币");
+          return data as { tokens: DemoTokenMeta[] };
+        }),
+      ]);
+      setTransferBalances(balanceRes.balances);
+      setTransferTokens(tokensRes.tokens ?? []);
     } catch {
-      setTransferSupply(null);
+      setTransferBalances({});
     } finally {
       setTransferLoading(false);
-      setTransferProgress(null);
     }
   }, []);
 
+  const switchDemoProfile = useCallback(
+    async (profileName: string) => {
+      const result = await api.switchDemoProfile(profileName);
+      await refreshStatus();
+      try {
+        const chainConfig = await fetchDemoChainConfig();
+        await ensureDemoChain(chainConfig);
+      } catch {
+        // MetaMask network switch is best-effort when auto-selecting profile.
+      }
+      window.dispatchEvent(new CustomEvent("sentinel:demo-profile:change"));
+      return result;
+    },
+    [refreshStatus]
+  );
+
   useEffect(() => {
-    if (!isDemoMode || !account) {
-      setTransferSupply(null);
-      return;
-    }
-    void refreshTransferSupply(account);
-  }, [isDemoMode, account, refreshTransferSupply, supply?.scenarioDeployer]);
+    if (!isDemoMode || status?.demoProfile === DEFAULT_DEMO_PROFILE) return;
+    if (profileEnsuringRef.current) return;
+    profileEnsuringRef.current = true;
+    void switchDemoProfile(DEFAULT_DEMO_PROFILE)
+      .catch(() => undefined)
+      .finally(() => {
+        profileEnsuringRef.current = false;
+      });
+  }, [isDemoMode, status?.demoProfile, switchDemoProfile]);
 
   const handleTransfer = async (symbol: string, tokenAddress: string, decimals: number) => {
     const recipient = transferRecipient.trim();
@@ -251,6 +255,7 @@ export function SettingsPage() {
 
     setBusy({ scope: "wallet", id: symbol, action: "transfer" });
     setSupplyError("");
+    setTransferMsg("");
     try {
       const txHash = await transferDemoToken({
         tokenAddress,
@@ -258,8 +263,8 @@ export function SettingsPage() {
         amountHuman: amount,
         decimals,
       });
-      setMsg(`${symbol} 转账成功：${txHash.slice(0, 10)}…`);
-      await refreshTransferSupply(account);
+      setTransferMsg(`${symbol} 转账成功：${txHash.slice(0, 10)}…`);
+      await refreshTransferBalances(account);
       if (connectedIsTestUser) await refreshSupply(account);
       setTransferAmounts((prev) => ({ ...prev, [symbol]: "" }));
     } catch (e) {
@@ -269,52 +274,30 @@ export function SettingsPage() {
     }
   };
 
-  const handleSwitchProfile = async (profileName: string) => {
-    setProfileSwitching(profileName);
-    setProfileError("");
-    setProfileMsg("");
+  const claimFaucetUsdc = async () => {
+    if (!account) {
+      setFaucetError("请先连接 MetaMask");
+      return;
+    }
+    setFaucetBusy(true);
+    setFaucetError("");
+    setFaucetMsg("");
     try {
-      const result = await api.switchDemoProfile(profileName);
-      await refreshStatus();
-      await refreshDemoProfiles();
-      try {
-        const chainConfig = await fetchDemoChainConfig();
-        await ensureDemoChain(chainConfig);
-      } catch (chainErr) {
-        setProfileMsg(
-          (result.warnings.length ? result.warnings.join("；") + "；" : "") +
-            (chainErr instanceof Error ? chainErr.message : "MetaMask 网络切换未完成")
-        );
-        return;
-      }
-      window.dispatchEvent(new CustomEvent("sentinel:demo-profile:change"));
-      const holder = connectedIsTestUser && account ? account : DEMO_TEST_USER;
-      await refreshSupply(holder);
-      if (account) await refreshTransferSupply(account);
-      const warnText = result.warnings.length ? ` ${result.warnings.join("；")}` : "";
-      setProfileMsg(
-        `已切换到 ${result.chainName}（Chain ID ${result.chainId}），backend 已热更新。${warnText}`
-      );
+      const txHash = await claimUsdcFromFaucet(account);
+      setFaucetMsg(`已领取 10,000 USDC：${txHash.slice(0, 10)}…`);
     } catch (e) {
-      setProfileError(e instanceof Error ? e.message : "切换失败");
+      setFaucetError(e instanceof Error ? e.message : "领取失败");
     } finally {
-      setProfileSwitching(null);
+      setFaucetBusy(false);
     }
   };
 
-  const clearEvents = async () => {
-    setClearing(true);
-    setMsg("");
-    try {
-      const res = await fetch("/api/events/clear", { method: "POST" });
-      if (!res.ok) throw new Error("清除失败");
-      setMsg("事件日志已清空");
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "清除失败");
-    } finally {
-      setClearing(false);
-    }
-  };
+  const transferTokenRows = useMemo(() => {
+    const bySymbol = new Map(transferTokens.map((token) => [token.symbol, token]));
+    return TRANSFER_TOKEN_ORDER.map((symbol) => bySymbol.get(symbol)).filter(
+      (token): token is DemoTokenMeta => !!token
+    );
+  }, [transferTokens]);
 
   const canOperate = connectedIsTestUser && !!supply?.testUserIsAuthorizedMinter;
 
@@ -523,7 +506,7 @@ export function SettingsPage() {
           {formatTokenAmount(reserveHuman, decimals)}
         </td>
         <td style={{ padding: "10px 6px" }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }} className="settings-inline-controls">
             <input
               type="text"
               inputMode="decimal"
@@ -531,7 +514,7 @@ export function SettingsPage() {
               value={poolAmounts[key]?.mint ?? ""}
               onChange={(e) => setPoolTokenAmount(pool.routeName, tokenSide, "mint", e.target.value)}
               disabled={!canOperate || mintBusy}
-              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
+              className="sentinel-input sentinel-input-compact"
             />
             <button
               type="button"
@@ -544,7 +527,7 @@ export function SettingsPage() {
           </div>
         </td>
         <td style={{ padding: "10px 6px" }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }} className="settings-inline-controls">
             <input
               type="text"
               inputMode="decimal"
@@ -552,7 +535,7 @@ export function SettingsPage() {
               value={poolAmounts[key]?.burn ?? ""}
               onChange={(e) => setPoolTokenAmount(pool.routeName, tokenSide, "burn", e.target.value)}
               disabled={!canOperate || burnBusy}
-              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
+              className="sentinel-input sentinel-input-compact"
             />
             <button
               type="button"
@@ -600,68 +583,6 @@ export function SettingsPage() {
                   </strong>
                 </li>
               </ul>
-
-              {isDemoMode && demoProfiles.length > 0 && (
-                <>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      color: "var(--text-muted)",
-                      marginBottom: 10,
-                    }}
-                  >
-                    切换本地 / 公网链（写入 backend/.env，立即生效）
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {demoProfiles.map((profile) => {
-                      const label =
-                        profile.deploymentTarget === "remote"
-                          ? "公网"
-                          : profile.name === "anvil-fork-monad"
-                            ? "本地 Fork"
-                            : "本地";
-                      const switching = profileSwitching === profile.name;
-                      return (
-                        <button
-                          key={profile.name}
-                          type="button"
-                          className={
-                            profile.active
-                              ? "sentinel-btn"
-                              : "sentinel-btn sentinel-btn-secondary"
-                          }
-                          disabled={
-                            !!profileSwitching ||
-                            !profile.manifestExists ||
-                            profile.active
-                          }
-                          onClick={() => void handleSwitchProfile(profile.name)}
-                          style={{ textAlign: "left", justifyContent: "flex-start" }}
-                        >
-                          {switching ? "切换中…" : profile.active ? "✓ " : ""}
-                          {label} · {profile.chainName} ({profile.chainId}{" "}
-                          {profile.nativeSymbol})
-                          {!profile.manifestExists && (
-                            <span style={{ color: "var(--yellow)", marginLeft: 8 }}>
-                              未部署
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {profileMsg && (
-                    <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>
-                      {profileMsg}
-                    </p>
-                  )}
-                  {profileError && (
-                    <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>
-                      {profileError}
-                    </p>
-                  )}
-                </>
-              )}
             </>
           ) : (
             <p style={{ color: "var(--text-dim)" }}>无法读取 backend 状态</p>
@@ -669,14 +590,31 @@ export function SettingsPage() {
         </div>
 
         <div className="sentinel-card">
-          <div className="sentinel-label">开发者</div>
-          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16 }}>
-            清空内存 + JSONL 事件日志（仅本地 demo 使用）。
+          <div className="sentinel-label">水龙头</div>
+          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
+            从测试钱包 <code>{DEMO_TEST_USER}</code> 领取 10,000 demo USDC 到当前连接地址。
+            首次领取时 backend 会用测试钱包授权；你在 MetaMask 确认交易并自行支付 Gas。
           </p>
-          <button type="button" className="sentinel-btn sentinel-btn-danger" onClick={clearEvents} disabled={clearing}>
-            {clearing ? "清除中..." : "清空事件日志"}
-          </button>
-          {msg && <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>{msg}</p>}
+          {!account ? (
+            <button type="button" className="sentinel-btn" onClick={() => connectWallet().catch(() => undefined)}>
+              连接 MetaMask
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="sentinel-btn"
+              onClick={claimFaucetUsdc}
+              disabled={faucetBusy}
+            >
+              {faucetBusy ? "领取中…" : "领取 10,000 USDC"}
+            </button>
+          )}
+          {faucetMsg && (
+            <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>{faucetMsg}</p>
+          )}
+          {faucetError && (
+            <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>{faucetError}</p>
+          )}
         </div>
       </div>
 
@@ -704,19 +642,13 @@ export function SettingsPage() {
               </p>
             )}
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: 16,
-                marginBottom: 16,
-              }}
-            >
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 16 }}>
-                <span style={{ color: "var(--text-muted)" }}>API Key</span>
+            <div className="settings-form-grid">
+              <label className="sentinel-field">
+                <span className="sentinel-field-label">API Key</span>
                 <input
                   type="password"
                   autoComplete="off"
+                  className="sentinel-input"
                   placeholder={
                     llmSettings?.apiKeyConfigured
                       ? "留空则不修改已保存的 Key"
@@ -725,29 +657,28 @@ export function SettingsPage() {
                   value={llmApiKeyInput}
                   onChange={(e) => setLlmApiKeyInput(e.target.value)}
                   disabled={llmSaving}
-                  style={{ padding: "8px 10px", fontSize: 16 }}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 16 }}>
-                <span style={{ color: "var(--text-muted)" }}>Base URL</span>
+              <label className="sentinel-field">
+                <span className="sentinel-field-label">Base URL</span>
                 <input
                   type="url"
+                  className="sentinel-input"
                   placeholder="https://api.groq.com/openai/v1"
                   value={llmBaseUrl}
                   onChange={(e) => setLlmBaseUrl(e.target.value)}
                   disabled={llmSaving}
-                  style={{ padding: "8px 10px", fontSize: 16 }}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 16 }}>
-                <span style={{ color: "var(--text-muted)" }}>Model</span>
+              <label className="sentinel-field">
+                <span className="sentinel-field-label">Model</span>
                 <input
                   type="text"
+                  className="sentinel-input"
                   placeholder="llama-3.3-70b-versatile"
                   value={llmModel}
                   onChange={(e) => setLlmModel(e.target.value)}
                   disabled={llmSaving}
-                  style={{ padding: "8px 10px", fontSize: 16 }}
                 />
               </label>
             </div>
@@ -901,13 +832,16 @@ export function SettingsPage() {
           {supplyError && (
             <p style={{ fontSize: 16, color: "var(--red)", marginBottom: 12 }}>{supplyError}</p>
           )}
+          {msg && (
+            <p style={{ fontSize: 16, color: "var(--green)", marginBottom: 12 }}>{msg}</p>
+          )}
 
           {supply?.tokens && (
             <>
               <h3 style={{ fontSize: 14, margin: "20px 0 10px", color: "var(--text-muted)" }}>
                 测试钱包代币
               </h3>
-            <div style={{ overflowX: "auto" }}>
+            <div className="scroll-hidden" style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
@@ -939,7 +873,7 @@ export function SettingsPage() {
                           {formatTokenAmount(token.totalSupplyHuman, token.decimals)}
                         </td>
                         <td style={{ padding: "10px 6px" }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }} className="settings-inline-controls">
                             <input
                               type="text"
                               inputMode="decimal"
@@ -947,7 +881,7 @@ export function SettingsPage() {
                               value={amounts[token.symbol]?.mint ?? ""}
                               onChange={(e) => setTokenAmount(token.symbol, "mint", e.target.value)}
                               disabled={disabled || mintBusy}
-                              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
+                              className="sentinel-input sentinel-input-compact"
                             />
                             <button
                               type="button"
@@ -960,7 +894,7 @@ export function SettingsPage() {
                           </div>
                         </td>
                         <td style={{ padding: "10px 6px" }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }} className="settings-inline-controls">
                             <input
                               type="text"
                               inputMode="decimal"
@@ -968,7 +902,7 @@ export function SettingsPage() {
                               value={amounts[token.symbol]?.burn ?? ""}
                               onChange={(e) => setTokenAmount(token.symbol, "burn", e.target.value)}
                               disabled={disabled || burnBusy}
-                              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
+                              className="sentinel-input sentinel-input-compact"
                             />
                             <button
                               type="button"
@@ -994,13 +928,13 @@ export function SettingsPage() {
               <h3 style={{ fontSize: 14, margin: "24px 0 10px", color: "var(--text-muted)" }}>
                 池子储备
               </h3>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                <label style={{ fontSize: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-                  选择池子
+              <div className="settings-controls-row">
+                <label className="sentinel-field">
+                  <span className="sentinel-field-label">选择池子</span>
                   <select
+                    className="sentinel-select sentinel-select-inline"
                     value={selectedPool.routeName}
                     onChange={(e) => setSelectedPoolRoute(e.target.value)}
-                    style={{ minWidth: 280, padding: "8px 10px", fontSize: 16 }}
                   >
                     {filteredPools.map((pool) => (
                       <option key={pool.routeName} value={pool.routeName}>
@@ -1011,10 +945,10 @@ export function SettingsPage() {
                 </label>
                 <input
                   type="text"
+                  className="sentinel-input sentinel-input-filter"
                   placeholder="筛选 route / label"
                   value={poolFilter}
                   onChange={(e) => setPoolFilter(e.target.value)}
-                  style={{ alignSelf: "flex-end", width: 220, padding: "8px 10px", fontSize: 16 }}
                 />
               </div>
               <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 10 }}>
@@ -1024,7 +958,7 @@ export function SettingsPage() {
                 {" · "}
                 {selectedPool.label}
               </p>
-              <div style={{ overflowX: "auto" }}>
+              <div className="scroll-hidden" style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
                   <thead>
                     <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
@@ -1074,40 +1008,33 @@ export function SettingsPage() {
                 转出方：<code>{account}</code>
               </span>
             )}
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 16, flex: 1, minWidth: 280 }}>
-              <span style={{ color: "var(--text-muted)" }}>收款地址</span>
+            <label className="sentinel-field" style={{ flex: 1, minWidth: 280 }}>
+              <span className="sentinel-field-label">收款地址</span>
               <input
                 type="text"
+                className="sentinel-input"
                 placeholder="0x…"
                 value={transferRecipient}
                 onChange={(e) => setTransferRecipient(e.target.value)}
                 disabled={!account}
-                style={{ padding: "8px 10px", fontSize: 16 }}
               />
             </label>
             <button
               type="button"
               className="sentinel-btn sentinel-btn-secondary"
-              onClick={() => account && refreshTransferSupply(account, true)}
+              onClick={() => account && refreshTransferBalances(account)}
               disabled={!account || transferLoading}
             >
-              {transferLoading && transferProgress
-                ? `刷新中 ${formatSupplyProgressLabel(transferProgress)}`
-                : transferLoading
-                  ? "刷新中…"
-                  : "刷新余额"}
+              {transferLoading ? "刷新中…" : "刷新余额"}
             </button>
           </div>
 
-          {transferLoading && transferProgress && (
-            <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 12 }}>
-              正在读取链上数据 {formatSupplyProgressLabel(transferProgress)}
-              {transferProgress.detail ? ` · ${transferProgress.detail}` : ""}
-            </p>
+          {transferMsg && (
+            <p style={{ fontSize: 16, color: "var(--green)", marginBottom: 12 }}>{transferMsg}</p>
           )}
 
-          {transferSupply?.tokens && (
-            <div style={{ overflowX: "auto" }}>
+          {transferTokenRows.length > 0 && (
+            <div className="scroll-hidden" style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
@@ -1117,19 +1044,20 @@ export function SettingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transferSupply.tokens.map((token) => {
+                  {transferTokenRows.map((token) => {
                     const transferBusy =
                       busy?.scope === "wallet" &&
                       busy.id === token.symbol &&
                       busy.action === "transfer";
+                    const balance = transferBalances[token.symbol]?.human ?? 0;
                     return (
                       <tr key={token.symbol} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                         <td style={{ padding: "10px 6px", fontWeight: 600 }}>{token.symbol}</td>
                         <td style={{ padding: "10px 6px" }}>
-                          {formatTokenAmount(token.holderBalanceHuman, token.decimals)}
+                          {formatTokenAmount(balance, token.decimals)}
                         </td>
                         <td style={{ padding: "10px 6px" }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }} className="settings-inline-controls">
                             <input
                               type="text"
                               inputMode="decimal"
@@ -1142,7 +1070,7 @@ export function SettingsPage() {
                                 }))
                               }
                               disabled={!account || transferBusy}
-                              style={{ width: 88, padding: "6px 8px", fontSize: 16 }}
+                              className="sentinel-input sentinel-input-compact"
                             />
                             <button
                               type="button"

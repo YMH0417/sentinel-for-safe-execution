@@ -13,6 +13,7 @@ import {
   switchDemoProfile,
 } from "../services/demoProfileSwitchService.js";
 import { isDemoProfileName } from "../config/demoProfile.js";
+import { prepareUsdcFaucet } from "../services/demoFaucetService.js";
 
 const router = Router();
 
@@ -178,6 +179,26 @@ router.post("/profile", (req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to switch demo profile";
     res.status(400).json({ error: message });
+  }
+});
+
+router.post("/faucet/usdc/prepare", async (req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "Demo endpoints require demo chain mode" });
+  }
+
+  const recipientParam =
+    typeof req.body?.recipient === "string" ? req.body.recipient.trim() : "";
+  if (!recipientParam) {
+    return res.status(400).json({ error: 'Body field "recipient" is required' });
+  }
+
+  try {
+    const plan = await prepareUsdcFaucet(recipientParam);
+    res.json(plan);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to prepare USDC faucet";
+    res.status(503).json({ error: message });
   }
 });
 

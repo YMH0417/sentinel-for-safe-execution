@@ -34,6 +34,10 @@
   --bg-glow-3: rgba(139, 92, 246, 0.10);
   --bg-glow-4: rgba(60, 38, 84, 0.12);
   --text-nav: #dddede;
+  --page-padding-x: 5%;
+  --page-padding-y: 2%;
+  --header-logo-offset-y: 8px;
+  --header-controls-offset-y: 6px;
 
 }
 
@@ -81,11 +85,29 @@ body {
   padding: 0;
 }
 
+/* Hidden scrollbar — wheel / touch / trackpad scrolling still works */
+.sentinel-page,
+.dashboard-alert-list,
+.scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sentinel-page::-webkit-scrollbar,
+.dashboard-alert-list::-webkit-scrollbar,
+.scroll-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .sentinel-page {
-  height: calc(100vh - 70px);
-  padding: 2% 5%;
+  flex: 1;
+  min-height: 0;
+  padding: var(--page-padding-y) var(--page-padding-x);
   box-sizing: border-box;
-  overflow: scroll;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sentinel-card {
@@ -399,26 +421,14 @@ body {
 
 .dashboard-alert-list {
   height: 55%;
-  overflow: scroll;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
   padding-right: 4px;
-}
-
-.dashboard-alert-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.dashboard-alert-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-.dashboard-alert-list::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .dashboard-alert-item {
@@ -926,7 +936,7 @@ body {
 }
 
 .analysis-route-table-wrap {
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .analysis-route-table {
@@ -987,7 +997,7 @@ body {
 .analysis-state code {
   display: block;
   max-width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   margin: 22px 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -1175,18 +1185,88 @@ body {
 .sentinel-select {
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   color: var(--text);
-  padding: 10px 12px;
-  font-size: 14px;
+  padding: 10px 14px;
+  font-size: 15px;
   width: 100%;
   outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.sentinel-input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.9;
+}
+
+.sentinel-input:hover:not(:disabled):not(:focus),
+.sentinel-select:hover:not(:disabled):not(:focus) {
+  border-color: color-mix(in srgb, var(--cyan) 30%, var(--border));
 }
 
 .sentinel-input:focus,
 .sentinel-select:focus {
   border-color: var(--cyan);
-  box-shadow: 0 0 0 3px rgba(0, 229, 204, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cyan) 18%, transparent);
+  background: color-mix(in srgb, var(--bg-inset) 90%, var(--cyan) 10%);
+}
+
+.sentinel-input:disabled,
+.sentinel-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sentinel-input-compact {
+  width: 96px;
+  min-width: 88px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.sentinel-select-inline {
+  width: auto;
+  min-width: 280px;
+}
+
+.sentinel-input-filter {
+  width: 220px;
+  max-width: 100%;
+}
+
+.sentinel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.sentinel-field-label {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-controls-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.settings-inline-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .sentinel-badge {
@@ -1263,6 +1343,10 @@ body {
 
 /* ── Page gradient background (multi-layer glow) ── */
 .app-layout-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
   min-height: 100vh;
   background:
     radial-gradient(ellipse 80% 50% at 50% 0%, var(--bg-glow-1) 0%, transparent 60%),
@@ -1279,16 +1363,25 @@ body {
   z-index: 100;
   font-size: .875rem;
   line-height: 1.25rem;
+  overflow: visible;
 }
 
 .app-header-inner {
-  margin: 0 auto;
-  padding: 0 2rem;
+  width: 100%;
+  min-height: var(--header-height);
+  margin: 0;
+  padding: 0 var(--page-padding-x);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
   box-sizing: border-box;
+}
+
+.app-header-brand {
+  display: inline-flex;
+  align-items: center;
+  transform: translateY(var(--header-logo-offset-y));
 }
 
 .app-header-brand img {
@@ -1301,7 +1394,9 @@ body {
   gap: 6px;
   flex-wrap: wrap;
   flex: 1;
-  padding: 18px 0;
+  min-width: 0;
+  padding: 0;
+  transform: translateY(var(--header-controls-offset-y));
 }
 
 .app-header-nav-link {
@@ -1320,6 +1415,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  transform: translateY(var(--header-controls-offset-y));
 }
 
 .app-header-wallet {
@@ -1333,6 +1429,7 @@ html, body {
   height: 100%;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
 }
 
 .app-header {

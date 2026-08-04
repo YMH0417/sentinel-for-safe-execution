@@ -2,6 +2,7 @@
 import { BrowserProvider, formatEther, getAddress } from "ethers";
 import { useWallet } from "../contexts/WalletContext";
 import { api, computeUserStats, type TokenBalance } from "../api/client";
+import { fetchNativeCurrencySymbol } from "../lib/wallet";
 import { Identicon } from "./WalletAvatar";
 import badget1 from "../imgs/badget1.svg";
 import badget2 from "../imgs/badget2.svg";
@@ -77,6 +78,7 @@ export function UserProfilePage() {
   const [stats, setStats] = useState({ swapCount: 0, rejectCount: 0, fallbackCount: 0, safeVolumeUsd: 0 });
   const [loading, setLoading] = useState(true);
   const [nativeBal, setNativeBal] = useState<string | null>(null);
+  const [nativeSymbol, setNativeSymbol] = useState("MON");
   const [tokens, setTokens] = useState<Record<string, TokenBalance>>({});
 
   const checksumAddr = account ? (() => { try { return getAddress(account); } catch { return null; } })() : null;
@@ -91,6 +93,11 @@ export function UserProfilePage() {
       }
     } catch {
       setNativeBal(null);
+    }
+    try {
+      setNativeSymbol(await fetchNativeCurrencySymbol());
+    } catch {
+      setNativeSymbol("MON");
     }
     try {
       const r = await api.balances(checksumAddr);
@@ -158,7 +165,7 @@ export function UserProfilePage() {
               <div>
                 <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 2 }}>原生余额</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)" }}>
-                  {nativeBal !== null ? `${parseFloat(nativeBal).toFixed(4)} ETH` : "加载中..."}
+                  {nativeBal !== null ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}` : "加载中..."}
                 </div>
               </div>
               {Object.values(tokens).map((t) => (

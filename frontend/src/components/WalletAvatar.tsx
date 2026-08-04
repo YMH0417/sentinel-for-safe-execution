@@ -4,6 +4,7 @@ import { getAddress, BrowserProvider, formatEther } from "ethers";
 import { useWallet } from "../contexts/WalletContext";
 import { useToast } from "./Toast";
 import { api, type TokenBalance } from "../api/client";
+import { fetchNativeCurrencySymbol } from "../lib/wallet";
 
 /* ────────────────────── Identicon (GitHub-style) ────────────────────── */
 
@@ -85,6 +86,7 @@ export function WalletAvatar() {
 
   const [open, setOpen] = useState(false);
   const [nativeBal, setNativeBal] = useState<string | null>(null);
+  const [nativeSymbol, setNativeSymbol] = useState("MON");
   const [tokens, setTokens] = useState<Record<string, TokenBalance>>({});
   const [copied, setCopied] = useState(false);
 
@@ -100,7 +102,7 @@ export function WalletAvatar() {
   const fetchBalances = useCallback(async () => {
     if (!checksumAddr) return;
 
-    // Native ETH balance via MetaMask provider
+    // Native balance via MetaMask provider
     try {
       if (window.ethereum) {
         const provider = new BrowserProvider(window.ethereum);
@@ -109,6 +111,12 @@ export function WalletAvatar() {
       }
     } catch {
       setNativeBal(null);
+    }
+
+    try {
+      setNativeSymbol(await fetchNativeCurrencySymbol());
+    } catch {
+      setNativeSymbol("MON");
     }
 
     // Token balances via backend API
@@ -230,7 +238,7 @@ export function WalletAvatar() {
           <div className="wallet-popup-balance">
             <div className="wallet-popup-balance-value">
               {nativeBal !== null
-                ? `${parseFloat(nativeBal).toFixed(4)} ETH`
+                ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}`
                 : "Loading..."}
             </div>
             {Object.values(tokens).length > 0 && (
