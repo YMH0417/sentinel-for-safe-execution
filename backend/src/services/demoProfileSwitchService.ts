@@ -13,7 +13,6 @@ import {
   resolveDeploymentPathForEnv,
 } from "../config/demoProfile.js";
 import { resetSwapRuntimeCache } from "../config/chainConfig.js";
-import { invalidatePoolsHealthCache } from "./poolHealthCacheService.js";
 import { invalidatePoolVolumeCache } from "./poolVolumeCacheService.js";
 import { clearLiveDemoConfigCache } from "./demoRegistryService.js";
 
@@ -248,7 +247,6 @@ export function switchDemoProfile(profileName: string): {
   clearDemoConfigCache();
   clearLiveDemoConfigCache();
   resetSwapRuntimeCache();
-  invalidatePoolsHealthCache();
   invalidatePoolVolumeCache();
 
   if (isLocal) {

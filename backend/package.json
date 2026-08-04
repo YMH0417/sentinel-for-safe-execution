@@ -7,7 +7,6 @@
     "build": "npx tsc && npx copyfiles -u 1 \"src/**/*.json\" \"src/**/*.sql\" dist/",
     "db:migrate": "tsx src/cli/db-migrate.ts",
     "start": "node dist/index.js",
-    "analyze": "tsx src/cli/analyze.ts",
     "test": "tsx --test test/**/*.test.ts",
     "sync:env": "powershell -ExecutionPolicy Bypass -File ../scripts/sync-backend-env.ps1"
   },

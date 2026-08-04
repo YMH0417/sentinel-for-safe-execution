@@ -4,9 +4,7 @@ import {
   api,
   computeSecurityScore,
   computeUserStats,
-  type DebugStatus,
   type PoolVolumeReport,
-  type PoolsHealthReport,
   type TokenBalance,
 } from "../api/client";
 import type { Event } from "../types";
@@ -16,9 +14,7 @@ const SLOW_FETCH_MS = 6_000;
 
 interface DashboardSnapshot {
   events: Event[];
-  pools: PoolsHealthReport | null;
   poolVolume: PoolVolumeReport | null;
-  status: DebugStatus | null;
   balances: Record<string, TokenBalance>;
   score: number;
   usdcVolumeHuman: number;
@@ -65,40 +61,32 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 export function useDashboardData(account: string | null) {
   const cached = readCache(account);
   const [events, setEvents] = useState<Event[]>(cached?.events ?? []);
-  const [pools, setPools] = useState<PoolsHealthReport | null>(cached?.pools ?? null);
   const [poolVolume, setPoolVolume] = useState<PoolVolumeReport | null>(cached?.poolVolume ?? null);
-  const [status, setStatus] = useState<DebugStatus | null>(cached?.status ?? null);
   const [balances, setBalances] = useState<Record<string, TokenBalance>>(cached?.balances ?? {});
   const [score, setScore] = useState(cached?.score ?? 85);
   const [usdcVolumeHuman, setUsdcVolumeHuman] = useState(cached?.usdcVolumeHuman ?? 0);
   const [refreshing, setRefreshing] = useState(false);
-  const [poolsPending, setPoolsPending] = useState(!cached?.pools);
   const [poolVolumePending, setPoolVolumePending] = useState(!cached?.poolVolume);
   const requestId = useRef(0);
 
   const applySnapshot = useCallback(
     (
       ev: Event[],
-      ph: PoolsHealthReport | null,
       pv: PoolVolumeReport | null,
-      st: DebugStatus | null,
       bal: Record<string, TokenBalance>,
       volumeHuman: number
     ) => {
+      const nextScore = computeSecurityScore(ev);
       setEvents(ev);
-      setPools(ph);
       setPoolVolume(pv);
-      setStatus(st);
       setBalances(bal);
       setUsdcVolumeHuman(volumeHuman);
-      setScore(computeSecurityScore(ev, ph ?? undefined));
+      setScore(nextScore);
       writeCache({
         events: ev,
-        pools: ph,
         poolVolume: pv,
-        status: st,
         balances: bal,
-        score: computeSecurityScore(ev, ph ?? undefined),
+        score: nextScore,
         usdcVolumeHuman: volumeHuman,
         account,
         fetchedAt: Date.now(),
@@ -113,15 +101,12 @@ export function useDashboardData(account: string | null) {
       checksumAccount: string | null,
       ev: Event[],
       fallback: {
-        pools: PoolsHealthReport | null;
         poolVolume: PoolVolumeReport | null;
-        status: DebugStatus | null;
         balances: Record<string, TokenBalance>;
         usdcVolumeHuman: number;
       }
     ) => {
-      const [ph, pv, bal, volumeHuman] = await Promise.all([
-        withTimeout(api.poolsHealth().catch(() => null), SLOW_FETCH_MS, fallback.pools),
+      const [pv, bal, volumeHuman] = await Promise.all([
         withTimeout(api.poolVolume().catch(() => null), SLOW_FETCH_MS, fallback.poolVolume),
         checksumAccount
           ? withTimeout(
@@ -149,8 +134,7 @@ export function useDashboardData(account: string | null) {
 
       const resolvedVolume =
         volumeHuman != null ? volumeHuman : computeUserStats(ev, account).safeVolumeUsd;
-      applySnapshot(ev, ph ?? fallback.pools, pv ?? fallback.poolVolume, fallback.status, bal, resolvedVolume);
-      setPoolsPending(false);
+      applySnapshot(ev, pv ?? fallback.poolVolume, bal, resolvedVolume);
       setPoolVolumePending(false);
     },
     [account, applySnapshot]
@@ -164,9 +148,7 @@ export function useDashboardData(account: string | null) {
 
       const checksumAccount = resolveChecksumAccount(account);
       const fallback = {
-        pools: memoryCache?.pools ?? null,
         poolVolume: memoryCache?.poolVolume ?? null,
-        status: memoryCache?.status ?? null,
         balances: memoryCache?.balances ?? {},
         usdcVolumeHuman: memoryCache?.usdcVolumeHuman ?? 0,
       };
@@ -174,22 +156,13 @@ export function useDashboardData(account: string | null) {
       let latestEvents = memoryCache?.events ?? [];
 
       try {
-        const [[ev, st], phHint] = await Promise.all([
-          Promise.all([
-            api.events().catch(() => [] as Event[]),
-            api.debugStatus().catch(() => fallback.status),
-          ]),
-          withTimeout(api.poolsHealth().catch(() => null), 2_500, fallback.pools),
-        ]);
-
+        const ev = await api.events().catch(() => [] as Event[]);
         if (id !== requestId.current) return;
 
         latestEvents = ev;
         applySnapshot(
           ev,
-          phHint,
           fallback.poolVolume,
-          st,
           fallback.balances,
           fallback.usdcVolumeHuman
         );
@@ -199,10 +172,7 @@ export function useDashboardData(account: string | null) {
         }
       }
 
-      void loadSlowData(id, checksumAccount, latestEvents, {
-        ...fallback,
-        status: memoryCache?.status ?? fallback.status,
-      });
+      void loadSlowData(id, checksumAccount, latestEvents, fallback);
     },
     [account, applySnapshot, loadSlowData]
   );
@@ -211,19 +181,15 @@ export function useDashboardData(account: string | null) {
     const hit = readCache(account);
     if (hit) {
       setEvents(hit.events);
-      setPools(hit.pools);
       setPoolVolume(hit.poolVolume);
-      setStatus(hit.status);
       setBalances(hit.balances);
       setScore(hit.score);
       setUsdcVolumeHuman(hit.usdcVolumeHuman);
-      setPoolsPending(!hit.pools);
       setPoolVolumePending(!hit.poolVolume);
       void loadData({ background: true });
       return;
     }
 
-    setPoolsPending(true);
     setPoolVolumePending(true);
     void loadData({ background: false });
   }, [account, loadData]);
@@ -234,14 +200,11 @@ export function useDashboardData(account: string | null) {
 
   return {
     events,
-    pools,
     poolVolume,
-    status,
     balances,
     score,
     usdcVolumeHuman,
     refreshing,
-    poolsPending,
     poolVolumePending,
     refresh,
   };

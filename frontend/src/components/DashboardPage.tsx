@@ -76,7 +76,7 @@ const DEFAULT_VOLUME_ROWS: LabelVolumeRow[] = [
 
 export function DashboardPage() {
   const { account } = useWallet();
-  const { events, pools, poolVolume, balances, score, usdcVolumeHuman, refreshing, poolVolumePending, refresh } =
+  const { events, poolVolume, balances, score, usdcVolumeHuman, refreshing, poolVolumePending, refresh } =
     useDashboardData(account);
   const [aiState, setAiState] = useState<AiState>({ status: "idle" });
   const [aiLoading, setAiLoading] = useState(false);
@@ -105,14 +105,6 @@ export function DashboardPage() {
         detail: view.detail,
         level: view.level,
       })),
-      poolsHealth: pools
-        ? {
-            poolCount: pools.poolCount,
-            healthy: pools.healthy,
-            degraded: pools.degraded,
-            empty: pools.empty,
-          }
-        : null,
     };
 
     try {
@@ -163,7 +155,7 @@ export function DashboardPage() {
     }
   };
 
-  const legend = computeScoreLegend(events, pools ?? undefined);
+  const legend = computeScoreLegend(events);
   const volumeRows =
     poolVolume?.byLabel && poolVolume.byLabel.length > 0
       ? poolVolume.byLabel

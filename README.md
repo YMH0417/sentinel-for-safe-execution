@@ -192,13 +192,11 @@ Base URL：`http://127.0.0.1:8080/api`
 |------|------|------|
 | `GET` | `/health` | 健康检查 |
 | `GET` | `/debug/status` | 环境自检（含 `routerSwapAvailable`、`eventsPersistPath`） |
-| `GET` | `/debug/pools-health` | 48 池 reserves / 健康状态（demo 模式） |
+| `GET` | `/debug/pool-volume` | 账本近 100 笔按池标签聚合成交量（demo 模式，60s 缓存） |
+| `POST` | `/debug/warm-cache` | 预热 pool-volume 缓存 |
 | `GET` | `/config` | risk config |
 | `GET` | `/events` | 事件日志（内存 + JSONL 持久化） |
 | `POST` | `/events/clear` | 清空事件 |
-| `GET` | `/analysis` | 分析持久化事件，返回质量、统计和安全洞察 |
-| `GET` | `/analysis/definition` | 查看 Sentinel 字段映射 |
-| `POST` | `/analysis/run` | 使用声明式映射分析任意 JSON records |
 
 ### Quote & Evaluate
 
@@ -259,29 +257,6 @@ Base URL：`http://127.0.0.1:8080/api`
 | Unsafe | `/api/swap/force` | 绕过 | 唯一保护（± bps vs SAFE `expectedOut`） |
 
 详见 [`docs/api-contract.md`](docs/api-contract.md)。
-
-### 可复用数据分析
-
-分析本地 Sentinel 事件：
-
-```bash
-cd backend
-npm run analyze -- --input data/events.jsonl
-```
-
-同一引擎可分析 JSON、JSONL/NDJSON 或 CSV。新项目提供字段映射 JSON，
-无需重写解析、校验、去重和通用统计代码：
-
-```bash
-npm run analyze -- --input orders.csv --config orders-analysis.json
-```
-
-设计、字段和完整用法见
-[`docs/analysis-pipeline.md`](docs/analysis-pipeline.md)。
-
-浏览器中的 `/analysis` 页面会直接渲染同一份实时报告，包括决策柱状图、
-事件趋势线、数据质量、风险因子、执行结果、证据就绪度、字段覆盖率和路由活动；没有运行数据时会
-明确显示空状态，不会用演示数字代替观测值。
 
 ---
 
@@ -344,16 +319,13 @@ sentinel-for-safe-execution/
 │   ├── .env                    # 自动生成（gitignore）
 │   ├── data/events.jsonl        # 事件持久化
 │   └── src/
-│       ├── analysis/             # 可复用分析引擎
-│       ├── config/sentinel-analysis.json
-│       ├── routes/analysis.ts
-│       ├── cli/analyze.ts
+│       ├── routes/
 │       └── services/
 │           ├── swapService.ts       # safe / force / wallet plan
 │           ├── demoProfileSwitchService.ts
 │           ├── demoPairReadService.ts
 │           ├── agentSignService.ts  # EIP-712 签名
-│           └── poolHealthService.ts
+│           └── poolVolumeService.ts
 ├── frontend/
 └── docs/
 ```
@@ -377,7 +349,6 @@ sentinel-for-safe-execution/
 - 同时只运行一个 backend 实例（8080），避免 swap 钱包 nonce 冲突
 - 公网 **Monad testnet RPC** 有速率限制；批量 `eth_call` 可能表现为 `missing revert data`，backend 已串行化并重试
 - 前端 Timeline 部分本地拼装；权威事件源 `GET /api/events` + `backend/data/events.jsonl`
-- 旧事件缺少的分析字段会显示为低覆盖率；不会从日志文本中猜测数值
 
 ---
 

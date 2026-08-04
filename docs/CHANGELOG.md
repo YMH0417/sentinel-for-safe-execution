@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-05 — 移除运行分析页与 legacy 池健康
+
+- 删除前端「运行分析」Tab、`/analysis` 路由及 `/api/analysis*` 后端接口与 CLI `npm run analyze`。
+- Dashboard 评分与三格占比改为 **仅基于 events**；移除 `GET /api/debug/pools-health` 及前端隐藏拉取。
+- 链条状态改读账本 `GET /api/debug/pool-volume`；文档同步见 `api-contract.md`、`architecture.md`。
+
 ## 2026-08-05 — Dashboard 交易情况概览
 
 - 三格占比：分母改为「总体活动量」（含 normal 事件与健康池稀释）；事件窗口 100 条。

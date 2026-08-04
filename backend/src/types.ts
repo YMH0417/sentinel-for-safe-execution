@@ -108,12 +108,6 @@ export interface DashboardOverviewInput {
     detail: string;
     level?: string;
   }>;
-  poolsHealth?: {
-    poolCount: number;
-    healthy: number;
-    degraded: number;
-    empty: number;
-  } | null;
 }
 
 export interface DashboardOverviewExplanation {

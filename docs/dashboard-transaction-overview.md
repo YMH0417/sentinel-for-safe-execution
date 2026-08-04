@@ -13,7 +13,6 @@
 | 输入 | API | 说明 |
 |------|-----|------|
 | 事件流 | `GET /api/events` | Backend 内存事件日志，**全站汇总**，未按钱包过滤 |
-| 池子健康 | `GET /api/debug/pools-health` | 48 池 healthy / degraded / empty + 各池 `poolLabel` |
 
 计算在 **浏览器端**完成；非链上数据（见 [`../tmp/todo.md`](../tmp/todo.md) 链上迁移待办）。
 
@@ -21,7 +20,7 @@
 
 ## 圆环综合得分（0–100）
 
-函数：`computeSecurityScore(events, poolReport?)`
+函数：`computeSecurityScore(events)`
 
 ### 步骤
 
@@ -29,10 +28,7 @@
 2. 取最近 **20 条**事件，逐条扣分：
    - `eventType` 含 `Reject`，或 `eventType === "SwapFailed"`：**−8** / 条
    - `decision === "FALLBACK_TO_SAFE_ROUTE"`：**−3** / 条（可与上条同条事件叠加）
-3. 若有池子报告且 `poolCount > 0`：
-   - `poolScore = round(healthy / poolCount × 100)`
-   - `score = round(事件分 × 0.6 + poolScore × 0.4)`
-4. 限制在 `[0, 100]`
+3. 限制在 `[0, 100]`
 
 ### 圆环颜色（`SecurityGauge.tsx`）
 
@@ -48,7 +44,7 @@
 
 函数：`computeScoreLegend` → 内部 `computeLegendBreakdown`
 
-三格 **不必相加为 100%**；剩余部分可理解为相对平稳的活动。正常成交与健康池会 **冲淡** 三项百分比（相对旧版「只在风险项之间分配 100%」）。
+三格 **不必相加为 100%**；`normal` 事件只进入分母，稀释三项占比。
 
 ### 事件窗口
 
@@ -65,28 +61,14 @@
 
 每条事件只计入一个桶；`normal` 只进入分母，不进入任一格子分子。
 
-### 池子权重
-
-| 常量 | 值 | 作用 |
-|------|-----|------|
-| `POOL_TOXIC_WEIGHT` | 0.5 | 每个 `TOXIC` 池：计入高风险 **质量**，并计入分母 |
-| `POOL_DEGRADED_WEIGHT` | 0.5 | 每个 `degraded + empty` 池：计入警告 **质量**，并计入分母 |
-| `POOL_HEALTHY_WEIGHT` | 0.25 | 每个 `healthy` 池：**仅计入分母**（稀释） |
-
 ### 质量与分母
 
 ```
-highRiskMass  = highRiskEvents + toxicPools × 0.5
+highRiskMass  = highRiskEvents
 strategyMass  = strategyEvents
-warningMass   = warningEvents + degradedPools × 0.5
+warningMass   = warningEvents
 
-totalActivity = max(
-  recent.length
-  + toxicPools × 0.5
-  + degradedPools × 0.5
-  + healthyPools × 0.25,
-  1
-)
+totalActivity = max(recent.length, 1)
 ```
 
 ### 显示百分比
@@ -99,15 +81,13 @@ warning%   = round(clamp(warningMass   / totalActivity × 100, 0, 100))
 
 ### 示例
 
-最近 100 条：2 次拒单、0 次 fallback、98 次 normal；12 TOXIC、0 degraded/empty、36 healthy。
+最近 100 条：2 次拒单、1 次 fallback、97 次 normal。
 
 ```
-totalActivity = 100 + 12×0.5 + 36×0.25 = 115
-highRiskMass  = 2 + 6 = 8
-highRisk%     ≈ round(8/115 × 100) = 7%
+totalActivity = 100
+highRisk%     = round(2/100 × 100) = 2%
+strategy%     = round(1/100 × 100) = 1%
 ```
-
-旧算法（仅在风险项之间分配）会得到约 27% 高风险占比；新算法因 normal 与健康池进入分母而明显更低。
 
 ---
 
@@ -115,8 +95,8 @@ highRisk%     ≈ round(8/115 × 100) = 7%
 
 | 项 | 窗口 | 用途 |
 |----|------|------|
-| 圆环 | 最近 20 条事件 + 池健康加权 | 单一 0–100 分 |
-| 三格 | 最近 100 条事件 + 池权重 | 三类占比，独立算法 |
+| 圆环 | 最近 20 条事件 | 单一 0–100 分 |
+| 三格 | 最近 100 条事件 | 三类占比，独立算法 |
 
 两者 **不同算法**，不要假设数值一一对应。
 
@@ -124,24 +104,20 @@ highRisk%     ≈ round(8/115 × 100) = 7%
 
 ## 链条状态（Dashboard 中栏）
 
-**数据来源**：Backend 链上索引缓存 `GET /api/debug/pool-volume`（**非**前端 RPC）。
+**数据来源**：账本聚合 `GET /api/debug/pool-volume`（**非**前端 RPC）。
 
-- Backend 每 **60s** 轮询 `DemoSwapRouter` 日志（`POOL_VOLUME_POLL_MS` 可配）
-- 索引最近 **100 笔** `RouterSwapExecuted` + `SdaExecutionWindowCompleted`
+- Backend 从 trade ledger 读取最近 **100 笔**成交
 - 按池标签（SAFE / SHALLOW / TOXIC / SDA）汇总 **USDC 名义成交量**
-- 非 USDC 腿用 **SAFE 路由现货报价** 折算（索引刷新时的 reserves）
-- 前端 **↻ 刷新** 只拉 backend 缓存，不触发 RPC 重算
+- 60s 内存缓存；`POST /api/debug/warm-cache` 可预热
+- 前端 **↻ 刷新** 只拉 backend 缓存
 
 实现：`backend/src/services/poolVolumeService.ts`、`poolVolumeCacheService.ts`
-
-### 异常/空池占比
-
-标题栏右侧 `(degraded+empty)/poolCount`，来自同次索引时附带的 `pools-health` 缓存。
 
 ### 变更
 
 | 日期 | 变更 |
 |------|------|
+| 2026-08-05 | 移除 pools-health；链条状态改读 ledger pool-volume |
 | 2026-08-05 | 评分改为链上成交量；Backend 60s 索引；移除决策小格 |
 
 ---
@@ -162,11 +138,11 @@ highRisk%     ≈ round(8/115 × 100) = 7%
 
 | 日期 | 变更 |
 |------|------|
+| 2026-08-05 | 移除运行分析 Tab；评分/三格改为纯 events；移除 pools-health |
 | 2026-08-05 | 链条状态：四行可执行性均分 + 异常占比独立展示；移除决策小格 |
 | 2026-08-05 | 三格分母改为「总体活动量」；事件窗口 30 → 100；用户弹窗与内部分离 |
 
 ## 相关
 
-- [`analysis-pipeline.md`](analysis-pipeline.md) — 后端事件分析
-- [`api-contract.md`](api-contract.md) — `/api/events`、`/api/debug/pools-health`
+- [`api-contract.md`](api-contract.md) — `/api/events`、`/api/debug/pool-volume`
 - [`../tmp/todo.md`](../tmp/todo.md) — 链上真实数据迁移

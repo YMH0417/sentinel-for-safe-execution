@@ -2,7 +2,6 @@ import { JsonRpcProvider } from "ethers";
 import { getRpcUrl } from "../config/chainConfig.js";
 import { type DemoPoolLabel, loadDemoConfig } from "../config/demoConfig.js";
 import { getLiveDemoConfig } from "./demoRegistryService.js";
-import { getCachedPoolsHealth } from "./poolHealthCacheService.js";
 import {
   fetchRecentGlobalChainTrades,
   loadSafeReserveCache,
@@ -43,10 +42,21 @@ function emptyByLabel(): LabelVolumeRow[] {
   return LABELS.map((label) => ({ label, volumeUsdc: 0, swapCount: 0 }));
 }
 
+function abnormalStatsFromLedger(trades: LedgerTradeRecord[], poolCount: number) {
+  const riskyLabels = new Set<DemoPoolLabel>(["TOXIC", "SDA"]);
+  const abnormalCount = trades.filter((trade) =>
+    riskyLabels.has((trade.poolLabel as DemoPoolLabel | undefined) ?? "SAFE")
+  ).length;
+  const abnormalPct =
+    trades.length > 0
+      ? Math.round((abnormalCount / trades.length) * 10000) / 100
+      : 0;
+  return { abnormalCount, abnormalPct, poolCount };
+}
+
 export function resolvePoolVolumeSource(): "ledger" | "chain" {
   const explicit = process.env.POOL_VOLUME_SOURCE?.trim().toLowerCase();
   if (explicit === "chain") return "chain";
-  // Default: local ledger JSON (Neon in production). Ignore anvil-ledger unless legacy env.
   return "ledger";
 }
 
@@ -96,11 +106,7 @@ function aggregateByLabel(
 
 export async function buildEmptyPoolVolumeReport(): Promise<PoolVolumeReport> {
   const config = loadDemoConfig();
-  const poolsHealth = await getCachedPoolsHealth().catch(() => null);
-  const abnormalCount = poolsHealth ? poolsHealth.degraded + poolsHealth.empty : 0;
-  const poolCount = poolsHealth?.poolCount ?? config.pools.length;
-  const abnormalPct =
-    poolCount > 0 ? Math.round((abnormalCount / poolCount) * 10000) / 100 : 0;
+  const poolCount = config.pools.length;
 
   return {
     swapRouter: config.swapRouter ?? "",
@@ -111,8 +117,8 @@ export async function buildEmptyPoolVolumeReport(): Promise<PoolVolumeReport> {
     checkedAt: new Date().toISOString(),
     pricingNote: "awaiting indexer",
     byLabel: emptyByLabel(),
-    abnormalPct,
-    abnormalCount,
+    abnormalPct: 0,
+    abnormalCount: 0,
     poolCount,
   };
 }
@@ -121,12 +127,8 @@ export async function buildEmptyPoolVolumeReport(): Promise<PoolVolumeReport> {
 export async function getPoolVolumeFromLedger(): Promise<PoolVolumeReport> {
   const config = loadDemoConfig();
   const trades = await listRecentGlobalLedgerTrades(MAX_RECENT_CHAIN_TRADES);
-  // Pool health optional (Settings RPC); dashboard no longer shows abnormal row
-  const poolsHealth = await getCachedPoolsHealth().catch(() => null);
-  const abnormalCount = poolsHealth ? poolsHealth.degraded + poolsHealth.empty : 0;
-  const poolCount = poolsHealth?.poolCount ?? config.pools.length;
-  const abnormalPct =
-    poolCount > 0 ? Math.round((abnormalCount / poolCount) * 10000) / 100 : 0;
+  const poolCount = config.pools.length;
+  const { abnormalCount, abnormalPct } = abnormalStatsFromLedger(trades, poolCount);
 
   return {
     swapRouter: config.swapRouter ?? "",
@@ -155,15 +157,14 @@ export async function getPoolVolumeFromChain(): Promise<PoolVolumeReport> {
     MAX_RECENT_CHAIN_TRADES
   );
 
-  const [safeReserves, poolsHealth] = await Promise.all([
-    loadSafeReserveCache(provider, config),
-    getCachedPoolsHealth().catch(() => null),
-  ]);
-
-  const abnormalCount = poolsHealth ? poolsHealth.degraded + poolsHealth.empty : 0;
-  const poolCount = poolsHealth?.poolCount ?? config.pools.length;
+  const safeReserves = await loadSafeReserveCache(provider, config);
+  const poolCount = config.pools.length;
+  const riskyLabels = new Set<DemoPoolLabel>(["TOXIC", "SDA"]);
+  const abnormalCount = trades.filter((trade) => riskyLabels.has(trade.poolLabel)).length;
   const abnormalPct =
-    poolCount > 0 ? Math.round((abnormalCount / poolCount) * 10000) / 100 : 0;
+    trades.length > 0
+      ? Math.round((abnormalCount / trades.length) * 10000) / 100
+      : 0;
 
   return {
     swapRouter: config.swapRouter,

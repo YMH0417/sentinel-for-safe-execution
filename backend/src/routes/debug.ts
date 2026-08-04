@@ -13,13 +13,7 @@ import { loadRiskConfig } from "../services/agentService.js";
 import { getEvents, getEventsStorageLabel } from "../services/eventService.js";
 import { assertSwapConfigured, isRouterSwapAvailable } from "../services/swapService.js";
 import { isAgentSigningConfigured } from "../services/agentSignService.js";
-import { getPoolsHealthCacheMeta, getCachedPoolsHealth, warmPoolsHealthCache } from "../services/poolHealthCacheService.js";
-import {
-  getPoolVolumeCacheMeta,
-  getCachedPoolVolume,
-  warmPoolVolumeCache,
-  schedulePoolVolumeBackgroundRefresh,
-} from "../services/poolVolumeCacheService.js";
+import { getPoolVolumeCacheMeta, getCachedPoolVolume, warmPoolVolumeCache, schedulePoolVolumeBackgroundRefresh } from "../services/poolVolumeCacheService.js";
 import { buildEmptyPoolVolumeReport } from "../services/poolVolumeService.js";
 
 const router = Router();
@@ -169,7 +163,6 @@ router.get("/status", async (_req: Request, res: Response) => {
     routeCount,
     routesVersion,
     eventCount: (await getEvents()).length,
-    poolsHealthCache: getPoolsHealthCacheMeta(),
     poolVolumeCache: getPoolVolumeCacheMeta(),
     endpoints: [
       "GET /api/health",
@@ -178,9 +171,6 @@ router.get("/status", async (_req: Request, res: Response) => {
       "POST /api/execute",
       "GET /api/execute/nonce",
       "GET /api/events",
-      "GET /api/analysis",
-      "GET /api/analysis/definition",
-      "POST /api/analysis/run",
       "GET /api/config",
       "GET /api/quote/route/:routeId",
       "GET /api/demo/tokens",
@@ -191,7 +181,6 @@ router.get("/status", async (_req: Request, res: Response) => {
       "POST /api/swap/verify-all",
       "GET /api/swap/wallet",
       "GET /api/swap/balances",
-      "GET /api/debug/pools-health",
       "GET /api/debug/pool-volume",
       "POST /api/debug/warm-cache",
       "GET /api/debug/status",
@@ -232,20 +221,6 @@ router.get("/rpc-check", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/pools-health", async (req: Request, res: Response) => {
-  if (!isDemoChainMode()) {
-    return res.status(404).json({ error: "pools-health requires demo chain mode" });
-  }
-  try {
-    const force = req.query.refresh === "true" || req.query.force === "true";
-    const report = await getCachedPoolsHealth({ force });
-    res.json({ ...report, cache: getPoolsHealthCacheMeta() });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Health check failed";
-    res.status(503).json({ error: message, cache: getPoolsHealthCacheMeta() });
-  }
-});
-
 router.get("/pool-volume", async (req: Request, res: Response) => {
   if (!isDemoChainMode()) {
     return res.status(404).json({ error: "pool-volume requires demo chain mode" });
@@ -269,18 +244,18 @@ router.get("/pool-volume", async (req: Request, res: Response) => {
 
 router.post("/warm-cache", async (_req: Request, res: Response) => {
   if (!isDemoChainMode()) {
-    return res.json({ warmed: false, reason: "not demo mode", cache: getPoolsHealthCacheMeta() });
+    return res.json({ warmed: false, reason: "not demo mode", cache: getPoolVolumeCacheMeta() });
   }
   try {
-    const meta = getPoolsHealthCacheMeta();
+    const meta = getPoolVolumeCacheMeta();
     if (meta.ready && !meta.warming && (meta.ageMs ?? Infinity) < meta.ttlMs) {
       return res.json({ warmed: true, skipped: true, cache: meta });
     }
-    await warmPoolsHealthCache(3);
-    res.json({ warmed: getPoolsHealthCacheMeta().ready, cache: getPoolsHealthCacheMeta() });
+    await warmPoolVolumeCache(3);
+    res.json({ warmed: getPoolVolumeCacheMeta().ready, cache: getPoolVolumeCacheMeta() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Warm cache failed";
-    res.status(503).json({ warmed: false, error: message, cache: getPoolsHealthCacheMeta() });
+    res.status(503).json({ warmed: false, error: message, cache: getPoolVolumeCacheMeta() });
   }
 });
 

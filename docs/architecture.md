@@ -43,7 +43,7 @@
 
 | 数据 | 本地开发（现在） | Vercel 生产（目标） | 谁写 | 谁读 |
 |------|------------------|---------------------|------|------|
-| Agent / Swap 事件 | `data/events.jsonl` | `events` 表 | evaluate、swap、execute | Dashboard 分/警报、analysis |
+| Agent / Swap 事件 | `data/events.jsonl` | `events` 表 | evaluate、swap、execute | Dashboard 分/警报 |
 | 全部成交 | `trade-ledger.json` → `trades[]` | `ledger_trades` | POST ledger、后端 swap 镜像 | 历史列表 |
 | 经 Check 成交 | `checkedTrades{}` | `ledger_checked_trades` | 同上，`registerCheck: true` | checkCount、徽章 |
 | 交易池状态 4 行 | JSON 按 `poolLabel` 聚合 | SQL 聚合近 N 笔 | 随 ledger 写入自动 | `/api/debug/pool-volume` |
@@ -67,7 +67,7 @@
 | GET | `/api/ledger/achievements/:addr` | ledger |
 | GET | `/api/demo/achievements/:addr` | ledger（别名） |
 | GET | `/api/debug/pool-volume` | ledger 聚合 |
-| GET | `/api/analysis*` | events |
+| POST | `/api/ai-alert-analysis*` | events（Dashboard AI 解读） |
 
 ### B. 写产品库（无 RPC）
 
@@ -86,7 +86,6 @@
 | POST | `/api/execute` | Vault 执行 |
 | GET | `/api/swap/balances` | 余额 |
 | GET | `/api/demo/tokens|pools` | 注册表链上读 |
-| GET | `/api/debug/pools-health` | Settings 链状态 |
 | GET | `/api/debug/rpc-check` | Settings |
 
 ---

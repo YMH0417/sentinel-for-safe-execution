@@ -7,7 +7,6 @@ import { ThemeToggle } from "../ThemeToggle";
 
 const NAV = [
   { to: "/dashboard", label: "仪表盘" },
-  { to: "/analysis", label: "Analysis" },
   { to: "/transaction", label: "交易" },
   { to: "/risk-rules", label: "风控规则" },
   { to: "/settings", label: "设置" },

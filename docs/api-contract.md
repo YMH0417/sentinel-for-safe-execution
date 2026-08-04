@@ -1,8 +1,8 @@
-# API Contract — Sentinel for Safe Execution v0.6
+# API Contract — Sentinel for Safe Execution v0.7
 
-> **Last updated**: 2026-08-02  
+> **Last updated**: 2026-08-05  
 > Profile switching (Settings + API), MetaMask wallet swap plan, supply streaming, Monad RPC retry notes.
-> Legacy mock routes (`route-a/b/c`) unchanged in mock mode.
+> Removed: `/analysis*` endpoints and `/debug/pools-health` (dashboard uses events + ledger pool-volume).
 
 ## Base URL
 
@@ -38,101 +38,7 @@ Required for **backend** swap: `RPC_URL`, `DEMO_REGISTRY_ADDRESS` (or valid depl
 
 Router one-tx swap additionally requires: `DEMO_SWAP_ROUTER_ADDRESS`, `VAULT_EXECUTION_ADDRESS`, `AGENT_PRIVATE_KEY` (must match Vault `agentSigner`).
 
-**Monad testnet RPC:** public endpoint ~15 req/s. Quote, pool health, and supply use sequential reads + `withRpcRetry` to avoid burst `missing revert data`.
-
----
-
-## 0.1 Data Analysis
-
-### GET /analysis
-
-Analyzes `backend/data/events.jsonl` and returns:
-
-```json
-{
-  "metadata": {
-    "context": "sentinel-events",
-    "definitionVersion": "1.0.0",
-    "generatedAt": "2026-07-30T00:00:00.000Z",
-    "sources": ["backend/data/events.jsonl"]
-  },
-  "quality": {
-    "receivedRows": 100,
-    "parsedRows": 99,
-    "validRows": 97,
-    "invalidRows": 2,
-    "duplicateRows": 1,
-    "validRate": 0.97,
-    "issues": [],
-    "coverage": {}
-  },
-  "summary": {
-    "timeRange": null,
-    "categoryCounts": {},
-    "outcomeCounts": {},
-    "uniqueEntities": 0,
-    "uniqueActors": 0,
-    "dimensionCounts": {},
-    "metrics": {}
-  },
-  "trends": [],
-  "entities": [],
-  "insights": {
-    "decisions": {},
-    "fallback": {},
-    "execution": {},
-    "realizedSlippageBps": null,
-    "evidence": {
-      "readinessCriteria": {},
-      "sufficientForHistoricalClaims": false,
-      "assessment": "prototype-evidence-only"
-    }
-  }
-}
-```
-
-Malformed JSONL lines appear in `quality.issues`; they are not silently
-converted into valid records.
-
-Operational decisions exclude standalone preview evaluations. Swap failure
-insights separate Agent prevention, precondition failures, configuration
-failures, and actual execution failures. Historical readiness requires safe
-RPC activity; forced and demo events never qualify.
-
-### GET /analysis/definition
-
-Returns Sentinel's declarative field, dimension, and metric mapping.
-
-### POST /analysis/run
-
-Runs the reusable engine on caller-supplied records. It does not persist them.
-
-```json
-{
-  "records": [
-    {
-      "id": "evt-1",
-      "timestamp": 1785373200000,
-      "eventType": "DecisionMade",
-      "decision": "ALLOW"
-    }
-  ],
-  "includeRecords": false
-}
-```
-
-An optional `definition` object can map another project's field names. Maximum:
-10,000 records. Every definition maps `id`, `timestamp`, and `category`;
-`required` may add canonical fields but cannot remove those three.
-
-Errors:
-
-- invalid request → `400 INVALID_ANALYSIS_REQUEST`;
-- invalid definition → `400 INVALID_ANALYSIS_DEFINITION`;
-- too many records → `413 ANALYSIS_LIMIT_EXCEEDED`.
-
-Full configuration and CLI documentation:
-[`analysis-pipeline.md`](analysis-pipeline.md).
+**Monad testnet RPC:** public endpoint ~15 req/s. Quote and supply use sequential reads + `withRpcRetry` to avoid burst `missing revert data`.
 
 ---
 
@@ -172,40 +78,28 @@ Full configuration and CLI documentation:
 | `routerSwapAvailable` | `true` when Router + Vault + Agent key configured |
 | `eventsPersistPath` | JSONL file path for persisted events |
 
-### GET /debug/pools-health
+### GET /debug/pool-volume
 
-Demo mode only. Returns reserves and health for all 48 pools.
+Demo mode only. Returns USDC-notional swap volume aggregated by pool label from the trade ledger (last ~100 trades, 60s cache).
+
+Query: `?refresh=true` schedules a background refresh.
 
 ```json
 {
-  "registry": "0x603E...",
-  "poolCount": 48,
-  "healthy": 34,
-  "degraded": 2,
-  "empty": 0,
-  "checkedAt": "2026-07-28T12:00:00.000Z",
-  "pools": [
-    {
-      "routeId": "route-usdc-good-safe",
-      "routeName": "route-usdc-good-safe",
-      "pair": "0x8633...",
-      "tokenIn": "USDC",
-      "tokenOut": "GOOD",
-      "poolLabel": "SAFE",
-      "reserveInHuman": 1000000,
-      "reserveOutHuman": 50000,
-      "spotPrice": 0.05,
-      "canSwap1Unit": true,
-      "priceImpactBps1Unit": 0,
-      "status": "healthy"
-    }
-  ]
+  "byLabel": [
+    { "poolLabel": "SAFE", "volumeUsd": 1200.5, "tradeCount": 42 }
+  ],
+  "totalVolumeUsd": 1500,
+  "tradeCount": 48,
+  "cache": { "ready": true, "ageMs": 12000, "ttlMs": 60000 }
 }
 ```
 
-`status`: `healthy` | `degraded` | `empty`.
-
 404 when `CHAIN_MODE != demo`.
+
+### POST /debug/warm-cache
+
+Demo mode only. Pre-warms the pool-volume cache. Returns `{ warmed, cache }`.
 
 ### GET /config
 
@@ -533,7 +427,7 @@ Lists demo profiles from `shared/demo-chain-profiles.json` with manifest existen
 
 ### POST /demo/profile
 
-Switch active demo profile. Rewrites `backend/.env`, hot-updates `process.env`, clears registry / swap / pool-health caches.
+Switch active demo profile. Rewrites `backend/.env`, hot-updates `process.env`, clears registry / swap caches.
 
 ```http
 POST /api/demo/profile

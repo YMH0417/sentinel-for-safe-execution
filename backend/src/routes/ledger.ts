@@ -56,26 +56,7 @@ router.get("/achievements/:address", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/achievements/:address", async (req: Request, res: Response) => {
-  if (!isDemoChainMode()) {
-    return res.status(404).json({ error: "Ledger requires demo chain mode" });
-  }
-
-  const addressParam = typeof req.params.address === "string" ? req.params.address.trim() : "";
-  if (!addressParam) {
-    return res.status(400).json({ error: "Address parameter is required" });
-  }
-
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
-  try {
-    res.json({ trades: await listLedgerTrades(addressParam, limit) });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to list trades";
-    res.status(400).json({ error: message });
-  }
-});
-
-router.post("/bootstrap", async (req: Request, res: Response) => {
+router.get("/trades/:address", async (req: Request, res: Response) => {
   if (!isDemoChainMode()) {
     return res.status(404).json({ error: "Ledger requires demo chain mode" });
   }

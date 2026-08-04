@@ -138,7 +138,7 @@ Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8080/api/swap/force `
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8080/api/events
-Invoke-RestMethod http://127.0.0.1:8080/api/debug/pools-health
+Invoke-RestMethod http://127.0.0.1:8080/api/debug/pool-volume
 ```
 
 > "Agent soft rules + Vault hard gate + auditable JSONL events. Force swaps record `agentBypassed` and `safetyMode: force`."
@@ -196,4 +196,4 @@ For `CHAIN_MODE=mock` without Anvil.
 | TOXIC slippage block | `POST /api/swap/force` `route-usdc-good-toxic`, `slippageBps: 100` |
 | Batch verify | `POST /api/swap/verify-all` → 36 pass / 12 fail (force) |
 | Frontend Safe/Unsafe | http://127.0.0.1:8081/transaction |
-| Pool health | `GET /api/debug/pools-health` |
+| Ledger pool volume | `GET /api/debug/pool-volume` |

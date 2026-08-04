@@ -15,17 +15,12 @@ import configRouter from "./routes/config.js";
 import debugRouter from "./routes/debug.js";
 import demoRouter from "./routes/demo.js";
 import swapRouter from "./routes/swap.js";
-import analysisRouter from "./routes/analysis.js";
 import aiAnalysisRouter from "./routes/ai-analysis.js";
 import settingsRouter from "./routes/settings.js";
 import ledgerRouter from "./routes/ledger.js";
 import { isMockChainMode } from "./config/chainConfig.js";
 import { isDemoChainMode } from "./config/demoConfig.js";
-import { warmPoolsHealthCache } from "./services/poolHealthCacheService.js";
-import {
-  warmPoolVolumeCache,
-  startPoolVolumePolling,
-} from "./services/poolVolumeCacheService.js";
+import { warmPoolVolumeCache, startPoolVolumePolling } from "./services/poolVolumeCacheService.js";
 import { maybeBootstrapLedgerOnStart } from "./services/ledgerBootstrapService.js";
 import { initStorage, getStorageInfo } from "./storage/index.js";
 import {
@@ -49,7 +44,6 @@ app.use("/api/config", configRouter);
 app.use("/api/debug", debugRouter);
 app.use("/api/demo", demoRouter);
 app.use("/api/swap", swapRouter);
-app.use("/api/analysis", analysisRouter);
 app.use("/api/ai-alert-analysis", aiAnalysisRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/ledger", ledgerRouter);
@@ -81,8 +75,6 @@ async function main(): Promise<void> {
   console.log(`    POST /api/execute        — 链上执行（闸门校验）`);
   console.log(`    GET  /api/execute/nonce  — 查询用户 permit nonce`);
   console.log(`    GET  /api/events         — 查询事件日志`);
-  console.log(`    GET  /api/analysis       — 运行持久化事件数据分析`);
-  console.log(`    POST /api/analysis/run   — 通用配置化数据分析`);
   console.log(`    POST /api/ai-alert-analysis — AI智能解析单条决策事件`);
   console.log(`    GET  /api/settings/llm     — 读取 LLM 配置（backend/.env）`);
   console.log(`    PUT  /api/settings/llm     — 保存 LLM 配置到 backend/.env`);
@@ -94,9 +86,8 @@ async function main(): Promise<void> {
   console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
   console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
   console.log(`    POST /api/swap/verify-all — Batch verify (default force; ?safe=true)`);
-    console.log(`    GET  /api/debug/pools-health — 池健康检查（带缓存）`);
     console.log(`    GET  /api/debug/pool-volume  — 账本近 100 笔成交量（ledger 源，60s 缓存）`);
-    console.log(`    POST /api/debug/warm-cache   — 预热 pools-health 缓存`);
+    console.log(`    POST /api/debug/warm-cache   — 预热 pool-volume 缓存`);
   console.log(`    GET  /api/swap/wallet     — Swap 钱包地址`);
   console.log(`    GET  /api/swap/balances   — Swap 钱包余额`);
     console.log(`    GET  /api/ledger/achievements/:address — 本地交易账本徽章（事件驱动）`);
@@ -104,7 +95,6 @@ async function main(): Promise<void> {
   console.log(`    GET  /api/health         — 健康检查\n`);
 
   if (isDemoChainMode()) {
-    void warmPoolsHealthCache();
     void warmPoolVolumeCache();
     startPoolVolumePolling();
     void maybeBootstrapLedgerOnStart();

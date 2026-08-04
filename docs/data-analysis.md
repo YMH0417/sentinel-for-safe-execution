@@ -6,14 +6,9 @@
 
 > **2026-07-31 update:** Demo expanded from 36 to **48 routes** by adding an **SDA** pool per directed pair (12 × 4). SDA pools use SAFE-depth liquidity but Agent **REJECT**s in Safe mode (execution-window risk). Force-mode verify-all now expects **36 pass + 12 TOXIC slippage failures** at default 1% band. Safe vs force slippage split is documented in [`architecture.md`](architecture.md) and [`route-scenarios.md`](route-scenarios.md). Counts and charts below describe the original **36-route (SAFE/SHALLOW/TOXIC only)** baseline unless noted.
 
-**Companion workbook:** [`sentinel-data-analysis.xlsx`](sentinel-data-analysis.xlsx) contains formula-driven route observations for the baseline matrix.
+> **2026-08-05 update:** The live analysis UI (`/analysis`), HTTP APIs (`/api/analysis*`), CLI (`npm run analyze`), and reusable analysis engine were **removed** from the product. This document remains the **static baseline** for the controlled demo scenario (commit `831c806` body). Runtime insights now come from Dashboard events, ledger volume, and AI alert analysis only.
 
-> This document is the baseline analysis of commit `831c806`. The subsequent
-> reusable implementation is documented in
-> [`analysis-pipeline.md`](analysis-pipeline.md): it adds structured event
-> evidence, validation, coverage reporting, generic JSON/JSONL/CSV ingestion,
-> CLI execution, and analysis APIs. Historical conclusions still require newly
-> collected runtime data.
+**Companion workbook:** [`sentinel-data-analysis.xlsx`](sentinel-data-analysis.xlsx) contains formula-driven route observations for the baseline matrix.
 
 ## Executive summary
 

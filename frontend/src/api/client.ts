@@ -24,7 +24,7 @@ export interface DebugStatus {
   routerSwapAvailable?: boolean;
   demoPoolCount?: number;
   eventCount?: number;
-  poolsHealthCache?: {
+  poolVolumeCache?: {
     ready: boolean;
     warming: boolean;
     cachedAt: string | null;
@@ -53,24 +53,6 @@ export interface DemoProfileSwitchResult {
   rpcUrl: string;
   deploymentTarget: "local" | "remote";
   warnings: string[];
-}
-
-export interface PoolHealthEntry {
-  routeId: string;
-  routeName: string;
-  poolLabel: string;
-  status: "healthy" | "degraded" | "empty";
-  priceImpactBps1Unit: number;
-  tokenIn: string;
-  tokenOut: string;
-}
-
-export interface PoolsHealthReport {
-  healthy: number;
-  degraded: number;
-  empty: number;
-  poolCount: number;
-  pools: PoolHealthEntry[];
 }
 
 export interface LabelVolumeRow {
@@ -125,12 +107,6 @@ export interface DashboardOverviewInput {
     detail: string;
     level?: string;
   }>;
-  poolsHealth?: {
-    poolCount: number;
-    healthy: number;
-    degraded: number;
-    empty: number;
-  } | null;
 }
 
 export interface DashboardOverviewExplanation {
@@ -237,125 +213,6 @@ export interface RiskConfig {
   profiles?: Record<string, unknown>;
 }
 
-export interface NumberStatistics {
-  count: number;
-  min: number;
-  max: number;
-  mean: number;
-  median: number;
-  p95: number;
-  sum: number;
-}
-
-export interface AnalysisReport {
-  metadata: {
-    context: string;
-    definitionVersion: string;
-    generatedAt: string;
-    sources: string[];
-  };
-  quality: {
-    receivedRows: number;
-    parsedRows: number;
-    validRows: number;
-    invalidRows: number;
-    duplicateRows: number;
-    validRate: number;
-    issues: Array<{
-      code: string;
-      severity: "error" | "warning";
-      field?: string;
-      count: number;
-    }>;
-    coverage: Record<
-      string,
-      { present: number; total: number; rate: number }
-    >;
-  };
-  summary: {
-    timeRange: { from: string; to: string } | null;
-    categoryCounts: Record<string, number>;
-    outcomeCounts: Record<string, number>;
-    uniqueEntities: number;
-    uniqueActors: number;
-    score?: NumberStatistics;
-    dimensionCounts: Record<string, Record<string, number>>;
-    metrics: Record<string, NumberStatistics>;
-  };
-  trends: Array<{
-    date: string;
-    count: number;
-    categoryCounts: Record<string, number>;
-    outcomeCounts: Record<string, number>;
-  }>;
-  entities: Array<{
-    entityId: string;
-    count: number;
-    outcomeCounts: Record<string, number>;
-    averageScore?: number;
-  }>;
-  insights: {
-    decisions?: {
-      total: number;
-      allow: number;
-      reject: number;
-      fallback: number;
-      previewEvaluations: number;
-      unclassified: number;
-      interventionRate: number | null;
-    };
-    riskFactors?: {
-      quoteDeviation: NumberStatistics | null;
-      historicalFailureRate: NumberStatistics | null;
-      poolRiskScore: NumberStatistics | null;
-      priceImpactBps: NumberStatistics | null;
-    };
-    execution?: {
-      attemptEvents: number;
-      swapAttempts: number;
-      swapsSucceeded: number;
-      swapsFailed: number;
-      swapSuccessRate: number | null;
-      executionFailures: number;
-      preventedByAgent: number;
-      preconditionFailures: number;
-      configurationFailures: number;
-      unclassifiedFailures: number;
-      protectedSwapsSucceeded: number;
-      forcedSwapsSucceeded: number;
-      vaultSucceeded: number;
-      vaultRejected: number;
-      usdcInputVolume: number;
-      forcedUsdcInputVolume: number;
-      gasUsed: NumberStatistics | null;
-      forcedBypassEvents: number;
-      forcedBypassOperations: number;
-    };
-    workflow?: {
-      correlatedOperations: number;
-      completedOperations: number;
-      failedOrRejectedOperations: number;
-      fallbackOperations: number;
-      uncorrelatedEvents: number;
-    };
-    evidence?: {
-      successfulSwapsWithQuoteAndActual: number;
-      richSwapEvidenceRate: number | null;
-      productionSuccessfulSwapsWithQuoteAndActual: number;
-      productionRichSwapEvidenceRate: number | null;
-      decisionEvidenceRate: number | null;
-      uniqueAccounts: number;
-      activeDays: number;
-      readinessCriteria: Record<
-        string,
-        { actual: number | null; required: number; met: boolean }
-      >;
-      sufficientForHistoricalClaims: boolean;
-      assessment: string;
-    };
-  };
-}
-
 export const api = {
   debugStatus: () => getJson<DebugStatus>("/debug/status"),
   listDemoProfiles: () =>
@@ -374,11 +231,6 @@ export const api = {
     const data = await getJson<{ events: Event[] }>("/events");
     return data.events ?? [];
   },
-  analysis: () => getJson<AnalysisReport>("/analysis"),
-  poolsHealth: (opts?: { force?: boolean }) =>
-    getJson<PoolsHealthReport & { cache?: unknown }>(
-      `/debug/pools-health${opts?.force ? "?refresh=true" : ""}`
-    ).then(({ cache: _cache, ...report }) => report),
   poolVolume: (opts?: { force?: boolean }) =>
     getJson<PoolVolumeReport & { cache?: unknown }>(
       `/debug/pool-volume${opts?.force ? "?refresh=true" : ""}`
@@ -387,7 +239,7 @@ export const api = {
     fetch(`${API}/debug/warm-cache`, { method: "POST" }).then(async (res) => {
       const data = await res.json();
       if (!res.ok) throw new Error(parseApiError(data.error, "Warm cache failed"));
-      return data as { warmed: boolean; cache?: DebugStatus["poolsHealthCache"] };
+      return data as { warmed: boolean; cache?: unknown };
     }),
   riskConfig: () => getJson<RiskConfig>("/config"),
   balances: (address: string) =>
@@ -514,16 +366,12 @@ export const api = {
     }),
 };
 
-export function computeSecurityScore(events: Event[], poolReport?: PoolsHealthReport): number {
+export function computeSecurityScore(events: Event[]): number {
   let score = 85;
   const recent = events.slice(-20);
   for (const e of recent) {
     if (e.eventType.includes("Reject") || e.eventType === "SwapFailed") score -= 8;
     if (e.decision === "FALLBACK_TO_SAFE_ROUTE") score -= 3;
-  }
-  if (poolReport && poolReport.poolCount > 0) {
-    const poolScore = Math.round((poolReport.healthy / poolReport.poolCount) * 100);
-    score = Math.round(score * 0.6 + poolScore * 0.4);
   }
   return Math.max(0, Math.min(100, score));
 }
@@ -666,7 +514,6 @@ export function isDashboardAlertEvent(event: Event): boolean {
 }
 
 export function selectDashboardAlerts(events: Event[], limit = 5): DashboardAlertView[] {
-  type Row = DashboardAlertView & { sortKey: number; dedupeKey: string };
   const seen = new Set<string>();
   return events
     .filter(isDashboardAlertEvent)
@@ -761,11 +608,6 @@ export interface ScoreLegend {
 /** Recent-event window for the three legend boxes. */
 const LEGEND_EVENT_WINDOW = 100;
 
-/** Pool weights: healthy pools dilute; toxic/degraded add risk mass into the same denominator. */
-const POOL_TOXIC_WEIGHT = 0.5;
-const POOL_DEGRADED_WEIGHT = 0.5;
-const POOL_HEALTHY_WEIGHT = 0.25;
-
 type LegendEventBucket = "highRisk" | "strategy" | "warning" | "normal";
 
 function classifyLegendEvent(event: Event): LegendEventBucket {
@@ -790,19 +632,13 @@ export interface LegendBreakdown {
   strategyEvents: number;
   warningEvents: number;
   normalEvents: number;
-  toxicPools: number;
-  degradedPools: number;
-  healthyPools: number;
   totalActivity: number;
   highRiskMass: number;
   strategyMass: number;
   warningMass: number;
 }
 
-export function computeLegendBreakdown(
-  events: Event[],
-  poolReport?: PoolsHealthReport
-): LegendBreakdown {
+export function computeLegendBreakdown(events: Event[]): LegendBreakdown {
   const recent = events.slice(-LEGEND_EVENT_WINDOW);
   let highRiskEvents = 0;
   let strategyEvents = 0;
@@ -817,38 +653,17 @@ export function computeLegendBreakdown(
     else normalEvents += 1;
   }
 
-  let toxicPools = 0;
-  let degradedPools = 0;
-  let healthyPools = 0;
-  if (poolReport) {
-    toxicPools = poolReport.pools.filter((p) => p.poolLabel === "TOXIC").length;
-    degradedPools = poolReport.degraded + poolReport.empty;
-    healthyPools = poolReport.healthy;
-  }
-
-  const highRiskMass = highRiskEvents + toxicPools * POOL_TOXIC_WEIGHT;
-  const strategyMass = strategyEvents;
-  const warningMass = warningEvents + degradedPools * POOL_DEGRADED_WEIGHT;
-  const totalActivity = Math.max(
-    recent.length +
-      toxicPools * POOL_TOXIC_WEIGHT +
-      degradedPools * POOL_DEGRADED_WEIGHT +
-      healthyPools * POOL_HEALTHY_WEIGHT,
-    1
-  );
+  const totalActivity = Math.max(recent.length, 1);
 
   return {
     highRiskEvents,
     strategyEvents,
     warningEvents,
     normalEvents,
-    toxicPools,
-    degradedPools,
-    healthyPools,
     totalActivity,
-    highRiskMass,
-    strategyMass,
-    warningMass,
+    highRiskMass: highRiskEvents,
+    strategyMass: strategyEvents,
+    warningMass: warningEvents,
   };
 }
 
@@ -856,9 +671,9 @@ function legendPct(mass: number, totalActivity: number): number {
   return Math.max(0, Math.min(100, Math.round((mass / totalActivity) * 100)));
 }
 
-/** Share of recent activity — normal trades and healthy pools dilute the three risk slices. */
-export function computeScoreLegend(events: Event[], poolReport?: PoolsHealthReport): ScoreLegend {
-  const breakdown = computeLegendBreakdown(events, poolReport);
+/** Share of recent activity across the three risk legend slices. */
+export function computeScoreLegend(events: Event[]): ScoreLegend {
+  const breakdown = computeLegendBreakdown(events);
   return {
     highRisk: legendPct(breakdown.highRiskMass, breakdown.totalActivity),
     strategy: legendPct(breakdown.strategyMass, breakdown.totalActivity),
@@ -872,18 +687,12 @@ export interface SecurityScoreExplanation {
   rejectCount: number;
   fallbackCount: number;
   scoreAfterEvents: number;
-  poolScore: number | null;
-  healthyPools: number;
-  poolCount: number;
   legend: ScoreLegend;
   legendRaw: {
     highRiskEvents: number;
-    toxicPools: number;
     strategyEvents: number;
     warningEvents: number;
     normalEvents: number;
-    degradedPools: number;
-    healthyPools: number;
     highRiskTotal: number;
     strategyTotal: number;
     warningTotal: number;
@@ -891,10 +700,7 @@ export interface SecurityScoreExplanation {
   };
 }
 
-export function explainSecurityMetrics(
-  events: Event[],
-  poolReport?: PoolsHealthReport
-): SecurityScoreExplanation {
+export function explainSecurityMetrics(events: Event[]): SecurityScoreExplanation {
   const baseScore = 85;
   const recentScore = events.slice(-20);
   let rejectCount = 0;
@@ -903,21 +709,11 @@ export function explainSecurityMetrics(
     if (e.eventType.includes("Reject") || e.eventType === "SwapFailed") rejectCount += 1;
     if (e.decision === "FALLBACK_TO_SAFE_ROUTE") fallbackCount += 1;
   }
-  let scoreAfterEvents = baseScore - rejectCount * 8 - fallbackCount * 3;
-  let poolScore: number | null = null;
-  let healthyPools = 0;
-  let poolCount = 0;
-  let score = scoreAfterEvents;
-  if (poolReport && poolReport.poolCount > 0) {
-    healthyPools = poolReport.healthy;
-    poolCount = poolReport.poolCount;
-    poolScore = Math.round((healthyPools / poolCount) * 100);
-    score = Math.round(scoreAfterEvents * 0.6 + poolScore * 0.4);
-  }
-  score = Math.max(0, Math.min(100, score));
+  const scoreAfterEvents = baseScore - rejectCount * 8 - fallbackCount * 3;
+  const score = Math.max(0, Math.min(100, scoreAfterEvents));
 
-  const breakdown = computeLegendBreakdown(events, poolReport);
-  const legend = computeScoreLegend(events, poolReport);
+  const breakdown = computeLegendBreakdown(events);
+  const legend = computeScoreLegend(events);
 
   return {
     score,
@@ -925,18 +721,12 @@ export function explainSecurityMetrics(
     rejectCount,
     fallbackCount,
     scoreAfterEvents,
-    poolScore,
-    healthyPools,
-    poolCount,
     legend,
     legendRaw: {
       highRiskEvents: breakdown.highRiskEvents,
-      toxicPools: breakdown.toxicPools,
       strategyEvents: breakdown.strategyEvents,
       warningEvents: breakdown.warningEvents,
       normalEvents: breakdown.normalEvents,
-      degradedPools: breakdown.degradedPools,
-      healthyPools: breakdown.healthyPools,
       highRiskTotal: breakdown.highRiskMass,
       strategyTotal: breakdown.strategyMass,
       warningTotal: breakdown.warningMass,

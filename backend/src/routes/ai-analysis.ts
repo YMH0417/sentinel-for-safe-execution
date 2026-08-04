@@ -178,17 +178,6 @@ function parseDashboardOverviewBody(body: unknown): DashboardOverviewInput | nul
       ...(typeof row.level === "string" ? { level: row.level } : {}),
     }));
 
-  let poolsHealth: DashboardOverviewInput["poolsHealth"] = null;
-  if (raw.poolsHealth && typeof raw.poolsHealth === "object") {
-    const ph = raw.poolsHealth as Record<string, unknown>;
-    poolsHealth = {
-      poolCount: typeof ph.poolCount === "number" ? ph.poolCount : 0,
-      healthy: typeof ph.healthy === "number" ? ph.healthy : 0,
-      degraded: typeof ph.degraded === "number" ? ph.degraded : 0,
-      empty: typeof ph.empty === "number" ? ph.empty : 0,
-    };
-  }
-
   return {
     score: raw.score,
     legend: {
@@ -198,7 +187,6 @@ function parseDashboardOverviewBody(body: unknown): DashboardOverviewInput | nul
     },
     poolVolume,
     alerts,
-    poolsHealth,
   };
 }
 
