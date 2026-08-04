@@ -25,6 +25,7 @@ export interface DemoDeploymentConfig {
   registry: string;
   vaultExecution?: string;
   swapRouter?: string;
+  achievements?: string;
   scenarioDeployer?: string;
   testUser?: string;
   tokens: Partial<Record<DemoTokenSymbol, string>>;
@@ -87,6 +88,7 @@ export function loadDemoConfig(): DemoDeploymentConfig {
     registry: getAddress(registry),
     vaultExecution: raw.vaultExecution ? getAddress(raw.vaultExecution) : undefined,
     swapRouter: raw.swapRouter ? getAddress(raw.swapRouter) : undefined,
+    achievements: raw.achievements ? getAddress(raw.achievements) : undefined,
     scenarioDeployer: raw.scenarioDeployer ? getAddress(raw.scenarioDeployer) : undefined,
     testUser: raw.testUser ? getAddress(raw.testUser) : undefined,
     agentSigner: raw.agentSigner ? getAddress(raw.agentSigner) : undefined,

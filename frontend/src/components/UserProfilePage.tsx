@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState, useCallback } from "react";
 import { BrowserProvider, formatEther, getAddress } from "ethers";
 import { useWallet } from "../contexts/WalletContext";
-import { api, computeUserStats, type TokenBalance } from "../api/client";
+import { api, type OnChainAchievements, type TokenBalance } from "../api/client";
 import { fetchNativeCurrencySymbol } from "../lib/wallet";
 import { Identicon } from "./WalletAvatar";
 import badget1 from "../imgs/badget1.svg";
@@ -12,70 +12,75 @@ import badget5 from "../imgs/badget5.svg";
 
 interface BadgeData {
   id: string;
+  tier: number;
   title: string;
   icon: string;
   image: string;
   description: string;
   requirement: string;
-  threshold: number;
 }
 
 const BADGES: BadgeData[] = [
   {
     id: "badge-1",
-    title: "First Step",
+    tier: 0,
+    title: "First Check Swap",
     icon: "①",
     image: badget1,
-    description: "Cumulative safe trading volume reaches $1,000",
-    requirement: "Volume ≥ $1,000",
-    threshold: 1000,
+    description: "Complete your first Safe Mode swap that passes the on-chain Sentinel check.",
+    requirement: "1 swap + 1 check",
   },
   {
     id: "badge-2",
+    tier: 1,
     title: "Diligent Guardian",
     icon: "②",
     image: badget2,
-    description: "Cumulative safe trading volume reaches $10,000 with 5+ Safe Mode checks",
-    requirement: "Volume ≥ $10,000, 5+ checks",
-    threshold: 10000,
+    description: "Demonstrate consistent Safe Mode usage with meaningful USDC volume.",
+    requirement: "Volume ≥ $10,000, 3+ checks",
   },
   {
     id: "badge-3",
+    tier: 2,
     title: "Sentinel Adept",
     icon: "③",
     image: badget3,
-    description: "Cumulative safe trading volume reaches $50,000 with zero failures",
-    requirement: "Volume ≥ $50,000, 0 failures",
-    threshold: 50000,
+    description: "Sustain higher protected trading volume with repeated Sentinel checks.",
+    requirement: "Volume ≥ $50,000, 5+ checks",
   },
   {
     id: "badge-4",
+    tier: 3,
     title: "Vault Sovereign",
     icon: "④",
     image: badget4,
-    description: "Cumulative safe trading volume reaches $200,000 — elite tier achievement",
-    requirement: "Volume ≥ $200,000",
-    threshold: 200000,
+    description: "Reach advanced cumulative USDC volume with disciplined check habits.",
+    requirement: "Volume ≥ $100,000, 10+ checks",
   },
   {
     id: "badge-5",
+    tier: 4,
     title: "Legend of Sentinel",
     icon: "⑤",
     image: badget5,
-    description: "The ultimate achievement — cumulative safe trading volume exceeds $1,000,000",
-    requirement: "Volume ≥ $1,000,000",
-    threshold: 1000000,
+    description: "The ultimate on-chain achievement — million-dollar protected volume.",
+    requirement: "Volume ≥ $1,000,000, 10+ checks",
   },
 ];
 
-const TOP_THRESHOLD = 1000000;
+const TOP_VOLUME = 1_000_000;
+
+function isBadgeUnlocked(achievements: OnChainAchievements | null, tier: number): boolean {
+  if (!achievements) return false;
+  return achievements.badges.some((b) => b.tier === tier && b.unlocked);
+}
 
 export function UserProfilePage() {
   const { account } = useWallet();
   const [selectedBadge, setSelectedBadge] = useState<BadgeData | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [safeVolume, setSafeVolume] = useState(0);
-  const [stats, setStats] = useState({ swapCount: 0, rejectCount: 0, fallbackCount: 0, safeVolumeUsd: 0 });
+  const [achievements, setAchievements] = useState<OnChainAchievements | null>(null);
+  const [achievementsError, setAchievementsError] = useState("");
   const [loading, setLoading] = useState(true);
   const [nativeBal, setNativeBal] = useState<string | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState("MON");
@@ -107,37 +112,47 @@ export function UserProfilePage() {
     }
   }, [checksumAddr]);
 
+  const refreshAchievements = useCallback(async () => {
+    if (!checksumAddr) {
+      setAchievements(null);
+      setAchievementsError("");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setAchievementsError("");
+    try {
+      const view = await api.demoAchievements(checksumAddr);
+      setAchievements(view);
+    } catch (e) {
+      setAchievements(null);
+      setAchievementsError(e instanceof Error ? e.message : "无法读取链上勋章数据");
+    } finally {
+      setLoading(false);
+    }
+  }, [checksumAddr]);
+
   useEffect(() => {
     if (checksumAddr) fetchBalances();
   }, [checksumAddr, fetchBalances]);
 
   useEffect(() => {
-    api.events()
-      .then((events) => {
-        const s = computeUserStats(events);
-        setStats(s);
-        setSafeVolume(s.safeVolumeUsd);
-      })
-      .catch(() => {
-        setStats({ swapCount: 0, rejectCount: 0, fallbackCount: 0, safeVolumeUsd: 0 });
-        setSafeVolume(0);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    void refreshAchievements();
+  }, [refreshAchievements]);
 
-  const unlockedBadges = BADGES.filter((b) => safeVolume >= b.threshold);
-  const lockedBadges = BADGES.filter((b) => safeVolume < b.threshold);
-  const nextTier = BADGES.find((b) => safeVolume < b.threshold)?.threshold ?? TOP_THRESHOLD;
+  const safeVolume = achievements?.usdcVolumeHuman ?? 0;
+  const unlockedBadges = BADGES.filter((b) => isBadgeUnlocked(achievements, b.tier));
+  const lockedBadges = BADGES.filter((b) => !isBadgeUnlocked(achievements, b.tier));
+  const nextVolumeTier = [10_000, 50_000, 100_000, 1_000_000].find((t) => safeVolume < t) ?? TOP_VOLUME;
 
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
         <h2 className="sentinel-title" style={{ margin: "0 0 8px" }}>账户与勋章</h2>
         <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
-          查看钱包概览、交易统计，以及基于安全交易量的成就勋章
+          链上读取 Sentinel 检查次数、USDC 交易量与勋章解锁状态（Vault/Router 同事务写入，无额外 Gas）
         </p>
       </div>
-
 
       {checksumAddr && (
         <div className="sentinel-card" style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 20, padding: "20px 24px" }}>
@@ -181,26 +196,28 @@ export function UserProfilePage() {
         </div>
       )}
 
-      <div className="sentinel-label" style={{ marginTop: 24, marginBottom: 12 }}>交易概览</div>
+      <div className="sentinel-label" style={{ marginTop: 24, marginBottom: 12 }}>链上交易概览</div>
       <div className="sentinel-grid-2" style={{ marginBottom: 24 }}>
         <div className="sentinel-card">
-          <div className="sentinel-label">活动统计</div>
+          <div className="sentinel-label">活动统计（链上）</div>
           {loading ? (
             <p style={{ color: "var(--text-muted)", fontSize: 14 }}>加载中...</p>
-          ) : account ? (
+          ) : achievementsError ? (
+            <p style={{ color: "var(--red)", fontSize: 14, margin: 0 }}>{achievementsError}</p>
+          ) : account && achievements ? (
             <>
-              <StatRow label="成功 Swap" value={String(stats.swapCount)} />
-              <StatRow label="拒绝 / 失败" value={String(stats.rejectCount)} accent={stats.rejectCount > 0 ? "var(--red)" : undefined} />
-              <StatRow label="Fallback 次数" value={String(stats.fallbackCount)} />
+              <StatRow label="Sentinel 检查" value={String(achievements.checkCount)} />
+              <StatRow label="Safe Swap" value={String(achievements.safeSwapCount)} />
+              <StatRow label="已解锁勋章" value={`${unlockedBadges.length}/${BADGES.length}`} accent="var(--green)" />
             </>
           ) : (
             <p style={{ color: "var(--text-muted)", fontSize: 14, margin: 0 }}>
-              连接 MetaMask 后可在此查看与您钱包相关的链上活动
+              连接 MetaMask 后可读取链上成就数据
             </p>
           )}
         </div>
         <div className="sentinel-card">
-          <div className="sentinel-label">累计安全交易量</div>
+          <div className="sentinel-label">累计 USDC 交易量（链上）</div>
           <div style={{ fontSize: 32, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)", marginBottom: 8 }}>
             ${safeVolume.toLocaleString()}
           </div>
@@ -208,7 +225,7 @@ export function UserProfilePage() {
             <div
               style={{
                 height: "100%",
-                width: `${Math.min((safeVolume / TOP_THRESHOLD) * 100, 100)}%`,
+                width: `${Math.min((safeVolume / TOP_VOLUME) * 100, 100)}%`,
                 background: "var(--gradient-brand)",
                 borderRadius: 4,
                 transition: "width 0.5s ease",
@@ -216,15 +233,22 @@ export function UserProfilePage() {
             />
           </div>
           <div style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 4 }}>
-            下一等级: ${nextTier.toLocaleString()} · 已解锁 {unlockedBadges.length}/{BADGES.length} 枚勋章
+            下一档交易量: ${nextVolumeTier.toLocaleString()} · 已解锁 {unlockedBadges.length}/{BADGES.length} 枚勋章
           </div>
         </div>
       </div>
 
-      <div className="sentinel-label" style={{ marginBottom: 12 }}>勋章墙</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div className="sentinel-label" style={{ margin: 0 }}>勋章墙</div>
+        {checksumAddr && (
+          <button type="button" className="sentinel-btn sentinel-btn-secondary" onClick={() => refreshAchievements()} disabled={loading}>
+            {loading ? "刷新中…" : "刷新链上数据"}
+          </button>
+        )}
+      </div>
       <div className="badget-wall">
         {[...unlockedBadges, ...lockedBadges].map((badge) => {
-          const isUnlocked = safeVolume >= badge.threshold;
+          const isUnlocked = isBadgeUnlocked(achievements, badge.tier);
           return (
             <div
               key={badge.id}
@@ -280,7 +304,7 @@ export function UserProfilePage() {
       </div>
 
       {showModal && selectedBadge && (
-        <BadgeModal badge={selectedBadge} onClose={() => setShowModal(false)} safeVolume={safeVolume} />
+        <BadgeModal badge={selectedBadge} onClose={() => setShowModal(false)} achievements={achievements} />
       )}
     </div>
   );
@@ -295,8 +319,16 @@ function StatRow({ label, value, accent }: { label: string; value: string; accen
   );
 }
 
-function BadgeModal({ badge, onClose, safeVolume }: { badge: BadgeData; onClose: () => void; safeVolume: number }) {
-  const isUnlocked = safeVolume >= badge.threshold;
+function BadgeModal({
+  badge,
+  onClose,
+  achievements,
+}: {
+  badge: BadgeData;
+  onClose: () => void;
+  achievements: OnChainAchievements | null;
+}) {
+  const isUnlocked = isBadgeUnlocked(achievements, badge.tier);
 
   return (
     <div
@@ -380,7 +412,7 @@ function BadgeModal({ badge, onClose, safeVolume }: { badge: BadgeData; onClose:
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>Status</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: isUnlocked ? "var(--green)" : "var(--red)" }}>
-              {isUnlocked ? "✓ Unlocked" : "🔒 Locked"}
+              {isUnlocked ? "✓ Unlocked (on-chain)" : "🔒 Locked"}
             </div>
           </div>
         </div>

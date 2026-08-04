@@ -8,6 +8,7 @@ import {DemoPoolRegistry} from "../src/registry/DemoPoolRegistry.sol";
 import {UniswapV2Quote} from "../src/libraries/UniswapV2Quote.sol";
 import {IDemoPair} from "../src/dex/interfaces/IDemoPair.sol";
 import {VaultExecution} from "../src/VaultExecution.sol";
+import {SentinelAchievements} from "../src/achievements/SentinelAchievements.sol";
 
 /// @notice Deploy demo scenario in Monad-safe batches (≤30M gas per transaction).
 contract DeployAllDemo is Script {
@@ -28,6 +29,7 @@ contract DeployAllDemo is Script {
         DemoScenarioDeployer.Scenario scenario;
         address vaultExecution;
         address swapRouter;
+        address achievements;
         address scenarioDeployer;
         address deployer;
         uint256 chainId;
@@ -49,10 +51,18 @@ contract DeployAllDemo is Script {
         VaultExecution vault = new VaultExecution(DEFAULT_MAX_LOSS_BPS, deployer, agentSigner);
         artifacts.vaultExecution = address(vault);
 
+        SentinelAchievements achievements = new SentinelAchievements(
+            address(artifacts.scenario.tokens.usdc), deployer
+        );
+
         DemoSwapRouter router = new DemoSwapRouter(
-            address(vault), address(artifacts.scenario.registry), address(scenarioDeployer)
+            address(vault), address(artifacts.scenario.registry), address(scenarioDeployer), address(achievements)
         );
         artifacts.swapRouter = address(router);
+        artifacts.achievements = address(achievements);
+        vault.setAchievements(address(achievements));
+        achievements.setReporter(address(vault), true);
+        achievements.setReporter(address(router), true);
         scenarioDeployer.authorizeFunder(address(router), true);
         scenarioDeployer.authorizeFunder(deployer, true);
 
@@ -177,6 +187,9 @@ contract DeployAllDemo is Script {
             '  "swapRouter": "',
             vm.toString(artifacts.swapRouter),
             '",\n',
+            '  "achievements": "',
+            vm.toString(artifacts.achievements),
+            '",\n',
             '  "scenarioDeployer": "',
             vm.toString(artifacts.scenarioDeployer),
             '",\n',
@@ -218,6 +231,7 @@ contract DeployAllDemo is Script {
         console2.log("Registry:", address(scenario.registry));
         console2.log("VaultExecution:", artifacts.vaultExecution);
         console2.log("DemoSwapRouter:", artifacts.swapRouter);
+        console2.log("SentinelAchievements:", artifacts.achievements);
         console2.log("ScenarioDeployer:", artifacts.scenarioDeployer);
         console2.log("Pool count:", scenario.registry.poolCount());
 

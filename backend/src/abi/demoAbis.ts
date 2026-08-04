@@ -47,3 +47,12 @@ export const demoPoolRegistryAbi = [
   "function isSealed() view returns (bool)",
   "function getAllPools() view returns (tuple(bytes32 routeId, address pair, address tokenIn, address tokenOut, uint8 label)[])",
 ] as const;
+
+export const sentinelAchievementsAbi = [
+  "function stats(address user) view returns (uint128 usdcVolume, uint64 checkCount, uint64 safeSwapCount, uint8 badgeFlags)",
+  "function badgeFlagsOf(address user) view returns (uint8)",
+  "event BadgeUnlocked(address indexed user, uint8 tier)",
+  "event StatsUpdated(address indexed user, uint64 checkCount, uint64 safeSwapCount, uint128 usdcVolume, uint8 badgeFlags)",
+] as const;
+
+export const BADGE_TIER_COUNT = 5;

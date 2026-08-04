@@ -14,6 +14,7 @@ import {
 } from "../services/demoProfileSwitchService.js";
 import { isDemoProfileName } from "../config/demoProfile.js";
 import { prepareUsdcFaucet } from "../services/demoFaucetService.js";
+import { getOnChainAchievements } from "../services/achievementsService.js";
 
 const router = Router();
 
@@ -182,6 +183,25 @@ router.post("/profile", (req: Request, res: Response) => {
   }
 });
 
+router.get("/achievements/:address", async (req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "Demo endpoints require demo chain mode" });
+  }
+
+  const addressParam = typeof req.params.address === "string" ? req.params.address.trim() : "";
+  if (!addressParam) {
+    return res.status(400).json({ error: "Address parameter is required" });
+  }
+
+  try {
+    const view = await getOnChainAchievements(addressParam);
+    res.json(view);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load on-chain achievements";
+    res.status(503).json({ error: message });
+  }
+});
+
 router.post("/faucet/usdc/prepare", async (req: Request, res: Response) => {
   if (!isDemoChainMode()) {
     return res.status(404).json({ error: "Demo endpoints require demo chain mode" });
@@ -227,6 +247,7 @@ router.get("/status", async (_req: Request, res: Response) => {
       poolCount: config.pools.length,
       tokens: config.tokens,
       scenarioDeployer: config.scenarioDeployer ?? null,
+      achievements: config.achievements ?? null,
       testUser: config.testUser ?? null,
       swapRouter: getOptionalSwapRouterAddress() ?? null,
       priceRatio: "USDC:GOOD:BAD:BAIT = 1:20:100:1",

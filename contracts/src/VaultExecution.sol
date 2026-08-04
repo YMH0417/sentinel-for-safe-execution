@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {ISentinelAchievements} from "./achievements/ISentinelAchievements.sol";
+
 /**
  * @title VaultExecution
  * @notice 执行安全闸门 — 在交易真正发出前做最后一道链上校验
@@ -32,6 +34,7 @@ contract VaultExecution {
 
     address public owner;
     address public agentSigner;
+    address public achievements;
     bool public paused;
     uint256 public maxLossBps; // 默认 100 bps = 1%
     mapping(address user => uint256 nonce) public nonces;
@@ -124,6 +127,12 @@ contract VaultExecution {
         address oldSigner = agentSigner;
         agentSigner = _agentSigner;
         emit AgentSignerUpdated(oldSigner, _agentSigner);
+    }
+
+    function setAchievements(address _achievements) external onlyOwner {
+        address old = achievements;
+        achievements = _achievements;
+        emit ConfigUpdated("achievements", uint256(uint160(old)), uint256(uint160(_achievements)));
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
@@ -227,6 +236,10 @@ contract VaultExecution {
             decision,
             block.timestamp
         );
+
+        if (achievements != address(0)) {
+            ISentinelAchievements(achievements).recordCheck(user);
+        }
 
         return true;
     }

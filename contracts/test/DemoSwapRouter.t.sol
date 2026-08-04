@@ -25,7 +25,7 @@ contract DemoSwapRouterTest is Test {
         scenario = scenarioDeployer.deploy();
 
         vault = new VaultExecution(100, address(this), agent);
-        router = new DemoSwapRouter(address(vault), address(scenario.registry), address(scenarioDeployer));
+        router = new DemoSwapRouter(address(vault), address(scenario.registry), address(scenarioDeployer), address(0));
         scenarioDeployer.authorizeFunder(address(router), true);
         scenarioDeployer.authorizeFunder(address(this), true);
     }

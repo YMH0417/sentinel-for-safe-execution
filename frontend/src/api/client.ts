@@ -98,6 +98,21 @@ export interface LlmSettingsView {
   responseLanguage: "en" | "zh";
 }
 
+export interface OnChainBadgeTier {
+  tier: number;
+  unlocked: boolean;
+}
+
+export interface OnChainAchievements {
+  address: string;
+  achievementsContract: string;
+  checkCount: number;
+  safeSwapCount: number;
+  usdcVolumeHuman: number;
+  badgeFlags: number;
+  badges: OnChainBadgeTier[];
+}
+
 export interface DemoSupplyOverview {
   scenarioDeployer: string;
   testUser: string;
@@ -287,6 +302,8 @@ export const api = {
     ),
   demoSupply: (holder: string) =>
     getJson<DemoSupplyOverview>(`/demo/supply?holder=${encodeURIComponent(holder)}`),
+  demoAchievements: (address: string) =>
+    getJson<OnChainAchievements>(`/demo/achievements/${encodeURIComponent(address)}`),
   quote: (tokenIn: string, tokenOut: string, amount: string) =>
     getJson<{ routes: import("../types").Route[]; referencePrice?: number; recommendedRouteId?: string }>(
       `/quote?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amount=${amount}`

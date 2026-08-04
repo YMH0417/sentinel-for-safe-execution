@@ -65,9 +65,12 @@ $lines = @(
     "DEMO_REGISTRY_ADDRESS=$($deployment.registry)",
     "VAULT_EXECUTION_ADDRESS=$($deployment.vaultExecution)",
     "DEMO_SWAP_ROUTER_ADDRESS=$($deployment.swapRouter)",
-    "DEMO_SCENARIO_DEPLOYER=$($deployment.scenarioDeployer)",
-    ""
+    "DEMO_SCENARIO_DEPLOYER=$($deployment.scenarioDeployer)"
 )
+if ($deployment.achievements) {
+    $lines += "DEMO_ACHIEVEMENTS_ADDRESS=$($deployment.achievements)"
+}
+$lines += ""
 
 $isLocal = ($chainProfile.deploymentTarget -eq "local") -or ($deployment.deploymentTarget -eq "local")
 if ($isLocal) {
