@@ -14,7 +14,7 @@ import {
 } from "../services/demoProfileSwitchService.js";
 import { isDemoProfileName } from "../config/demoProfile.js";
 import { prepareUsdcFaucet } from "../services/demoFaucetService.js";
-import { getOnChainAchievements } from "../services/achievementsService.js";
+import { getUserAchievements } from "../services/achievementsService.js";
 
 const router = Router();
 
@@ -194,7 +194,7 @@ router.get("/achievements/:address", async (req: Request, res: Response) => {
   }
 
   try {
-    const view = await getOnChainAchievements(addressParam);
+    const view = await getUserAchievements(addressParam);
     res.json(view);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load on-chain achievements";
@@ -248,6 +248,8 @@ router.get("/status", async (_req: Request, res: Response) => {
       tokens: config.tokens,
       scenarioDeployer: config.scenarioDeployer ?? null,
       achievements: config.achievements ?? null,
+      ledger: config.ledger ?? null,
+      ledgerSource: process.env.SENTINEL_LEDGER_SOURCE?.trim() || "auto",
       testUser: config.testUser ?? null,
       swapRouter: getOptionalSwapRouterAddress() ?? null,
       priceRatio: "USDC:GOOD:BAD:BAIT = 1:20:100:1",

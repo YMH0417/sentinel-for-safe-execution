@@ -78,7 +78,7 @@ export function SecurityGauge({ score, size = 180, label = "安全评分" }: Pro
           / 100
         </text>
       </svg>
-      <div className="security-gauge-sublabel">综合评估分数</div>
+      <div className="security-gauge-sublabel">综合得分</div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   getSwapSigner,
   getSwapWallet,
 } from "../config/chainConfig.js";
+import { supportsAgentAutoFallback } from "../config/autoFallbackConfig.js";
 import {
   DemoDeploymentConfig,
   DemoTokenSymbol,
@@ -372,13 +373,13 @@ async function resolveExecutionPlan(
     safetyMode: "safe" as const,
   };
 
-  addEvent({
+  await addEvent({
     eventType: "RouteEvaluated",
     routeId: params.routeId,
     message: `Safe swap evaluate ${params.routeId}`,
     context: eventContext,
   });
-  addEvent({
+  await addEvent({
     eventType: "DecisionMade",
     routeId: params.routeId,
     decision: decision.decision,
@@ -403,7 +404,54 @@ async function resolveExecutionPlan(
   }
 
   if (decision.decision === "FALLBACK_TO_SAFE_ROUTE") {
-    addEvent({
+    const fallbackRouteId = decision.fallbackRouteId;
+    if (fallbackRouteId && supportsAgentAutoFallback(params.routeId)) {
+      await addEvent({
+        eventType: "FallbackRequired",
+        routeId: params.routeId,
+        fallbackRouteId,
+        decision: "FALLBACK_TO_SAFE_ROUTE",
+        riskScore: requestedDecision.riskScore,
+        message: `浅池风险偏高，自动改走 ${fallbackRouteId}`,
+        context: {
+          ...eventContext,
+          flags: requestedDecision.flags,
+          executedRouteId: fallbackRouteId,
+          autoFallback: true,
+        },
+      });
+
+      const fallbackDecision = await evaluateRoute(
+        fallbackRouteId,
+        params.configProfile ?? "normal",
+        { tokenIn, tokenOut, amountIn: params.amountIn }
+      );
+
+      if (fallbackDecision.decision === "REJECT") {
+        throw new SwapExecutionError("SWAP_REJECTED_BY_AGENT", fallbackDecision.reason, {
+          decision: fallbackDecision,
+        });
+      }
+
+      const executionDecision: Decision =
+        fallbackDecision.decision === "ALLOW"
+          ? fallbackDecision
+          : {
+              ...fallbackDecision,
+              decision: "ALLOW",
+              reason: `执行已改走 ${fallbackRouteId}`,
+              routeId: fallbackRouteId,
+            };
+
+      return {
+        executedRouteId: fallbackRouteId,
+        agentDecision: requestedDecision,
+        executionDecision,
+        agentBypassed: false,
+      };
+    }
+
+    await addEvent({
       eventType: "FallbackRequired",
       routeId: params.routeId,
       fallbackRouteId: decision.fallbackRouteId ?? undefined,
@@ -515,7 +563,7 @@ async function executeSdaDelayedRouterSwap(params: {
     params.swapRequest.fastForwardSdaWindow === true ||
     params.swapRequest.correlationId?.startsWith("batch-") === true;
 
-  addEvent({
+  await addEvent({
     eventType: "SdaExecutionWindowWaiting",
     routeId: params.executedRouteId,
     message: fastForward
@@ -827,7 +875,7 @@ async function executeDemoSwapInner(params: SwapRequest): Promise<SwapResult> {
     isAgentSigningConfigured() &&
     payerIsUser;
 
-  addEvent({
+  await addEvent({
     eventType: "ExecutionAttempted",
     routeId: executedRouteId,
     decision: agentDecision.decision,
@@ -1081,7 +1129,7 @@ export async function executeAllDemoSwaps(
         correlationId,
       });
       results.push(result);
-      addEvent({
+      await addEvent({
         eventType: "SwapExecuted",
         routeId: result.executedRouteId ?? result.routeId,
         decision: result.agentDecision,
@@ -1114,7 +1162,7 @@ export async function executeAllDemoSwaps(
         routeId: pool.routeName,
         error: message,
       });
-      addEvent({
+      await addEvent({
         eventType: "SwapFailed",
         routeId: pool.routeName,
         message,

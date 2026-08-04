@@ -1,21 +1,22 @@
 ﻿.dashboard-box {
   display: flex;
+  flex-direction: column;
   gap: 16px;
   height: 100%;
 }
 
-.dashboard-main {
+.dashboard-upper {
   display: flex;
-  flex-direction: column;
-  gap: 2%;
+  gap: 16px;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
 }
 
 .dashboard-main-top {
   display: flex;
   gap: 16px;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -27,24 +28,70 @@
 .dashboard-main-top > .dashboard-card:nth-child(2) {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dashboard-pool-card .dashboard-card-title {
+  flex-shrink: 0;
+}
+
+.dashboard-pool-card .dashboard-chain-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-pool-card .dashboard-chain-row {
+  flex: 1;
+  min-height: 0;
 }
 
 .dashboard-main-top > .dashboard-card:nth-child(3) {
-  position: relative;
   width: 35%;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.dashboard-chart {
-  flex-shrink: 0;
-}
-
-.dashboard-sidebar {
+.dashboard-sidebar-stats {
   display: flex;
   flex-direction: column;
   gap: 14px;
   width: 15%;
   flex-shrink: 0;
+  min-height: 0;
+}
+
+.dashboard-sidebar-stats > .dashboard-stat-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18px 20px;
+}
+
+.dashboard-sidebar-stats .dashboard-stat-value {
+  margin-top: 10px;
+  font-size: 22px;
+}
+
+.dashboard-ai-row {
+  flex-shrink: 0;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-ai-row > .dashboard-ai-chart-cell {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .badget-wall {

@@ -1,220 +1,148 @@
-# Sentinel for Safe Execution — System Architecture
+# Sentinel 架构（Vercel + Neon 目标）
 
-> **Last updated**: 2026-08-02 — Three demo profiles, Settings profile switch, MetaMask wallet swap, Monad RPC pacing.
+> **Last updated**: 2026-08-05
 
-## Overview
+## 一句话
 
-Execution Safety MVP: rule-based Agent evaluates swap routes; Vault enforces hard limits; demo mode runs **48 real on-chain swap routes** (12 pairs × 4 pool types) on Anvil or Monad testnet.
+- **产品库（Neon）**：事件、成交、徽章、交易池状态 — 前端 Dashboard / 个人页只读 API。
+- **链（RPC）**：仅 Settings 链状态、下单前 quote/evaluate、真实发 tx。
 
-| Mode | Quote | Execute | Swap |
-|------|-------|---------|------|
-| **mock** | `routes.json` | In-process mock | N/A |
-| **demo** | On-chain reserves | Vault (optional) | Backend safe/force **or** MetaMask wallet plan |
-| **rpc** | Config-dependent | Real EIP-712 Vault | N/A |
-
-### Demo profiles
-
-| Profile | Chain ID | RPC | Notes |
-|---------|----------|-----|-------|
-| `anvil-local` | 31337 | Local Anvil | Full backend keys; Router swap available |
-| `anvil-fork-monad` | 10143 | Anvil fork | Same as local keys on fork state |
-| `monad-testnet` | 10143 | Public Monad RPC | Often no `SWAP_PRIVATE_KEY`; wallet path + RPC pacing |
-
-Definition: `shared/demo-chain-profiles.json`. Switch via Settings (`POST /api/demo/profile`) or `scripts/switch-demo-profile.ps1`.
+不再用 Anvil 合约当「数据库」，不再 hybrid 双链读。
 
 ---
 
-## Safe vs Unsafe (product semantics)
+## 三层
 
-| Path | API | Agent | Slippage band |
-|------|-----|-------|---------------|
-| **Safe** | `POST /api/swap/safe` or wallet plan + MetaMask | Required — ALLOW / REJECT / FALLBACK | **Off** (`minOut=0`; Agent owns policy) |
-| **Unsafe / Force** | `POST /api/swap/force` or wallet plan `force: true` | **Bypassed** | **On** — quoted vs SAFE `expectedOut` ± `slippageBps` |
-
-Frontend `/transaction` exposes **Safe / Unsafe** toggle. When backend swap is unavailable, frontend uses **MetaMask execution** (`demoWalletSwap.ts`).
-
----
-
-## Local Demo Topology
-
-```text
-.\start-demo.ps1 [-Profile anvil-local | anvil-fork-monad]
-    → Anvil :8545 (or fork)
-    → DeployAllDemo (forge broadcast, 48 pools)
-    → deployments/local-{chainId}-demo.json
-    → scripts/sync-backend-env.ps1 → backend/.env
-    → backend :8080 (dotenv)
-    → frontend :8081
-
-monad-testnet:
-    scripts/deploy-monad-testnet.ps1 → monad-10143-demo.json
-    Settings or switch-demo-profile.ps1 → backend/.env (no redeploy)
+```
+┌─────────────────────────────────────────────────────────┐
+│  Frontend (Vercel Static / Vite build)                   │
+│  Dashboard · Profile · Swap UI                           │
+└───────────────────────────┬─────────────────────────────┘
+                            │ HTTPS /api/*
+┌───────────────────────────▼─────────────────────────────┐
+│  API (Vercel Serverless — 现 Express，可迁 Next Route)   │
+│                                                          │
+│  ┌─────────────────┐    ┌─────────────────────────────┐ │
+│  │ Product DB      │    │ Chain Gateway (RPC)         │ │
+│  │ Neon Postgres   │    │ 仅 quote / evaluate / swap  │ │
+│  │                 │    │ / settings 链诊断            │ │
+│  │ • events        │    └─────────────────────────────┘ │
+│  │ • ledger_trades │              │                     │
+│  │ • checked_trades│              │ ethers → Monad      │
+│  └────────▲────────┘              ▼                     │
+│           │ write              on-chain tx             │
+└───────────┼────────────────────────────────────────────┘
+            │
+     swap 成功后 POST /api/ledger/trades
+     evaluate 后 addEvent
 ```
 
 ---
 
-## System Flow (demo — Safe path, backend executor)
+## 数据谁存什么
 
-```
-Client
-    ↓ GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100
-chainQuoteService → demoPairReadService.readSwapReserves() → up to 4 routes
-    ↓ POST /api/evaluate (frontend Safe mode) or inline in swap
-agentService → ALLOW | REJECT | FALLBACK (SDA / BAD/BAIT out → REJECT)
-    ↓ POST /api/swap/safe { routeId, amountIn }
-swapService
-    ↓ evaluateRoute(); if FALLBACK → execute on route-*-safe
-    ↓ re-quote (no slippage band — router minOut=0)
-    ↓ executionMode:
-        · router — DemoSwapRouter.swapWithPermit (Vault + swap, 1 tx)
-        · direct — fundSwapper → transfer → pair.swap (3 tx)
-    ↓ balance delta on recipient
-eventService → memory + backend/data/events.jsonl
-```
+| 数据 | 本地开发（现在） | Vercel 生产（目标） | 谁写 | 谁读 |
+|------|------------------|---------------------|------|------|
+| Agent / Swap 事件 | `data/events.jsonl` | `events` 表 | evaluate、swap、execute | Dashboard 分/警报、analysis |
+| 全部成交 | `trade-ledger.json` → `trades[]` | `ledger_trades` | POST ledger、后端 swap 镜像 | 历史列表 |
+| 经 Check 成交 | `checkedTrades{}` | `ledger_checked_trades` | 同上，`registerCheck: true` | checkCount、徽章 |
+| 交易池状态 4 行 | JSON 按 `poolLabel` 聚合 | SQL 聚合近 N 笔 | 随 ledger 写入自动 | `/api/debug/pool-volume` |
+| 用户徽章统计 | JSON `users{}` 或现场聚合 | 视图 / 聚合查询 | 随 ledger | `/api/demo/achievements` |
+| 路由 / Agent 规则 | `shared/demo-data/routes.json` + `risk-config.json` | 仓库静态或 DB 种子 | 部署时 | evaluate |
+| 合约地址 | manifest + env | Vercel Env | 部署脚本 | chain gateway |
+| 链上 reserves / 报价 | — | — | 不持久化 | evaluate、quote 时 RPC 读 |
 
-## System Flow (demo — MetaMask wallet executor)
-
-```
-Client (TransactionPage)
-    ↓ preflight: swapConfigured? routerSwapAvailable?
-    ↓ if backend swap unavailable → wallet path
-POST /api/swap/wallet/plan { routeId, amountIn, recipient, force? }
-    ↓ Agent evaluation + quote (same rules as backend swap)
-    ↓ returns executionStrategy: router | direct | sda
-Frontend demoWalletSwap.ts
-    ↓ user signs permit / transfer / swap via MetaMask
-    ↓ Safe + router requires wallet = Vault agentSigner
-```
-
-## System Flow (demo — Unsafe / force path)
-
-```
-Client
-    ↓ POST /api/swap/force { routeId, amountIn, slippageBps }
-swapService (skip evaluate)
-    ↓ assertQuoteWithinSlippageBand(quoted, SAFE expectedOut, slippageBps)
-    ↓ if TOXIC quote too high → QUOTE_DEVIATION_EXCEEDED (pre-chain)
-    ↓ if SHALLOW quote too low → SLIPPAGE_EXCEEDED (pre-chain)
-    ↓ else execute swap (agentBypassed=true)
-```
-
-API errors use structured `{ error: { code, message } }` via route validators and
-`middleware/errorHandler.ts` (invalid JSON → 400, unknown route → 404).
-
-### Vault-only flow (separate)
-
-```
-POST /api/evaluate → POST /api/execute { evaluation, permit, signature }
-    → VaultExecution.executeRoute() → VaultExecuted | VaultRejected
-```
-
-> `/api/execute` does **not** move DEX tokens. Use `/api/swap` or wallet plan for demo swaps.
+**不存进 DB 的**：实时余额、池 reserves、区块扫描结果（除非 Settings 调试接口临时读）。
 
 ---
 
-## Contracts
+## API 分区
 
-| Contract | Role |
-|----------|------|
-| `DemoScenarioDeployer` | Deploy **48** pools, mint tokens, `authorizeFunder` + `fundSwapper` |
-| `DemoPoolRegistry` | 48 pools sealed (`PoolLabel`: SAFE/SHALLOW/TOXIC/SDA), token risk tags |
-| `DemoPair` | Uniswap V2-style `swap()` |
-| `DemoSwapRouter` | `vault.executeRoute` + fund + swap in **one transaction** |
-| `VaultExecution` | EIP-712 gate (standalone or via Router) |
+### A. 只读产品库（无 RPC）
 
-Deployment manifest (auto-written by forge):
+| 方法 | 路径 | 数据源 |
+|------|------|--------|
+| GET | `/api/events` | events |
+| GET | `/api/ledger/trades/:addr` | ledger |
+| GET | `/api/ledger/achievements/:addr` | ledger |
+| GET | `/api/demo/achievements/:addr` | ledger（别名） |
+| GET | `/api/debug/pool-volume` | ledger 聚合 |
+| GET | `/api/analysis*` | events |
 
-```json
-{
-  "chainId": 31337,
-  "registry": "0x...",
-  "vaultExecution": "0x...",
-  "swapRouter": "0x...",
-  "scenarioDeployer": "0x...",
-  "agentSigner": "0x...",
-  "tokens": { "USDC": "0x...", "GOOD": "0x...", "BAD": "0x...", "BAIT": "0x..." },
-  "pools": []
-}
+### B. 写产品库（无 RPC）
+
+| 方法 | 路径 | 触发 |
+|------|------|------|
+| POST | `/api/ledger/trades` | 钱包 swap 完成 / 后端 mirror |
+| — | `addEvent()` 内部 | evaluate、swap 生命周期 |
+
+### C. 必须 RPC（链）
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/quote*` | 链上报价 |
+| POST | `/api/evaluate` | 报价 + 规则 → 决策 → **写 events** |
+| POST | `/api/swap/*` | 发 tx → **写 events + ledger** |
+| POST | `/api/execute` | Vault 执行 |
+| GET | `/api/swap/balances` | 余额 |
+| GET | `/api/demo/tokens|pools` | 注册表链上读 |
+| GET | `/api/debug/pools-health` | Settings 链状态 |
+| GET | `/api/debug/rpc-check` | Settings |
+
+---
+
+## 成交闭环（标准路径）
+
+```
+1. GET /api/quote/route/:id     ← RPC（一次）
+2. POST /api/evaluate           ← RPC 报价 + 写 events
+3. MetaMask swap / POST /api/swap/wallet/plan + 链上 tx   ← RPC
+4. POST /api/ledger/trades      ← 只写 DB（registerCheck 按路径）
+5. GET /api/debug/pool-volume   ← 只读 DB
+6. GET /api/demo/achievements   ← 只读 DB
 ```
 
-Pools hydrated at runtime via `demoRegistryService` (RPC, 30s live config cache).
-
 ---
 
-## Backend Modules
+## Vercel + Neon 免费档注意点
 
-| Service | File | Responsibility |
-|---------|------|----------------|
-| Quote | `routeService.ts`, `chainQuoteService.ts` | Mock JSON or on-chain (4 pool labels) |
-| Pair read | `demoPairReadService.ts` | Shared reserves read + RPC retry + remote pacing |
-| Agent | `agentService.ts` | Rules + BAD/BAIT/SDA hard reject |
-| Agent sign | `agentSignService.ts` | EIP-712 for Router swaps |
-| Swap | `swapService.ts` | `executeSafeSwap`, `executeForceSwap`, `planWalletDemoSwap` |
-| Profile switch | `demoProfileSwitchService.ts` | List/switch profiles, rewrite `.env`, hot reload |
-| Supply | `demoSupplyService.ts` | Mint/burn overview, NDJSON stream |
-| Vault | `vaultService.ts` | `executeRoute` |
-| Registry | `demoRegistryService.ts` | Hydrate 48 pools |
-| Pool health | `poolHealthService.ts` | Sequential `/debug/pools-health` |
-| RPC retry | `utils/rpcRetry.ts` | Retry `missing revert data` on public RPC |
-| Events | `eventService.ts` | Memory + JSONL append |
-
-Config resolution (`chainConfig.ts`):
-
-- Env vars in `backend/.env` (auto-generated or Settings switch)
-- Fallback: read `vaultExecution` / `swapRouter` from deployment JSON
-
-Swap wallet: singleton + `NonceManager` + mutex (prevent nonce races).
-
----
-
-## Agent Rules
-
-**Standard** (normal profile): quote deviation, failure rate, pool risk → score 0–100.
-
-**Demo hard rules**:
-
-- tokenOut ∈ {BAD, BAIT} → REJECT (100)
-- `poolLabel === "SDA"` → REJECT (95) — execution-window / bridge-delay analogue
-
-**Slippage**: enforced **only** when `force=true`. Band vs SAFE reference `expectedOut`; mismatch → 409 `SLIPPAGE_EXCEEDED` or `QUOTE_DEVIATION_EXCEEDED`.
-
----
-
-## Events
-
-| Type | When |
+| 话题 | 做法 |
 |------|------|
-| `RouteEvaluated` / `DecisionMade` | evaluate / safe swap pre-check |
-| `FallbackRequired` | safe swap switched to safe route |
-| `SwapExecuted` / `SwapFailed` | swap result |
-| `SwapBatchCompleted` | verify-all |
-| `ExecutionSuccess` / `ExecutionRejected` | Vault execute |
-
-Persisted to `backend/data/events.jsonl`; served by `GET /api/events`.
-
-Context fields include `safetyMode` (`safe` | `force`), `agentBypassed`, `poolLabel`, `slippageBps`.
+| **不能写本地文件** | `events.jsonl` / `trade-ledger.json` → Neon（见 `docs/neon-schema.sql`） |
+| **无长期后台进程** | 去掉 `setInterval` 轮询；pool-volume 请求时算或 Vercel Cron 预热 |
+| **Serverless 冷启动** | 连接池用 `@neondatabase/serverless` 或 Prisma + Neon |
+| **密钥** | `DATABASE_URL`、`MONAD_RPC_URL`、`AGENT_PRIVATE_KEY` → Vercel Env |
+| **前端** | `frontend` build → Vercel；`VITE_API_URL` 指向 API |
+| **CORS** | API 允许前端域名 |
+| **Anvil / hybrid** | 仅本地 dev；生产 env 不设 `DEMO_HYBRID_MODE` |
 
 ---
 
-## Key Design Decisions
+## 本地 dev vs 生产
 
-1. **Safe swap is the default product path** — Agent + optional fallback; no slippage band on safe.
-2. **Force swap is the Unsafe dev path** — slippage-only guard; used by frontend Unsafe toggle and verify-all default.
-3. **Dual executors** — Backend when keys configured; MetaMask when not (typical on public testnet).
-4. **Router unifies Vault + DEX** — one tx when `DemoSwapRouter` + Agent key configured.
-5. **Profile switch without redeploy** — Settings hot-updates env for monad-testnet vs local demos.
-6. **Monad RPC resilience** — sequential reads, retry, pacing; avoid 48-way parallel `eth_call`.
-7. **Execute ≠ Swap** — Vault gate and DEX remain separable for testing.
-8. **Deterministic Agent** — no LLM; reproducible CI (`forge test`, verify-all).
+| | 本地 | Vercel + Neon |
+|---|------|----------------|
+| 产品库 | JSON 文件（`STORAGE_DRIVER=file`）或 Neon（`DATABASE_URL`） | Postgres（`DATABASE_URL`） |
+| 执行链 | Anvil 或 Monad testnet | Monad testnet |
+| SentinelLedger 合约 | 可选，**不参与产品读** | 不用 |
+| 启动脚本 | `start-demo.ps1` | `vercel deploy` + Neon migrate |
 
 ---
 
-## Related Docs
+## 待删 / 已弃用（收敛方向）
 
-| Doc | Content |
-|-----|---------|
-| [`api-contract.md`](api-contract.md) | HTTP v0.6 |
-| [`CHANGELOG.md`](CHANGELOG.md) | Release notes |
-| [`route-scenarios.md`](route-scenarios.md) | 48-route matrix + Safe/Unsafe behavior |
-| [`../scripts/start-demo.ps1`](../scripts/start-demo.ps1) | Windows one-click |
-| [`../contracts/README.md`](../contracts/README.md) | Forge deploy & tests |
+- `DEMO_HYBRID_MODE`、Anvil ledger 读、mirror 写链
+- `ledgerChainMirrorService`
+- `getPoolVolumeFromAnvilLedger` / `getPoolVolumeFromChain`（Dashboard 用）
+- `ledgerBootstrapService` 扫链 seed
+- `chainTradeIndexService` 为 volume/bootstrap 服务（可保留给 debug）
+
+---
+
+## 相关文件
+
+- `docs/neon-schema.sql` — 表结构（与 `backend/src/storage/schema.sql` 同步）
+- `backend/src/storage/` — Postgres / file 双实现（`DATABASE_URL` 切换）
+- `backend/src/services/tradeLedgerService.ts` — 账本业务层
+- `backend/src/services/eventService.ts` — 事件业务层
+- `shared/demo-data/routes.json` — 静态路由

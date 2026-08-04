@@ -28,7 +28,7 @@ const BADGES: BadgeData[] = [
     icon: "①",
     image: badget1,
     description: "Complete your first Safe Mode swap that passes the on-chain Sentinel check.",
-    requirement: "1 swap + 1 check",
+    requirement: "1+ trade",
   },
   {
     id: "badge-2",
@@ -37,7 +37,7 @@ const BADGES: BadgeData[] = [
     icon: "②",
     image: badget2,
     description: "Demonstrate consistent Safe Mode usage with meaningful USDC volume.",
-    requirement: "Volume ≥ $10,000, 3+ checks",
+    requirement: "Volume ≥ $10,000, 3+ checked trades",
   },
   {
     id: "badge-3",
@@ -150,7 +150,7 @@ export function UserProfilePage() {
       <div style={{ marginBottom: 24 }}>
         <h2 className="sentinel-title" style={{ margin: "0 0 8px" }}>账户与勋章</h2>
         <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
-          链上读取 Sentinel 检查次数、USDC 交易量与勋章解锁状态（Vault/Router 同事务写入，无额外 Gas）
+          本地交易账本：经 Check 成交次数、USDC 交易量与勋章（每笔成交写入，无需扫块）
         </p>
       </div>
 
@@ -180,7 +180,7 @@ export function UserProfilePage() {
               <div>
                 <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 2 }}>原生余额</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)" }}>
-                  {nativeBal !== null ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}` : "加载中..."}
+                  {nativeBal !== null ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}` : "加载中"}
                 </div>
               </div>
               {Object.values(tokens).map((t) => (
@@ -201,12 +201,13 @@ export function UserProfilePage() {
         <div className="sentinel-card">
           <div className="sentinel-label">活动统计（链上）</div>
           {loading ? (
-            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>加载中...</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>加载中</p>
           ) : achievementsError ? (
             <p style={{ color: "var(--red)", fontSize: 14, margin: 0 }}>{achievementsError}</p>
           ) : account && achievements ? (
             <>
-              <StatRow label="Sentinel 检查" value={String(achievements.checkCount)} />
+              <StatRow label="经 Check 成交" value={String(achievements.checkCount)} />
+              <StatRow label="成交笔数" value={String(achievements.tradeCount ?? achievements.safeSwapCount)} />
               <StatRow label="Safe Swap" value={String(achievements.safeSwapCount)} />
               <StatRow label="已解锁勋章" value={`${unlockedBadges.length}/${BADGES.length}`} accent="var(--green)" />
             </>
@@ -242,7 +243,7 @@ export function UserProfilePage() {
         <div className="sentinel-label" style={{ margin: 0 }}>勋章墙</div>
         {checksumAddr && (
           <button type="button" className="sentinel-btn sentinel-btn-secondary" onClick={() => refreshAchievements()} disabled={loading}>
-            {loading ? "刷新中…" : "刷新链上数据"}
+            {loading ? "刷新中" : "刷新链上数据"}
           </button>
         )}
       </div>

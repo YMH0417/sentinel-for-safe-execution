@@ -1,15 +1,13 @@
-﻿import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+﻿import { useState, type ReactNode } from "react";
 import {
   api,
+  isDashboardAlertEvent,
+  selectDashboardAlerts,
   buildAlertSummary,
-  computePoolChainStatus,
   computeScoreLegend,
   computeUserStats,
-  computeWorkflowStages,
-  explainSecurityMetrics,
 } from "../api/client";
-import type { SafetyExplanation, SecurityScoreExplanation } from "../api/client";
+import type { LabelVolumeRow, SafetyExplanation, DashboardOverviewExplanation } from "../api/client";
 import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { useWallet } from "../contexts/WalletContext";
@@ -19,8 +17,48 @@ import { GlobalLoading } from "./GlobalLoading";
 type AiState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "done"; result: SafetyExplanation }
+  | {
+      status: "done";
+      trade: SafetyExplanation | null;
+      overview: DashboardOverviewExplanation | null;
+      tradeError?: string;
+      overviewError?: string;
+    }
   | { status: "error"; message: string };
+
+const TRADE_EVENT_TYPES = new Set([
+  "SwapExecuted",
+  "SwapFailed",
+  "DecisionMade",
+  "FallbackRequired",
+  "ExecutionSuccess",
+  "ExecutionRejected",
+]);
+
+function findLatestTradeEvent(events: Event[]): Event | undefined {
+  return [...events].reverse().find((e) => TRADE_EVENT_TYPES.has(e.eventType));
+}
+
+const LABEL_DOT: Record<LabelVolumeRow["label"], keyof typeof DOT_CLASS> = {
+  SAFE: "purple",
+  SHALLOW: "cyan",
+  TOXIC: "yellow",
+  SDA: "red",
+};
+
+const LABEL_TITLE: Record<LabelVolumeRow["label"], string> = {
+  SAFE: "SAFE 池",
+  SHALLOW: "SHALLOW 池",
+  TOXIC: "TOXIC 池",
+  SDA: "SDA 池",
+};
+
+function formatPoolVolumeUsdc(value: number): string {
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 const DOT_CLASS = {
   purple: "dashboard-dot-purple",
@@ -29,13 +67,22 @@ const DOT_CLASS = {
   red: "dashboard-dot-red",
 } as const;
 
+const DEFAULT_VOLUME_ROWS: LabelVolumeRow[] = [
+  { label: "SAFE", volumeUsdc: 0, swapCount: 0 },
+  { label: "SHALLOW", volumeUsdc: 0, swapCount: 0 },
+  { label: "TOXIC", volumeUsdc: 0, swapCount: 0 },
+  { label: "SDA", volumeUsdc: 0, swapCount: 0 },
+];
+
 export function DashboardPage() {
-  const navigate = useNavigate();
   const { account } = useWallet();
-  const { events, pools, status, balances, score, refreshing, poolsPending, refresh } = useDashboardData(account);
+  const { events, pools, poolVolume, balances, score, usdcVolumeHuman, refreshing, poolVolumePending, refresh } =
+    useDashboardData(account);
   const [aiState, setAiState] = useState<AiState>({ status: "idle" });
   const [aiLoading, setAiLoading] = useState(false);
   const [showScoreHelp, setShowScoreHelp] = useState(false);
+  const [showPoolHelp, setShowPoolHelp] = useState(false);
+  const [showAlertsHelp, setShowAlertsHelp] = useState(false);
 
   const handleRefresh = () => void refresh();
 
@@ -43,13 +90,69 @@ export function DashboardPage() {
     if (aiLoading) return;
     setAiLoading(true);
     setAiState({ status: "loading" });
+
+    const latestTrade = findLatestTradeEvent(events);
+    const overviewPayload = {
+      score,
+      legend,
+      poolVolume: volumeRows.map((row) => ({
+        label: row.label,
+        volumeUsdc: row.volumeUsdc,
+        swapCount: row.swapCount,
+      })),
+      alerts: alertViews.map((view) => ({
+        title: view.title,
+        detail: view.detail,
+        level: view.level,
+      })),
+      poolsHealth: pools
+        ? {
+            poolCount: pools.poolCount,
+            healthy: pools.healthy,
+            degraded: pools.degraded,
+            empty: pools.empty,
+          }
+        : null,
+    };
+
     try {
-      // 取最新一条决策事件
-      const latestDecision = [...events]
-        .reverse()
-        .find((e) => e.eventType === "DecisionMade" || e.decision);
-      const result = await api.aiAlertAnalysis(latestDecision?.id);
-      setAiState({ status: "done", result });
+      const [tradeSettled, overviewSettled] = await Promise.allSettled([
+        api.aiAlertAnalysis(latestTrade?.id),
+        api.aiDashboardOverview(overviewPayload),
+      ]);
+
+      const trade =
+        tradeSettled.status === "fulfilled" ? tradeSettled.value : null;
+      const overview =
+        overviewSettled.status === "fulfilled" ? overviewSettled.value : null;
+      const tradeError =
+        tradeSettled.status === "rejected"
+          ? tradeSettled.reason instanceof Error
+            ? tradeSettled.reason.message
+            : "最近一笔交易分析失败"
+          : undefined;
+      const overviewError =
+        overviewSettled.status === "rejected"
+          ? overviewSettled.reason instanceof Error
+            ? overviewSettled.reason.message
+            : "仪表盘综合分析失败"
+          : undefined;
+
+      if (!trade && !overview) {
+        setAiState({
+          status: "error",
+          message: tradeError ?? overviewError ?? "AI 分析调用失败",
+        });
+        return;
+      }
+
+      setAiState({
+        status: "done",
+        trade,
+        overview,
+        tradeError,
+        overviewError,
+      });
     } catch (err) {
       setAiState({
         status: "error",
@@ -61,50 +164,44 @@ export function DashboardPage() {
   };
 
   const legend = computeScoreLegend(events, pools ?? undefined);
-  const scoreExplain = explainSecurityMetrics(events, pools ?? undefined);
-  const chainRows = computePoolChainStatus(pools ?? undefined);
-  const stats = computeUserStats(events);
-  const workflow = computeWorkflowStages(events);
-  const maxStage = Math.max(...workflow.map((s) => s.count), 1);
+  const volumeRows =
+    poolVolume?.byLabel && poolVolume.byLabel.length > 0
+      ? poolVolume.byLabel
+      : DEFAULT_VOLUME_ROWS;
+  const stats = computeUserStats(events, account);
 
-  const alerts = events
-    .filter(
-      (e) =>
-        e.eventType.includes("Reject") ||
-        e.eventType === "SwapFailed" ||
-        e.decision === "REJECT" ||
-        e.decision === "FALLBACK_TO_SAFE_ROUTE" ||
-        (e.riskScore ?? 0) >= 50
-    )
-    .slice(-20)
-    .reverse()
-    .slice(0, 4);
-
-  const decisionChips = events
-    .filter((e) => e.decision || e.eventType.includes("Decision"))
-    .slice(-4)
-    .reverse();
-
-  const summary = buildAlertSummary(alerts, score);
+  const alertEvents = events.filter(isDashboardAlertEvent).slice(-30).reverse();
+  const alertViews = selectDashboardAlerts(events, 5);
+  const summary = buildAlertSummary(alertEvents.slice(0, 5), score);
   const usdc = balances.USDC?.human ?? 0;
 
   return (
     <div className="dashboard-box">
-      <GlobalLoading active={refreshing || aiLoading} message={refreshing ? "刷新数据中..." : aiLoading ? "AI 分析中..." : undefined} />
-      <div className="dashboard-main">
+      <GlobalLoading active={refreshing || aiLoading} message={refreshing ? "刷新数据中" : aiLoading ? "AI 分析中" : undefined} />
+      <div className="dashboard-upper">
         <div className="dashboard-main-top">
-        {/* 左上：安全评分 */}
+        {/* 左上：交易情况概览 */}
         <div className="dashboard-card dashboard-score-cell">
           <div className="dashboard-card-title dashboard-card-title-spread">
-            <span>安全性评分</span>
-            <button
-              type="button"
-              className="dashboard-info-btn"
-              aria-label="查看安全性评分计算方法"
-              onClick={() => setShowScoreHelp(true)}
-            >
-              i
-            </button>
+            <span>交易情况概览</span>
+            <div className="dashboard-card-title-actions">
+              <button
+                type="button"
+                className="sentinel-btn sentinel-btn-ghost dashboard-card-refresh-btn"
+                onClick={handleRefresh}
+                disabled={refreshing}
+              >
+                {refreshing ? "刷新中" : "↻ 刷新"}
+              </button>
+              <button
+                type="button"
+                className="dashboard-info-btn"
+                aria-label="查看交易情况概览说明"
+                onClick={() => setShowScoreHelp(true)}
+              >
+                i
+              </button>
+            </div>
           </div>
           <div className="dashboard-score-gauge">
             <SecurityGauge score={score} size={180} label="" />
@@ -115,255 +212,273 @@ export function DashboardPage() {
             <LegendDot label="风险警告" pct={legend.warning} color="var(--yellow)" />
           </div>
         </div>
-        {/* 中上：链条状态 + 主动警报 */}
-        <div className="dashboard-card">
-          <div className="dashboard-card-title">
-            <span>链条状态{poolsPending ? " · 同步池数据" : ""}</span>
-            <button
-              type="button"
-              className="sentinel-btn sentinel-btn-ghost"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              style={{ padding: "4px 10px", fontSize: 14 }}
-            >
-              {refreshing ? "刷新中" : "↻ 刷新"}
-            </button>
+        {/* 中上：交易池状态 + 主动警报 */}
+        <div className="dashboard-card dashboard-pool-card">
+          <div className="dashboard-card-title dashboard-card-title-spread">
+            <span>
+              交易池状态
+              {poolVolumePending ? " · 同步中" : ""}
+            </span>
+            <div className="dashboard-card-title-actions">
+              <button
+                type="button"
+                className="dashboard-info-btn"
+                aria-label="查看交易池状态说明"
+                onClick={() => setShowPoolHelp(true)}
+              >
+                i
+              </button>
+            </div>
           </div>
           <div className="dashboard-chain-list">
-            {chainRows.map((row) => (
+            {volumeRows.map((row) => (
               <div key={row.label} className="dashboard-chain-row">
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className={`dashboard-dot ${DOT_CLASS[row.dot]}`} />
-                  {row.label}
+                  <span className={`dashboard-dot ${DOT_CLASS[LABEL_DOT[row.label]]}`} />
+                  {LABEL_TITLE[row.label]}
                 </span>
-                <span className="dashboard-chain-score">{row.score.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="dashboard-status-strip">
-            {(decisionChips.length > 0 ? decisionChips : placeholderChips()).map((chip, i) => (
-              <div key={chip.id ?? i} className="dashboard-status-chip">
-                <div style={{ fontWeight: 600, color: chipColor(chip.decision), marginBottom: 4 }}>
-                  {chipLabel(chip.decision)}
-                </div>
-                <div style={{ color: "var(--text-dim)" }}>{formatDate(chip.timestamp)}</div>
+                <span className="dashboard-chain-volume">
+                  <span className="dashboard-chain-score">{formatPoolVolumeUsdc(row.volumeUsdc)}</span>
+                  <span className="dashboard-chain-volume-unit"> USDC</span>
+                </span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="dashboard-card">
-          <div className="dashboard-card-title">
+        <div className="dashboard-card dashboard-alerts-card">
+          <div className="dashboard-card-title dashboard-card-title-spread">
             <span>主动警报</span>
-            {alerts.length > 0 && (
-              <span className="sentinel-badge sentinel-badge-red">{alerts.length} News</span>
-            )}
+            <div className="dashboard-card-title-actions">
+              <button
+                type="button"
+                className="dashboard-info-btn"
+                aria-label="查看主动警报说明"
+                onClick={() => setShowAlertsHelp(true)}
+              >
+                i
+              </button>
+            </div>
           </div>
           <div className="dashboard-alert-list">
-            {alerts.length === 0 ? (
+            {alertViews.length === 0 ? (
               <div className="dashboard-alert-item info" style={{ borderLeftColor: "var(--green)" }}>
-                <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>Normal</div>
-                <div style={{ color: "var(--text-muted)" }}>暂无告警，系统运行正常</div>
+                <div style={{ fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>一切正常</div>
+                <div style={{ color: "var(--text-muted)" }}>全平台近期暂无需要特别留意的异常</div>
               </div>
             ) : (
-              alerts.map((a, i) => (
-                <div key={a.id ?? i} className={`dashboard-alert-item ${alertLevel(a)}`}>
-                  <div style={{display: "flex", justifyContent: "space-between"}}>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                      {alertLevel(a) === "critical" ? "Critical" : alertLevel(a) === "warn" ? "Warn" : "Info"}
-                      {a.routeId ? `: ${a.routeId}` : ""}
-                    </div>
-                    <div style={{ color: "var(--text-dim)", fontSize: 14, marginTop: 4 }}>
-                      {formatDate(a.timestamp)}
+              alertViews.map((view, i) => (
+                <div key={i} className={`dashboard-alert-item ${view.level}`}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{view.title}</div>
+                    <div style={{ color: "var(--text-dim)", fontSize: 14, flexShrink: 0 }}>
+                      {view.date}
                     </div>
                   </div>
-                  <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
-                    {a.message?.slice(0, 80)}
-                  </div>
+                  <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>{view.detail}</div>
                 </div>
               ))
             )}
           </div>
-          <div className="dashboard-ai-box">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, color: "var(--green)" }}>AI 警报分析</span>
-              {aiState.status === "idle" && (
-                <button
-                  type="button"
-                  className="sentinel-btn sentinel-btn-ghost"
-                  onClick={handleAiAnalysis}
-                  disabled={aiLoading}
-                  style={{ padding: "2px 10px", fontSize: 14 }}
-                >
-                  AI 深度分析
-                </button>
-              )}
-            </div>
-            {aiState.status === "idle" && summary}
-            {aiState.status === "loading" && (
-              <div style={{ color: "var(--text-muted)" }}>
-                AI 分析中…（通常数秒内完成）
-              </div>
-            )}
-            {aiState.status === "done" && (
-              <AiAnalysisContent result={aiState.result} onRerun={handleAiAnalysis} loading={aiLoading} />
-            )}
-            {aiState.status === "error" && (
-              <div>
-                <div style={{ color: "var(--red)", marginBottom: 6 }}>AI 分析调用失败</div>
-                <div style={{ color: "var(--text-dim)", fontSize: 11, marginBottom: 8, wordBreak: "break-word" }}>
-                  {aiState.message}
-                </div>
-                <button
-                  type="button"
-                  className="sentinel-btn sentinel-btn-ghost"
-                  onClick={handleAiAnalysis}
-                  disabled={aiLoading}
-                  style={{ padding: "2px 10px", fontSize: 14 }}
-                >
-                  重试
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              className="sentinel-btn sentinel-btn-primary"
-              style={{ width: "100%", marginTop: 10, padding: "10px 12px", fontSize: 13 }}
-              onClick={() => navigate("/transaction")}
-            >
-              立即处理并进行新交易
-            </button>
           </div>
         </div>
-        </div>
-        <div className="dashboard-chart">
-        {/* 底部柱状图 */}
-        <div className="dashboard-card dashboard-chart-cell">
-          <div className="dashboard-card-title">
-            <span>📊 主动警报状态</span>
-            <button
-              type="button"
-              className="sentinel-btn sentinel-btn-ghost"
-              style={{ padding: "4px 10px", fontSize: 14 }}
-              onClick={() => navigate("/execution")}
-            >
-              View More
-            </button>
-          </div>
-          <div className="dashboard-bars">
-            {workflow.map((s) => (
-              <div key={s.label} className="dashboard-bar-col">
-                <div
-                  className="dashboard-bar"
-                  style={{
-                    height: `${Math.max(12, (s.count / maxStage) * 100)}px`,
-                    width: "100%",
-                  }}
-                />
-                <div style={{ fontSize: 14, color: "var(--text-muted)" }}>{s.label}</div>
-                <div style={{ fontSize: 16, fontWeight: 600 }}>{s.count}</div>
-              </div>
-            ))}
-          </div>
+        <div className="dashboard-sidebar-stats">
+          <SidebarStat
+            label="累计交易量"
+            value={`$${usdcVolumeHuman.toLocaleString(undefined, {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 2,
+            })}`}
+            hint={account ? undefined : "连接钱包后显示"}
+          />
+          <SidebarStat
+            label="交易失败数"
+            value={String(stats.rejectCount)}
+            accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
+          />
+          <SidebarStat
+            label="USDC 余额"
+            value={usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            accent="var(--green)"
+          />
         </div>
       </div>
-      </div>
-      <div className="dashboard-sidebar">
-
-            <SidebarStat
-              label="累计 Swap 量"
-              value={`$${stats.safeVolumeUsd.toLocaleString()}`}
-              hint="Demo 估算"
-            />
-            <SidebarStat
-              label="拦截 / 失败"
-              value={String(stats.rejectCount)}
-              accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
-            />
-            <SidebarStat
-              label="USDC 余额"
-              value={usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              accent="var(--green)"
-            />
-
-            <div className="dashboard-stat-card" style={{ flex: 1, minHeight: 100 }}>
-              <div className="sentinel-label">最新状态 / 公告栏</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.7 }}>
-                <div>链模式：{status?.chainName ?? status?.chainMode ?? "—"}</div>
-                <div>Demo 池数：{pools?.poolCount ?? status?.demoPoolCount ?? "—"}</div>
-                <div>健康 / 降级 / 空池：{pools ? `${pools.healthy} / ${pools.degraded} / ${pools.empty}` : "—"}</div>
-                <div>事件总数：{events.length}</div>
+      <div className="dashboard-ai-row">
+        <div className="dashboard-card dashboard-chart-cell dashboard-ai-chart-cell">
+          <div className="dashboard-card-title dashboard-card-title-spread">
+            <span>AI 警报分析</span>
+            <div className="dashboard-card-title-actions">
+              <button
+                type="button"
+                className="sentinel-btn sentinel-btn-ghost"
+                onClick={handleAiAnalysis}
+                disabled={aiLoading}
+                style={{ padding: "4px 12px", fontSize: 14 }}
+              >
+                {aiLoading
+                  ? "分析中"
+                  : aiState.status === "done"
+                    ? "重新分析"
+                    : aiState.status === "error"
+                      ? "重试"
+                      : "开始分析"}
+              </button>
+            </div>
+          </div>
+          <div className="dashboard-ai-panel dashboard-ai-split">
+            <div className="dashboard-ai-col">
+              <div className="dashboard-ai-col-body">
+                {aiState.status === "idle" && (
+                  <AiColPlaceholder
+                    text={
+                      findLatestTradeEvent(events)
+                        ? "点击「开始分析」解读最近一笔成交或拦截。"
+                        : "暂无交易记录，完成一笔 swap 后可在此解读。"
+                    }
+                  />
+                )}
+                {aiState.status === "loading" && <AiColPlaceholder text="分析中" />}
+                {aiState.status === "done" && aiState.trade && (
+                  <AiAnalysisResult
+                    sideLabel="最近一笔交易"
+                    statusLabel={tradeStatusLabel(aiState.trade.attackVector)}
+                    statusTone={tradeStatusTone(aiState.trade.attackVector)}
+                    confidence={aiState.trade.confidence}
+                    narrative={aiState.trade.narrative}
+                    bullets={aiState.trade.recommendations}
+                  />
+                )}
+                {aiState.status === "done" && !aiState.trade && (
+                  <AiColPlaceholder
+                    muted
+                    text={aiState.tradeError ?? "最近一笔交易暂无分析结果"}
+                  />
+                )}
+                {aiState.status === "error" && (
+                  <AiColPlaceholder error text={aiState.message} />
+                )}
               </div>
             </div>
+            <div className="dashboard-ai-col-divider" aria-hidden />
+            <div className="dashboard-ai-col">
+              <div className="dashboard-ai-col-body">
+                {aiState.status === "idle" && <AiColPlaceholder text={summary} />}
+                {aiState.status === "loading" && <AiColPlaceholder text="分析中" />}
+                {aiState.status === "done" && aiState.overview && (
+                  <AiAnalysisResult
+                    sideLabel="仪表盘综合"
+                    statusLabel={aiState.overview.headline}
+                    statusTone={overviewStatusTone(score)}
+                    confidence={aiState.overview.confidence}
+                    narrative={aiState.overview.narrative}
+                    bullets={aiState.overview.highlights}
+                  />
+                )}
+                {aiState.status === "done" && !aiState.overview && (
+                  <AiColPlaceholder
+                    muted
+                    text={aiState.overviewError ?? "综合分析暂无结果"}
+                  />
+                )}
+                {aiState.status === "error" && (
+                  <AiColPlaceholder error text={aiState.message} />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       {showScoreHelp && (
-        <SecurityScoreHelpModal
-          explain={scoreExplain}
-          eventCount={events.length}
-          onClose={() => setShowScoreHelp(false)}
-        />
+        <TransactionOverviewHelpModal onClose={() => setShowScoreHelp(false)} />
       )}
+      {showPoolHelp && <PoolStatusHelpModal onClose={() => setShowPoolHelp(false)} />}
+      {showAlertsHelp && <ProactiveAlertsHelpModal onClose={() => setShowAlertsHelp(false)} />}
     </div>
   );
 }
 
-function AiAnalysisContent({
-  result,
-  onRerun,
-  loading,
-}: {
-  result: SafetyExplanation;
-  onRerun: () => void;
-  loading: boolean;
-}) {
+function tradeStatusLabel(attackVector?: string): string {
+  if (!attackVector) return "—";
   const safeVectors = new Set(["Normal", "Unknown", "正常", "未知"]);
-  const vectorColor =
-    result.attackVector && !safeVectors.has(result.attackVector)
-      ? "var(--yellow)"
-      : "var(--green)";
+  if (attackVector === "Unknown" || attackVector === "未知") return "未知";
+  if (safeVectors.has(attackVector)) return "正常";
+  return attackVector;
+}
+
+function tradeStatusTone(attackVector?: string): AiStatusTone {
+  const safeVectors = new Set(["Normal", "Unknown", "正常", "未知"]);
+  if (!attackVector || safeVectors.has(attackVector)) return "safe";
+  return "warn";
+}
+
+function overviewStatusTone(score: number): AiStatusTone {
+  if (score >= 70) return "safe";
+  if (score >= 50) return "neutral";
+  return "warn";
+}
+
+type AiStatusTone = "safe" | "warn" | "neutral";
+
+function AiColPlaceholder({
+  text,
+  muted,
+  error,
+}: {
+  text: string;
+  muted?: boolean;
+  error?: boolean;
+}) {
   return (
-    <div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
-        {result.attackVector && (
-          <span
-            style={{
-              fontSize: 11,
-              padding: "2px 8px",
-              borderRadius: 12,
-              background: `${vectorColor}22`,
-              color: vectorColor,
-              border: `1px solid ${vectorColor}44`,
-            }}
-          >
-            {result.attackVector}
-          </span>
+    <p
+      className={`dashboard-ai-idle${muted ? " dashboard-ai-muted" : ""}${error ? " dashboard-ai-error" : ""}`}
+    >
+      {text}
+    </p>
+  );
+}
+
+function AiAnalysisResult({
+  sideLabel,
+  statusLabel,
+  statusTone = "neutral",
+  narrative,
+  bullets,
+  confidence,
+  maxBullets = 3,
+}: {
+  sideLabel: string;
+  statusLabel?: string;
+  statusTone?: AiStatusTone;
+  narrative: string;
+  bullets?: string[];
+  confidence?: number;
+  maxBullets?: number;
+}) {
+  const list = bullets?.filter(Boolean).slice(0, maxBullets) ?? [];
+
+  return (
+    <div className="dashboard-ai-result-split">
+      <aside className="dashboard-ai-result-side">
+        <div className="dashboard-ai-result-side-label">{sideLabel}</div>
+        {statusLabel && (
+          <div className={`dashboard-ai-result-side-status dashboard-ai-result-side-status--${statusTone}`}>
+            {statusLabel}
+          </div>
         )}
-        {typeof result.confidence === "number" && (
-          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            置信度 {result.confidence}%
-          </span>
+        {typeof confidence === "number" && (
+          <div className="dashboard-ai-result-side-confidence">置信度 {confidence}%</div>
         )}
-      </div>
-      <div style={{ color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 8 }}>
-        {result.narrative}
-      </div>
-      {result.recommendations && result.recommendations.length > 0 && (
-        <ul style={{ margin: 0, paddingLeft: 16, color: "var(--text-muted)", lineHeight: 1.6 }}>
-          {result.recommendations.map((rec, i) => (
-            <li key={i} style={{ marginBottom: 2 }}>{rec}</li>
-          ))}
-        </ul>
-      )}
-      <div style={{ marginTop: 8, textAlign: "right" }}>
-        <button
-          type="button"
-          className="sentinel-btn sentinel-btn-ghost"
-          onClick={onRerun}
-          disabled={loading}
-          style={{ padding: "2px 10px", fontSize: 11 }}
-        >
-          重新分析
-        </button>
+      </aside>
+      <div className="dashboard-ai-result-inner-divider" aria-hidden />
+      <div className="dashboard-ai-result-detail">
+        <div className="dashboard-ai-result-narrative">{narrative}</div>
+        {list.length > 0 && (
+          <ul className="dashboard-ai-result-list">
+            {list.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -381,16 +496,17 @@ function LegendDot({ label, pct, color }: { label: string; pct: number; color: s
   );
 }
 
-function SecurityScoreHelpModal({
-  explain,
-  eventCount,
+function DashboardHelpModal({
+  title,
+  titleId,
   onClose,
+  children,
 }: {
-  explain: SecurityScoreExplanation;
-  eventCount: number;
+  title: string;
+  titleId: string;
   onClose: () => void;
+  children: ReactNode;
 }) {
-  const raw = explain.legendRaw;
   return (
     <div
       className="dashboard-modal-backdrop"
@@ -398,66 +514,98 @@ function SecurityScoreHelpModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="sentinel-card dashboard-score-help-modal" role="dialog" aria-labelledby="score-help-title">
+      <div className="sentinel-card dashboard-score-help-modal" role="dialog" aria-labelledby={titleId}>
         <button type="button" className="dashboard-score-help-close" onClick={onClose} aria-label="关闭">
           ✕
         </button>
-        <h3 id="score-help-title" className="dashboard-score-help-title">
-          安全性评分 · 计算方法
+        <h3 id={titleId} className="dashboard-score-help-title">
+          {title}
         </h3>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TransactionOverviewHelpModal({ onClose }: { onClose: () => void }) {
+  return (
+    <DashboardHelpModal title="交易情况概览" titleId="score-help-title" onClose={onClose}>
         <p className="dashboard-score-help-intro">
-          数据来自 backend 全局事件日志（<code>GET /api/events</code>）与池子健康报告（
-          <code>GET /api/debug/pools-health</code>），在浏览器本地实时计算；非链上数据，且<strong>未按当前钱包过滤</strong>。
+          帮你看<strong>最近这段时间，整体交易顺不顺、风险高不高</strong>。
+          这里是全平台的汇总，不是你个人钱包的账单。
         </p>
 
         <section className="dashboard-score-help-section">
-          <h4>综合评估分数（当前 {explain.score} / 100）</h4>
-          <ol className="dashboard-score-help-list">
-            <li>基准分：<strong>{explain.baseScore}</strong></li>
-            <li>
-              最近 <strong>20</strong> 条事件扣分：
-              <ul>
-                <li>Reject / SwapFailed：{explain.rejectCount} 条 × 8 = −{explain.rejectCount * 8}</li>
-                <li>Fallback 安全路由：{explain.fallbackCount} 条 × 3 = −{explain.fallbackCount * 3}</li>
-              </ul>
-              事件调整后：<strong>{explain.scoreAfterEvents}</strong>
-            </li>
-            {explain.poolScore !== null ? (
-              <li>
-                池子健康加权：healthy {explain.healthyPools} / {explain.poolCount} → 池分{" "}
-                <strong>{explain.poolScore}</strong>；最终分 = 事件分 × 0.6 + 池分 × 0.4 ={" "}
-                <strong>{explain.score}</strong>
-              </li>
-            ) : (
-              <li>暂无池子报告时，不混入池子健康加权。</li>
-            )}
-            <li>结果限制在 0～100；圆环颜色：≥70 青、≥40 黄、&lt;40 红。</li>
-          </ol>
+          <h4>圆环分数</h4>
+          <p>分数越高越省心；越绿越稳，越红越要多留意。</p>
         </section>
 
         <section className="dashboard-score-help-section">
-          <h4>下方三格占比（合计 100%）</h4>
-          <p>基于最近 <strong>30</strong> 条事件 + 池子状态，统计三类「权重计数」后换算百分比（与中间分数独立）：</p>
+          <h4>下面三个小格</h4>
           <ul className="dashboard-score-help-list">
-            <li>
-              <strong>高风险拦截 {explain.legend.highRisk}%</strong> = (Reject/SwapFailed 事件 {raw.highRiskEvents} + TOXIC 池{" "}
-              {raw.toxicPools}) / 总计 {raw.denominator}
-            </li>
-            <li>
-              <strong>策略预警 {explain.legend.strategy}%</strong> = Fallback 事件 {raw.strategyEvents} / 总计 {raw.denominator}
-            </li>
-            <li>
-              <strong>风险警告 {explain.legend.warning}%</strong> = (Warn 或 ALLOW 且 risk≥40 的事件 {raw.warningEvents} +
-              降级/空池 {raw.degradedPools}) / 总计 {raw.denominator}（余量补齐至 100%）
-            </li>
+            <li><strong>高风险拦截</strong>：被系统拦下或没成交的情况。</li>
+            <li><strong>策略预警</strong>：改走更稳妥路线的情况。</li>
+            <li><strong>风险警告</strong>：需要多留神的预警信号。</li>
           </ul>
         </section>
 
         <p className="dashboard-score-help-foot">
-          当前 backend 共 {eventCount} 条事件；点击卡片「↻ 刷新」会重新拉取并重算。
+          点「↻ 刷新」可以更新最新数据。
         </p>
-      </div>
-    </div>
+    </DashboardHelpModal>
+  );
+}
+
+function PoolStatusHelpModal({ onClose }: { onClose: () => void }) {
+  return (
+    <DashboardHelpModal title="交易池状态" titleId="pool-help-title" onClose={onClose}>
+      <p className="dashboard-score-help-intro">
+        把最近平台上的成交，按四类池子分开统计，并统一换算成 <strong>USDC</strong>，方便你对比哪类池子最近更活跃。
+      </p>
+
+      <section className="dashboard-score-help-section">
+        <h4>四行分别是什么意思</h4>
+        <ul className="dashboard-score-help-list">
+          <li><strong>SAFE 池</strong>：流动性充足，一般最省心。</li>
+          <li><strong>SHALLOW 池</strong>：池子偏浅，大单更容易滑点。</li>
+          <li><strong>TOXIC 池</strong>：风险较高，价格和成交环境更不稳定。</li>
+          <li><strong>SDA 池</strong>：有特殊等待规则，安全模式下常被系统拦住。</li>
+        </ul>
+      </section>
+
+      <p className="dashboard-score-help-foot">
+        右侧数字越大，说明这类池最近成交越多。这和右侧栏「累计交易量」（你个人总共成交多少）不是一回事。
+      </p>
+    </DashboardHelpModal>
+  );
+}
+
+function ProactiveAlertsHelpModal({ onClose }: { onClose: () => void }) {
+  return (
+    <DashboardHelpModal title="主动警报" titleId="alerts-help-title" onClose={onClose}>
+      <p className="dashboard-score-help-intro">
+        展示<strong>全平台</strong>最近值得留意的异常情况，最多 5 条。
+        只要有人通过本系统发起交易（安全模式或强制模式），都会记入；列表从<strong>全体用户</strong>的记录里筛选，不是只看你的钱包。
+      </p>
+
+      <section className="dashboard-score-help-section">
+        <h4>什么情况会出现在这里</h4>
+        <ul className="dashboard-score-help-list">
+          <li><strong>被风控拦住</strong>：系统认为风险太高，拒绝成交或执行失败。</li>
+          <li><strong>改走更稳的路</strong>：原路线不够好，系统建议或已自动换成更安全的。</li>
+          <li><strong>强制模式成交</strong>：用户主动绕过风控保护后的成交或失败。</li>
+        </ul>
+      </section>
+
+      <section className="dashboard-score-help-section">
+        <h4>什么情况不会出现</h4>
+        <p>普通安全模式下的正常成功交易不会进列表。列表为空，一般说明全平台最近没什么要特别担心的事。</p>
+      </section>
+
+      <p className="dashboard-score-help-foot">
+        每条右上角的日期时间，是事情发生的时间，精确到分钟。个人成交总额请看右侧「累计交易量」。
+      </p>
+    </DashboardHelpModal>
   );
 }
 
@@ -483,43 +631,4 @@ function SidebarStat({
       </div>
     </div>
   );
-}
-
-function formatDate(ts?: number) {
-  if (!ts) return "—";
-  const d = new Date(ts);
-  return d.toISOString().slice(0, 10);
-}
-
-function alertLevel(e: Event): "critical" | "warn" | "info" {
-  if (e.decision === "REJECT" || e.eventType.includes("Reject") || e.eventType === "SwapFailed") {
-    return "critical";
-  }
-  if (e.decision === "FALLBACK_TO_SAFE_ROUTE" || e.eventType.includes("Fallback")) {
-    return "warn";
-  }
-  return "info";
-}
-
-function chipLabel(decision?: string) {
-  if (decision === "REJECT") return "High Risk";
-  if (decision === "FALLBACK_TO_SAFE_ROUTE") return "Fallback";
-  if (decision === "ALLOW") return "High Safety";
-  return "Pending";
-}
-
-function chipColor(decision?: string) {
-  if (decision === "REJECT") return "var(--red)";
-  if (decision === "FALLBACK_TO_SAFE_ROUTE") return "var(--yellow)";
-  if (decision === "ALLOW") return "var(--green)";
-  return "var(--text-muted)";
-}
-
-function placeholderChips(): Event[] {
-  return [
-    { id: "p1", eventType: "DecisionMade", timestamp: Date.now(), decision: "ALLOW", message: "System ready" },
-    { id: "p2", eventType: "DecisionMade", timestamp: Date.now() - 86400000, decision: "ALLOW", message: "Pools healthy" },
-    { id: "p3", eventType: "DecisionMade", timestamp: Date.now() - 172800000, message: "Awaiting activity" },
-    { id: "p4", eventType: "DecisionMade", timestamp: Date.now() - 259200000, message: "Demo chain online" },
-  ];
 }

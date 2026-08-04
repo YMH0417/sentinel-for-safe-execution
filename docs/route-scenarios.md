@@ -138,7 +138,9 @@ route-{tokenIn}-{tokenOut}-{pool}
 | `route-usdc-good-toxic` | REJECT | 422，不 swap |
 | `route-usdc-bad-safe` | REJECT | 422，不 swap |
 | `route-usdc-good-sda` | **REJECT** | 422，不 swap（SDA 执行窗口） |
-| `route-usdc-good-shallow`（amount 100） | FALLBACK | 同币对 `route-usdc-good-safe` |
+| `route-usdc-good-shallow`（amount 100） | FALLBACK | 同币对 `route-usdc-good-safe`（**自动改路**） |
+| `route-good-usdc-shallow`（amount 100） | FALLBACK | 同币对 `route-good-usdc-safe`（**自动改路**） |
+| 其余 `route-*-*-shallow`（tokenOut 非 BAD/BAIT，amount 偏大） | FALLBACK | 同币对 `route-*-*-safe`（**自动改路**） |
 
 Safe 模式**不启用滑点带宽**（`minOut=0`）；路由策略完全由 Agent 决定。
 

@@ -3,6 +3,7 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [ValidateSet("anvil-local", "anvil-fork-monad", "monad-testnet")]
     [string]$Profile = "anvil-local",
+    [switch]$Hybrid,
     [string]$DeploymentFile = "",
     [string]$RpcUrl = "",
     [string]$AnvilPrivateKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -25,6 +26,8 @@ function Get-DemoChainProfile {
 }
 
 $chainProfile = Get-DemoChainProfile -Name $Profile -Root $RepoRoot
+$anvilProfile = Get-DemoChainProfile -Name "anvil-local" -Root $RepoRoot
+$anvilManifest = Join-Path $RepoRoot ($anvilProfile.manifestPath -replace "/", "\")
 
 if (-not $DeploymentFile) {
     $DeploymentFile = Join-Path $RepoRoot ($chainProfile.manifestPath -replace "/", "\")
@@ -67,12 +70,51 @@ $lines = @(
     "DEMO_SWAP_ROUTER_ADDRESS=$($deployment.swapRouter)",
     "DEMO_SCENARIO_DEPLOYER=$($deployment.scenarioDeployer)"
 )
-if ($deployment.achievements) {
+if ($deployment.ledger) {
+    $lines += "DEMO_LEDGER_ADDRESS=$($deployment.ledger)"
+}
+if ($Hybrid) {
+    if (-not (Test-Path $anvilManifest)) {
+        throw "Hybrid mode requires Anvil manifest: $anvilManifest"
+    }
+    $anvilDeployment = Get-Content $anvilManifest -Raw | ConvertFrom-Json
+    if (-not $anvilDeployment.ledger) {
+        throw "Anvil manifest missing ledger — run DeployAllDemo on Anvil first"
+    }
+    $lines += "DEMO_HYBRID_MODE=true"
+    $lines += "LEDGER_RPC_URL=http://127.0.0.1:8545"
+    $lines += "LEDGER_DEPLOYMENT_PATH=..\contracts\deployments\local-31337-demo.json"
+    $lines += "DEMO_LEDGER_ADDRESS=$($anvilDeployment.ledger)"
+    $lines += "SENTINEL_LEDGER_SOURCE=chain"
+    $lines += "LEDGER_MIRROR_TO_CHAIN=true"
+    $lines += "LEDGER_MIRROR_PRIVATE_KEY=$AnvilPrivateKey"
+    $lines += "POOL_VOLUME_SOURCE=anvil-ledger"
+    $lines += "LEDGER_BOOTSTRAP_ON_START=false"
+    $lines += "LEDGER_SEED_ON_START=false"
+}
+elseif ($deployment.achievements) {
     $lines += "DEMO_ACHIEVEMENTS_ADDRESS=$($deployment.achievements)"
+}
+
+$isLocal = ($chainProfile.deploymentTarget -eq "local") -or ($deployment.deploymentTarget -eq "local")
+
+# Monad / remote — product DB local (Neon on Vercel); chain only for swap/quote
+if (-not $Hybrid -and ($Profile -eq "monad-testnet" -or $deployment.deploymentTarget -eq "remote")) {
+    $lines += "SENTINEL_LEDGER_SOURCE=local"
+    $lines += "POOL_VOLUME_SOURCE=ledger"
+    $lines += "LEDGER_BOOTSTRAP_ON_START=false"
+}
+# Local Anvil — product DB JSON files unless DATABASE_URL is set
+if (-not $Hybrid -and $isLocal) {
+    $lines += "SENTINEL_LEDGER_SOURCE=local"
+    $lines += "POOL_VOLUME_SOURCE=ledger"
+    $lines += "LEDGER_BOOTSTRAP_ON_START=false"
+}
+if ($env:DATABASE_URL) {
+    $lines += "DATABASE_URL=$($env:DATABASE_URL)"
 }
 $lines += ""
 
-$isLocal = ($chainProfile.deploymentTarget -eq "local") -or ($deployment.deploymentTarget -eq "local")
 if ($isLocal) {
     $lines += @(
         "# Anvil account #0 (deployer + agentSigner by default)",

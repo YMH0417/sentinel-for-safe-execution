@@ -3,15 +3,30 @@
 // 失败（无 key / 超时 / 解析失败）直接返回 503，不写事件、不走本地兜底。
 import { Router, Request, Response } from "express";
 import { getEvents } from "../services/eventService.js";
-import { explainSafetyDecision } from "../services/llmAnalysisService.js";
+import { explainSafetyDecision, explainDashboardOverview } from "../services/llmAnalysisService.js";
 import { addEvent } from "../services/eventService.js";
-import type { Decision, Event, Route, SafetyExplanation } from "../types.js";
+import type {
+  Decision,
+  Event,
+  Route,
+  SafetyExplanation,
+  DashboardOverviewInput,
+  DashboardOverviewExplanation,
+} from "../types.js";
 
 const router = Router();
 
+const TRADE_EVENT_TYPES = new Set([
+  "SwapExecuted",
+  "SwapFailed",
+  "DecisionMade",
+  "FallbackRequired",
+  "ExecutionSuccess",
+  "ExecutionRejected",
+]);
+
 // 从一条 DecisionMade 事件还原 Decision 对象（含 evidence）。
 function decisionFromEvent(event: Event): Decision | null {
-  if (!event.decision) return null;
   const ctx = event.context ?? {};
   const evidence = {
     quotedOut: typeof ctx.quotedOut === "number" ? ctx.quotedOut : 0,
@@ -30,18 +45,62 @@ function decisionFromEvent(event: Event): Decision | null {
     ...(typeof ctx.poolLabel === "string" ? { poolLabel: ctx.poolLabel } : {}),
   };
 
-  return {
-    decision: event.decision,
-    riskScore: event.riskScore ?? 0,
-    reason: event.message ?? "",
-    routeId: event.routeId ?? "",
-    fallbackRouteId: event.fallbackRouteId ?? null,
-    flags: Array.isArray(ctx.flags) ? (ctx.flags as string[]) : [],
-    evidence,
-    ...(typeof ctx.correlationId === "string"
-      ? { correlationId: ctx.correlationId }
-      : {}),
-  };
+  const flags = Array.isArray(ctx.flags) ? (ctx.flags as string[]) : [];
+  const routeId = event.routeId ?? "";
+  const fallbackRouteId = event.fallbackRouteId ?? null;
+
+  if (event.decision) {
+    return {
+      decision: event.decision,
+      riskScore: event.riskScore ?? 0,
+      reason: event.message ?? "",
+      routeId,
+      fallbackRouteId,
+      flags,
+      evidence,
+      ...(typeof ctx.correlationId === "string"
+        ? { correlationId: ctx.correlationId }
+        : {}),
+    };
+  }
+
+  if (event.eventType === "SwapExecuted" || event.eventType === "ExecutionSuccess") {
+    return {
+      decision: "ALLOW",
+      riskScore: event.riskScore ?? 0,
+      reason: event.message ?? "交易已成交",
+      routeId,
+      fallbackRouteId,
+      flags,
+      evidence,
+    };
+  }
+
+  if (event.eventType === "SwapFailed" || event.eventType === "ExecutionRejected") {
+    return {
+      decision: "REJECT",
+      riskScore: event.riskScore ?? 100,
+      reason: event.message ?? "交易失败",
+      routeId,
+      fallbackRouteId,
+      flags,
+      evidence,
+    };
+  }
+
+  if (event.eventType === "FallbackRequired") {
+    return {
+      decision: "FALLBACK_TO_SAFE_ROUTE",
+      riskScore: event.riskScore ?? 0,
+      reason: event.message ?? "建议切换安全路由",
+      routeId,
+      fallbackRouteId,
+      flags,
+      evidence,
+    };
+  }
+
+  return null;
 }
 
 // 从事件上下文还原 Route（仅 LLM 解释需要的字段，缺失项给默认值）。
@@ -72,17 +131,103 @@ function routeFromEvent(event: Event): Route | undefined {
   };
 }
 
-// 找到目标事件：优先 eventId，否则取最新一条 DecisionMade。
-function resolveTargetEvent(eventId?: string): Event | null {
-  const all = getEvents();
+// 找到目标事件：优先 eventId，否则取最新一条交易相关事件。
+async function resolveTargetEvent(eventId?: string): Promise<Event | null> {
+  const all = await getEvents();
   if (eventId) {
     return all.find((e) => e.id === eventId) ?? null;
   }
   for (let i = all.length - 1; i >= 0; i--) {
-    if (all[i].eventType === "DecisionMade") return all[i];
+    if (TRADE_EVENT_TYPES.has(all[i].eventType)) return all[i];
   }
   return null;
 }
+
+function parseDashboardOverviewBody(body: unknown): DashboardOverviewInput | null {
+  if (!body || typeof body !== "object") return null;
+  const raw = body as Record<string, unknown>;
+  if (typeof raw.score !== "number" || !raw.legend || typeof raw.legend !== "object") {
+    return null;
+  }
+  const legend = raw.legend as Record<string, unknown>;
+  if (
+    typeof legend.highRisk !== "number" ||
+    typeof legend.strategy !== "number" ||
+    typeof legend.warning !== "number"
+  ) {
+    return null;
+  }
+  if (!Array.isArray(raw.poolVolume) || !Array.isArray(raw.alerts)) {
+    return null;
+  }
+
+  const poolVolume = raw.poolVolume
+    .filter((row): row is Record<string, unknown> => row != null && typeof row === "object")
+    .map((row) => ({
+      label: String(row.label ?? ""),
+      volumeUsdc: typeof row.volumeUsdc === "number" ? row.volumeUsdc : 0,
+      ...(typeof row.swapCount === "number" ? { swapCount: row.swapCount } : {}),
+    }));
+
+  const alerts = raw.alerts
+    .filter((row): row is Record<string, unknown> => row != null && typeof row === "object")
+    .slice(0, 5)
+    .map((row) => ({
+      title: String(row.title ?? ""),
+      detail: String(row.detail ?? ""),
+      ...(typeof row.level === "string" ? { level: row.level } : {}),
+    }));
+
+  let poolsHealth: DashboardOverviewInput["poolsHealth"] = null;
+  if (raw.poolsHealth && typeof raw.poolsHealth === "object") {
+    const ph = raw.poolsHealth as Record<string, unknown>;
+    poolsHealth = {
+      poolCount: typeof ph.poolCount === "number" ? ph.poolCount : 0,
+      healthy: typeof ph.healthy === "number" ? ph.healthy : 0,
+      degraded: typeof ph.degraded === "number" ? ph.degraded : 0,
+      empty: typeof ph.empty === "number" ? ph.empty : 0,
+    };
+  }
+
+  return {
+    score: raw.score,
+    legend: {
+      highRisk: legend.highRisk,
+      strategy: legend.strategy,
+      warning: legend.warning,
+    },
+    poolVolume,
+    alerts,
+    poolsHealth,
+  };
+}
+
+router.post("/dashboard", async (req: Request, res: Response) => {
+  const input = parseDashboardOverviewBody(req.body);
+  if (!input) {
+    return res.status(400).json({
+      error: {
+        code: "INVALID_DASHBOARD_OVERVIEW_REQUEST",
+        message: "Invalid dashboard overview payload",
+      },
+    });
+  }
+
+  let explanation: DashboardOverviewExplanation;
+  try {
+    explanation = await explainDashboardOverview(input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Dashboard AI analysis failed";
+    return res.status(503).json({
+      error: {
+        code: "AI_DASHBOARD_ANALYSIS_FAILED",
+        message,
+      },
+    });
+  }
+
+  return res.json(explanation);
+});
 
 router.post("/", async (req: Request, res: Response) => {
   if (!req.body || typeof req.body !== "object") {
@@ -104,7 +249,7 @@ router.post("/", async (req: Request, res: Response) => {
     });
   }
 
-  const target = resolveTargetEvent(
+  const target = await resolveTargetEvent(
     typeof eventId === "string" && eventId.trim() ? eventId.trim() : undefined
   );
   if (!target) {
@@ -112,7 +257,7 @@ router.post("/", async (req: Request, res: Response) => {
       error: {
         code: "AI_ANALYSIS_NO_EVENT",
         message:
-          "No DecisionMade event found. Run /api/evaluate first or pass a valid eventId.",
+          "No recent trade event found. Execute a swap or pass a valid eventId.",
       },
     });
   }
@@ -148,7 +293,7 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   // 成功才写审计事件，关联原事件。
-  addEvent({
+  await addEvent({
     eventType: "AIAnalysisCompleted",
     routeId: target.routeId,
     decision: target.decision,

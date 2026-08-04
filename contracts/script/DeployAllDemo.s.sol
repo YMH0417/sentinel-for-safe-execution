@@ -8,7 +8,7 @@ import {DemoPoolRegistry} from "../src/registry/DemoPoolRegistry.sol";
 import {UniswapV2Quote} from "../src/libraries/UniswapV2Quote.sol";
 import {IDemoPair} from "../src/dex/interfaces/IDemoPair.sol";
 import {VaultExecution} from "../src/VaultExecution.sol";
-import {SentinelAchievements} from "../src/achievements/SentinelAchievements.sol";
+import {SentinelLedger} from "../src/ledger/SentinelLedger.sol";
 
 /// @notice Deploy demo scenario in Monad-safe batches (≤30M gas per transaction).
 contract DeployAllDemo is Script {
@@ -29,7 +29,7 @@ contract DeployAllDemo is Script {
         DemoScenarioDeployer.Scenario scenario;
         address vaultExecution;
         address swapRouter;
-        address achievements;
+        address ledger;
         address scenarioDeployer;
         address deployer;
         uint256 chainId;
@@ -51,18 +51,18 @@ contract DeployAllDemo is Script {
         VaultExecution vault = new VaultExecution(DEFAULT_MAX_LOSS_BPS, deployer, agentSigner);
         artifacts.vaultExecution = address(vault);
 
-        SentinelAchievements achievements = new SentinelAchievements(
+        SentinelLedger ledger = new SentinelLedger(
             address(artifacts.scenario.tokens.usdc), deployer
         );
 
         DemoSwapRouter router = new DemoSwapRouter(
-            address(vault), address(artifacts.scenario.registry), address(scenarioDeployer), address(achievements)
+            address(vault), address(artifacts.scenario.registry), address(scenarioDeployer), address(ledger)
         );
         artifacts.swapRouter = address(router);
-        artifacts.achievements = address(achievements);
-        vault.setAchievements(address(achievements));
-        achievements.setReporter(address(vault), true);
-        achievements.setReporter(address(router), true);
+        artifacts.ledger = address(ledger);
+        vault.setAchievements(address(ledger));
+        ledger.setReporter(address(vault), true);
+        ledger.setReporter(address(router), true);
         scenarioDeployer.authorizeFunder(address(router), true);
         scenarioDeployer.authorizeFunder(deployer, true);
 
@@ -158,7 +158,16 @@ contract DeployAllDemo is Script {
             "deployments/",
             _deploymentManifestName(artifacts.chainId)
         );
-        string memory content = string.concat(
+        vm.writeFile(path, string.concat(_manifestJsonHead(artifacts, agentSigner, scenario), _manifestJsonTail(scenario)));
+        console2.log("Wrote deployment manifest:", path);
+    }
+
+    function _manifestJsonHead(
+        DeploymentArtifacts memory artifacts,
+        address agentSigner,
+        DemoScenarioDeployer.Scenario memory scenario
+    ) private view returns (string memory) {
+        return string.concat(
             "{\n",
             '  "chainId": ',
             vm.toString(artifacts.chainId),
@@ -187,18 +196,24 @@ contract DeployAllDemo is Script {
             '  "swapRouter": "',
             vm.toString(artifacts.swapRouter),
             '",\n',
-            '  "achievements": "',
-            vm.toString(artifacts.achievements),
+            '  "ledger": "',
+            vm.toString(artifacts.ledger),
             '",\n',
+            '  "achievements": null,\n',
             '  "scenarioDeployer": "',
             vm.toString(artifacts.scenarioDeployer),
             '",\n',
             '  "testUser": "',
             vm.toString(vm.envOr("TEST_USER_ADDRESS", DEFAULT_TEST_USER)),
             '",\n',
-            '  "deploymentMode": "phased",\n',
+            '  "deploymentMode": "initial",\n',
             '  "poolsPerBatch": 12,\n',
-            '  "tokens": {\n',
+            '  "tokens": {\n'
+        );
+    }
+
+    function _manifestJsonTail(DemoScenarioDeployer.Scenario memory scenario) private view returns (string memory) {
+        return string.concat(
             '    "USDC": "',
             vm.toString(address(scenario.tokens.usdc)),
             '",\n',
@@ -215,8 +230,6 @@ contract DeployAllDemo is Script {
             '  "pools": []\n',
             "}\n"
         );
-        vm.writeFile(path, content);
-        console2.log("Wrote deployment manifest:", path);
     }
 
     function _logSummary(DeploymentArtifacts memory artifacts) private view {
@@ -231,7 +244,7 @@ contract DeployAllDemo is Script {
         console2.log("Registry:", address(scenario.registry));
         console2.log("VaultExecution:", artifacts.vaultExecution);
         console2.log("DemoSwapRouter:", artifacts.swapRouter);
-        console2.log("SentinelAchievements:", artifacts.achievements);
+        console2.log("SentinelLedger:", artifacts.ledger);
         console2.log("ScenarioDeployer:", artifacts.scenarioDeployer);
         console2.log("Pool count:", scenario.registry.poolCount());
 

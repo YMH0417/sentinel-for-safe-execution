@@ -69,7 +69,7 @@ router.post("/", async (req: Request, res: Response) => {
     safetyMode: "evaluate" as const,
   };
 
-  addEvent({
+  await addEvent({
     eventType: "RouteEvaluated",
     routeId,
     message: `Route ${routeId} submitted for safety evaluation`,
@@ -83,7 +83,7 @@ router.post("/", async (req: Request, res: Response) => {
       amountIn: normalizedAmount,
     });
 
-    addEvent({
+    await addEvent({
       eventType: "DecisionMade",
       routeId,
       decision: decision.decision,

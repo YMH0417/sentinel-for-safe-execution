@@ -11,13 +11,17 @@ import type {
   AnalysisResult,
   InputRow,
 } from "../analysis/types.js";
-import { getEvents, getEventsFilePath } from "./eventService.js";
+import { getEvents, getEventsStorageLabel } from "./eventService.js";
 
 export async function analyzePersistedEvents(): Promise<AnalysisResult> {
-  const eventsFile = getEventsFilePath();
-  const rows = existsSync(eventsFile)
-    ? await readInputFile(eventsFile, "jsonl")
-    : rowsFromValues(getEvents(), eventsFile);
+  const eventsFile = await getEventsStorageLabel();
+  const events = await getEvents();
+  const rows =
+    events.length > 0
+      ? rowsFromValues(events, eventsFile)
+      : existsSync(eventsFile)
+        ? await readInputFile(eventsFile, "jsonl")
+        : rowsFromValues(events, eventsFile);
   return analyzeSentinelRows(rows);
 }
 

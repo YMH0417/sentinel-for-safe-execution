@@ -47,3 +47,36 @@ const PROMPTS: Record<LlmResponseLanguage, LlmPromptBundle> = {
 export function getLlmPromptBundle(language: LlmResponseLanguage): LlmPromptBundle {
   return PROMPTS[language];
 }
+
+export interface DashboardOverviewPromptBundle {
+  systemMessage: string;
+  taskInstruction: string;
+  defaultHeadline: string;
+}
+
+const DASHBOARD_PROMPTS: Record<LlmResponseLanguage, DashboardOverviewPromptBundle> = {
+  en: {
+    systemMessage:
+      "You are Sentinel's dashboard analyst. Summarize overview, pool activity, and platform alerts for end users. Output valid JSON only. Write in English.",
+    taskInstruction:
+      "Given dashboard snapshot JSON (overview score/legend, pool volumes by label, platform alerts), produce a concise synthesis. " +
+      "Do not invent data. headline ≤12 words. narrative ≤70 words. highlights: 2-3 short bullets. " +
+      'JSON only: {"headline":"...","narrative":"...","highlights":["..."],"confidence":0-100}.',
+    defaultHeadline: "Overall stable",
+  },
+  zh: {
+    systemMessage:
+      "你是 Sentinel 仪表盘解读助手，面向普通用户。根据交易概览、池子成交与全平台警报做综合判断。只输出合法 JSON，使用简体中文。",
+    taskInstruction:
+      "输入为仪表盘快照 JSON，包含：①交易情况概览（安全分、三类风险占比）②交易池状态（SAFE/SHALLOW/TOXIC/SDA 成交量）③主动警报（全平台最近异常，最多5条）。" +
+      "不要编造输入里没有的数据。headline 一句话总评（不超过 20 字）。narrative 综合说明（不超过 80 字）。highlights 给 2-3 条短要点（每条不超过 25 字）。" +
+      '仅返回 JSON：{"headline":"<简体中文>","narrative":"<简体中文>","highlights":["<简体中文>"],"confidence":<0-100>}。不要 markdown。',
+    defaultHeadline: "整体平稳",
+  },
+};
+
+export function getDashboardOverviewPromptBundle(
+  language: LlmResponseLanguage
+): DashboardOverviewPromptBundle {
+  return DASHBOARD_PROMPTS[language];
+}

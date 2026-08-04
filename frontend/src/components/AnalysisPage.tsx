@@ -100,7 +100,7 @@ function AnalysisReportView({
 
   return (
     <>
-      <GlobalLoading active={refreshing} message={refreshing ? "Refreshing analysis..." : undefined} />
+      <GlobalLoading active={refreshing} message={refreshing ? "Refreshing analysis" : undefined} />
       <div className="analysis-page">
       <header className="analysis-header">
         <div>

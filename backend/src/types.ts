@@ -91,6 +91,41 @@ export interface SafetyExplanation {
   generatedAt: string;
 }
 
+export interface DashboardOverviewInput {
+  score: number;
+  legend: {
+    highRisk: number;
+    strategy: number;
+    warning: number;
+  };
+  poolVolume: Array<{
+    label: string;
+    volumeUsdc: number;
+    swapCount?: number;
+  }>;
+  alerts: Array<{
+    title: string;
+    detail: string;
+    level?: string;
+  }>;
+  poolsHealth?: {
+    poolCount: number;
+    healthy: number;
+    degraded: number;
+    empty: number;
+  } | null;
+}
+
+export interface DashboardOverviewExplanation {
+  headline: string;
+  narrative: string;
+  highlights: string[];
+  confidence?: number;
+  source: "llm";
+  model: string;
+  generatedAt: string;
+}
+
 export type ContractDecision = 0 | 1 | 2;
 
 export interface ExecutionPermit {

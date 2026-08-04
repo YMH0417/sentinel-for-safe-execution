@@ -18,9 +18,16 @@ import swapRouter from "./routes/swap.js";
 import analysisRouter from "./routes/analysis.js";
 import aiAnalysisRouter from "./routes/ai-analysis.js";
 import settingsRouter from "./routes/settings.js";
+import ledgerRouter from "./routes/ledger.js";
 import { isMockChainMode } from "./config/chainConfig.js";
 import { isDemoChainMode } from "./config/demoConfig.js";
 import { warmPoolsHealthCache } from "./services/poolHealthCacheService.js";
+import {
+  warmPoolVolumeCache,
+  startPoolVolumePolling,
+} from "./services/poolVolumeCacheService.js";
+import { maybeBootstrapLedgerOnStart } from "./services/ledgerBootstrapService.js";
+import { initStorage, getStorageInfo } from "./storage/index.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -45,6 +52,7 @@ app.use("/api/swap", swapRouter);
 app.use("/api/analysis", analysisRouter);
 app.use("/api/ai-alert-analysis", aiAnalysisRouter);
 app.use("/api/settings", settingsRouter);
+app.use("/api/ledger", ledgerRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -56,8 +64,16 @@ app.use(errorHandler);
 
 // Start server — bind to 127.0.0.1 to avoid EACCES on Windows
 const server = http.createServer(app);
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`\n  Sentinel Backend running at http://127.0.0.1:${PORT}`);
+
+async function main(): Promise<void> {
+  await initStorage();
+  const storage = getStorageInfo();
+
+  server.listen(PORT, "127.0.0.1", () => {
+    console.log(`\n  Sentinel Backend running at http://127.0.0.1:${PORT}`);
+    console.log(
+      `  Storage: ${storage.driver}${storage.postgres ? " (Neon Postgres)" : " (local JSON files)"}`
+    );
   console.log(`  Chain mode: ${isMockChainMode() ? "mock" : process.env.DEMO_REGISTRY_ADDRESS || process.env.DEMO_DEPLOYMENT_PATH || "demo (deployment file)"}`);
   console.log(`  API Endpoints:`);
   console.log(`    GET  /api/quote          — 获取候选 routes`);
@@ -78,15 +94,27 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`    POST /api/swap/safe       — Same as POST /api/swap`);
   console.log(`    POST /api/swap/force      — Bypass Agent (dev)`);
   console.log(`    POST /api/swap/verify-all — Batch verify (default force; ?safe=true)`);
-  console.log(`    GET  /api/debug/pools-health — 池健康检查（带缓存）`);
-  console.log(`    POST /api/debug/warm-cache   — 预热 pools-health 缓存`);
+    console.log(`    GET  /api/debug/pools-health — 池健康检查（带缓存）`);
+    console.log(`    GET  /api/debug/pool-volume  — 账本近 100 笔成交量（ledger 源，60s 缓存）`);
+    console.log(`    POST /api/debug/warm-cache   — 预热 pools-health 缓存`);
   console.log(`    GET  /api/swap/wallet     — Swap 钱包地址`);
   console.log(`    GET  /api/swap/balances   — Swap 钱包余额`);
+    console.log(`    GET  /api/ledger/achievements/:address — 本地交易账本徽章（事件驱动）`);
+    console.log(`    POST /api/ledger/trades         — 钱包 swap 完成后写入账本`);
   console.log(`    GET  /api/health         — 健康检查\n`);
 
   if (isDemoChainMode()) {
     void warmPoolsHealthCache();
+    void warmPoolVolumeCache();
+    startPoolVolumePolling();
+    void maybeBootstrapLedgerOnStart();
   }
+  });
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
 
 export default app;

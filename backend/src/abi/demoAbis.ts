@@ -29,6 +29,7 @@ export const demoSwapRouterAbi = [
   "function SDA_EXECUTION_WINDOW() external view returns (uint256)",
   "event SdaExecutionWindowOpened(bytes32 indexed swapId, bytes32 indexed routeId, address indexed user, uint256 quotedOutAtOpen, uint256 readyAt)",
   "event SdaExecutionWindowCompleted(bytes32 indexed swapId, bytes32 indexed routeId, address indexed recipient, uint256 quotedOutAtOpen, uint256 quotedOutAtComplete, uint256 amountOut)",
+  "event RouterSwapExecuted(bytes32 indexed routeId, address indexed recipient, address pair, uint256 amountIn, uint256 amountOut)",
 ] as const;
 
 export const demoPairAbi = [
@@ -46,6 +47,17 @@ export const demoPoolRegistryAbi = [
   "function poolCount() view returns (uint256)",
   "function isSealed() view returns (bool)",
   "function getAllPools() view returns (tuple(bytes32 routeId, address pair, address tokenIn, address tokenOut, uint8 label)[])",
+] as const;
+
+export const sentinelLedgerAbi = [
+  "function stats(address user) view returns (uint128 usdcVolume, uint64 checkCount, uint64 tradeCount, uint64 safeTradeCount, uint8 badgeFlags)",
+  "function badgeFlagsOf(address user) view returns (uint8)",
+  "function dashboardSnapshot() view returns (uint64 tradeCount, uint16 abnormalPools, uint16 poolCount, uint128 safeVolume, uint64 safeSwaps, uint128 shallowVolume, uint64 shallowSwaps, uint128 toxicVolume, uint64 toxicSwaps, uint128 sdaVolume, uint64 sdaSwaps)",
+  "function globalTradeCount() view returns (uint64)",
+  "function recordTrade(address user, bytes32 routeId, uint8 mode, uint8 poolLabel, address tokenIn, uint256 amountIn, uint256 amountOut)",
+  "event TradeRecorded(address indexed user, bytes32 indexed routeId, uint8 mode, uint8 poolLabel, address tokenIn, uint256 amountIn, uint256 amountOut, uint64 tradeCount)",
+  "event BadgeUnlocked(address indexed user, uint8 tier)",
+  "event StatsUpdated(address indexed user, uint64 checkCount, uint64 tradeCount, uint64 safeTradeCount, uint128 usdcVolume, uint8 badgeFlags)",
 ] as const;
 
 export const sentinelAchievementsAbi = [

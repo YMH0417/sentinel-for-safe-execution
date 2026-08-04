@@ -3,6 +3,7 @@ import { demoPairAbi, demoSwapRouterAbi } from "./demoConstants";
 import { parseApiError } from "./apiError";
 import { fetchDemoChainPreflight } from "./demoPreflight";
 import { getBrowserProvider, ensureDemoChain } from "./wallet";
+import { api } from "../api/client";
 import type { SwapResult } from "../types";
 
 const API_BASE = "/api";
@@ -320,7 +321,7 @@ export async function executeWalletDemoSwap(params: {
   }
 
   const balancesAfter = await fetchBalances(recipient);
-  return buildSwapResult({
+  const result = buildSwapResult({
     plan,
     txHash: receipt.hash,
     blockNumber: receipt.blockNumber,
@@ -330,6 +331,29 @@ export async function executeWalletDemoSwap(params: {
     balancesAfter,
     sdaMeta,
   });
+
+  if (result.success && result.txHash) {
+    const ledgerMode = sdaMeta.sdaExecutionWindow ? "sda" : executionMode;
+    void api
+      .recordLedgerTrade({
+        user: recipient,
+        routeId: result.executedRouteId ?? result.routeId,
+        executionMode: ledgerMode,
+        safetyMode: plan.safetyMode,
+        poolLabel: plan.poolLabel,
+        tokenIn: plan.tokenIn,
+        tokenOut: plan.tokenOut,
+        amountIn: plan.amountIn,
+        amountOut: result.actualOut,
+        txHash: result.txHash,
+        blockNumber: receipt.blockNumber,
+        agentDecision: plan.agentDecision.decision,
+        registerCheck: plan.safetyMode === "safe" && ledgerMode === "router",
+      })
+      .catch(() => undefined);
+  }
+
+  return result;
 }
 
 export async function isBackendSwapExecutorAvailable(): Promise<boolean> {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-05 — Dashboard 交易情况概览
+
+- 三格占比：分母改为「总体活动量」（含 normal 事件与健康池稀释）；事件窗口 100 条。
+- 用户 ⓘ 弹窗仅保留人话说明；计算细则见 [`dashboard-transaction-overview.md`](dashboard-transaction-overview.md)。
+
 ## 2026-08-05 — Monad testnet contract inventory
 
 - Added [`monad-testnet-contracts.md`](monad-testnet-contracts.md): full on-chain inventory (56 active contracts), wiring diagram, orphan Vault/Router from pre-badge deploy, and **2026-08-05 RPC verification** results.

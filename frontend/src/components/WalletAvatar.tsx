@@ -241,7 +241,7 @@ export function WalletAvatar() {
             <div className="wallet-popup-balance-value">
               {nativeBal !== null
                 ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}`
-                : "Loading..."}
+                : "Loading"}
             </div>
             {Object.values(tokens).length > 0 && (
               <div className="wallet-popup-token-list">

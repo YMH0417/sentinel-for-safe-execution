@@ -26,6 +26,8 @@ export interface DemoDeploymentConfig {
   vaultExecution?: string;
   swapRouter?: string;
   achievements?: string;
+  /** SentinelLedger — replaces deprecated achievements on anvil deploys */
+  ledger?: string;
   scenarioDeployer?: string;
   testUser?: string;
   tokens: Partial<Record<DemoTokenSymbol, string>>;
@@ -89,6 +91,7 @@ export function loadDemoConfig(): DemoDeploymentConfig {
     vaultExecution: raw.vaultExecution ? getAddress(raw.vaultExecution) : undefined,
     swapRouter: raw.swapRouter ? getAddress(raw.swapRouter) : undefined,
     achievements: raw.achievements ? getAddress(raw.achievements) : undefined,
+    ledger: raw.ledger ? getAddress(raw.ledger) : undefined,
     scenarioDeployer: raw.scenarioDeployer ? getAddress(raw.scenarioDeployer) : undefined,
     testUser: raw.testUser ? getAddress(raw.testUser) : undefined,
     agentSigner: raw.agentSigner ? getAddress(raw.agentSigner) : undefined,

@@ -12,6 +12,8 @@
 | [`demo-script.md`](demo-script.md) | Presenters | Safe/Unsafe demo script, profile switching |
 | [`route-scenarios.md`](route-scenarios.md) | QA / product | Mock routes + 48 demo routes (incl. SDA) |
 | [`monad-testnet-contracts.md`](monad-testnet-contracts.md) | Ops / dev | **Monad testnet 链上合约清单 + 验证记录** |
+| [`dashboard-transaction-overview.md`](dashboard-transaction-overview.md) | Dev / QA | Dashboard「交易情况概览」圆环与三格 **计算规则（内部）** |
+| [`pool-volume-indexer.md`](pool-volume-indexer.md) | Dev / ops | 链条状态 **链上成交量索引**（60s 轮询） |
 | [`analysis-pipeline.md`](analysis-pipeline.md) | Data / backend | Event analysis engine |
 | [`data-analysis.md`](data-analysis.md) | Product | Baseline findings and evidence limits |
 | [`CHANGELOG.md`](CHANGELOG.md) | Everyone | Release notes (replaces `dev-changes/`) |

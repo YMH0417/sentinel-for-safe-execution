@@ -4,16 +4,23 @@ import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as path from "path";
 import { isMockChainMode, getOptionalVaultAddress, getSwapWallet, getOptionalSwapRouterAddress, getRpcUrl } from "../config/chainConfig.js";
+import { isHybridDemoMode, getLedgerRpcUrl } from "../config/ledgerConfig.js";
 import { isDemoChainMode, loadDemoConfig } from "../config/demoConfig.js";
 import { getDemoChainProfile, getDemoProfile } from "../config/demoProfile.js";
 import { JsonRpcProvider } from "ethers";
 import { getLiveDemoConfig } from "../services/demoRegistryService.js";
 import { loadRiskConfig } from "../services/agentService.js";
-import { getEvents } from "../services/eventService.js";
+import { getEvents, getEventsStorageLabel } from "../services/eventService.js";
 import { assertSwapConfigured, isRouterSwapAvailable } from "../services/swapService.js";
 import { isAgentSigningConfigured } from "../services/agentSignService.js";
-import { getEventsFilePath } from "../services/eventService.js";
 import { getPoolsHealthCacheMeta, getCachedPoolsHealth, warmPoolsHealthCache } from "../services/poolHealthCacheService.js";
+import {
+  getPoolVolumeCacheMeta,
+  getCachedPoolVolume,
+  warmPoolVolumeCache,
+  schedulePoolVolumeBackgroundRefresh,
+} from "../services/poolVolumeCacheService.js";
+import { buildEmptyPoolVolumeReport } from "../services/poolVolumeService.js";
 
 const router = Router();
 
@@ -41,7 +48,9 @@ function resolveDemoChainStatusFields(): {
   }
 
   try {
-    const profile = getDemoChainProfile();
+    const profile = isHybridDemoMode()
+      ? getDemoChainProfile("monad-testnet")
+      : getDemoChainProfile();
     let chainId = profile.chainId;
     let deploymentTarget = profile.deploymentTarget;
 
@@ -141,6 +150,10 @@ router.get("/status", async (_req: Request, res: Response) => {
     nativeCurrency: demoChain.nativeCurrency,
     demoProfile: demoChain.demoProfile,
     deploymentTarget: demoChain.deploymentTarget,
+    hybridDemoMode: isHybridDemoMode(),
+    ledgerRpcUrl: isHybridDemoMode() ? getLedgerRpcUrl() : null,
+    ledgerSource: process.env.SENTINEL_LEDGER_SOURCE?.trim() || "auto",
+    storageDriver: (await import("../storage/index.js")).getStorageInfo().driver,
     rpcConfigured,
     vaultConfigured,
     swapConfigured,
@@ -148,15 +161,16 @@ router.get("/status", async (_req: Request, res: Response) => {
     agentSigningAvailable,
     swapRouter,
     swapWallet,
-    eventsPersistPath: getEventsFilePath(),
+    eventsPersistPath: await getEventsStorageLabel(),
     demoRegistry,
     demoPoolCount,
     defaultProfile: config.defaultProfile,
     paused: config.paused,
     routeCount,
     routesVersion,
-    eventCount: getEvents().length,
+    eventCount: (await getEvents()).length,
     poolsHealthCache: getPoolsHealthCacheMeta(),
+    poolVolumeCache: getPoolVolumeCacheMeta(),
     endpoints: [
       "GET /api/health",
       "GET /api/quote",
@@ -178,6 +192,7 @@ router.get("/status", async (_req: Request, res: Response) => {
       "GET /api/swap/wallet",
       "GET /api/swap/balances",
       "GET /api/debug/pools-health",
+      "GET /api/debug/pool-volume",
       "POST /api/debug/warm-cache",
       "GET /api/debug/status",
     ],
@@ -228,6 +243,27 @@ router.get("/pools-health", async (req: Request, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Health check failed";
     res.status(503).json({ error: message, cache: getPoolsHealthCacheMeta() });
+  }
+});
+
+router.get("/pool-volume", async (req: Request, res: Response) => {
+  if (!isDemoChainMode()) {
+    return res.status(404).json({ error: "pool-volume requires demo chain mode" });
+  }
+  try {
+    const force = req.query.refresh === "true" || req.query.force === "true";
+    if (force) {
+      schedulePoolVolumeBackgroundRefresh();
+    }
+    const report = await getCachedPoolVolume();
+    res.json({ ...report, cache: getPoolVolumeCacheMeta() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Pool volume index failed";
+    const fallback = await buildEmptyPoolVolumeReport();
+    res.status(200).json({
+      ...fallback,
+      cache: { ...getPoolVolumeCacheMeta(), error: message },
+    });
   }
 });
 

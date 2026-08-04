@@ -522,7 +522,7 @@ export function SettingsPage() {
               disabled={!canOperate || mintBusy}
               onClick={() => handlePoolMint(pool, tokenSide, address, symbol)}
             >
-              {mintBusy ? "…" : "增发"}
+              {mintBusy ? "增发中" : "增发"}
             </button>
           </div>
         </td>
@@ -543,7 +543,7 @@ export function SettingsPage() {
               disabled={!canOperate || burnBusy}
               onClick={() => handlePoolBurn(pool, tokenSide, address, symbol)}
             >
-              {burnBusy ? "…" : "销毁"}
+              {burnBusy ? "销毁中" : "销毁"}
             </button>
           </div>
         </td>
@@ -606,7 +606,7 @@ export function SettingsPage() {
               onClick={claimFaucetUsdc}
               disabled={faucetBusy}
             >
-              {faucetBusy ? "领取中…" : "领取 10,000 USDC"}
+              {faucetBusy ? "领取中" : "领取 10,000 USDC"}
             </button>
           )}
           {faucetMsg && (
@@ -626,7 +626,7 @@ export function SettingsPage() {
         </p>
 
         {llmLoading && !llmSettings ? (
-          <p style={{ color: "var(--text-dim)", fontSize: 16 }}>加载配置中…</p>
+          <p style={{ color: "var(--text-dim)", fontSize: 16 }}>加载配置中</p>
         ) : (
           <>
             {llmSettings && (
@@ -742,7 +742,7 @@ export function SettingsPage() {
                 onClick={() => void saveLlmSettings()}
                 disabled={llmSaving || !llmBaseUrl.trim() || !llmModel.trim()}
               >
-                {llmSaving ? "保存中…" : "保存到 .env"}
+                {llmSaving ? "保存中" : "保存到 .env"}
               </button>
               <button
                 type="button"
@@ -806,7 +806,7 @@ export function SettingsPage() {
               {supplyLoading && supplyProgress
                 ? `刷新中 ${formatSupplyProgressLabel(supplyProgress)}`
                 : supplyLoading
-                  ? "刷新中…"
+                  ? "刷新中"
                   : "刷新余额"}
             </button>
           </div>
@@ -889,7 +889,7 @@ export function SettingsPage() {
                               disabled={disabled || mintBusy}
                               onClick={() => handleMint(token.symbol, token.address, token.decimals)}
                             >
-                              {mintBusy ? "…" : "增发"}
+                              {mintBusy ? "增发中" : "增发"}
                             </button>
                           </div>
                         </td>
@@ -910,7 +910,7 @@ export function SettingsPage() {
                               disabled={disabled || burnBusy}
                               onClick={() => handleBurn(token.symbol, token.address, token.decimals)}
                             >
-                              {burnBusy ? "…" : "销毁"}
+                              {burnBusy ? "销毁中" : "销毁"}
                             </button>
                           </div>
                         </td>
@@ -1025,7 +1025,7 @@ export function SettingsPage() {
               onClick={() => account && refreshTransferBalances(account)}
               disabled={!account || transferLoading}
             >
-              {transferLoading ? "刷新中…" : "刷新余额"}
+              {transferLoading ? "刷新中" : "刷新余额"}
             </button>
           </div>
 
@@ -1080,7 +1080,7 @@ export function SettingsPage() {
                                 handleTransfer(token.symbol, token.address, token.decimals)
                               }
                             >
-                              {transferBusy ? "…" : "转账"}
+                              {transferBusy ? "转账中" : "转账"}
                             </button>
                           </div>
                         </td>

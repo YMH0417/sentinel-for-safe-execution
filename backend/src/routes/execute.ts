@@ -218,7 +218,7 @@ router.get("/nonce", async (req: Request, res: Response) => {
 type MockHandleResult =
   | {
       success: boolean;
-      event: ReturnType<typeof addEvent>;
+      event: Awaited<ReturnType<typeof addEvent>>;
       decision: ExecuteRequest["evaluation"];
     }
   | { error: string; status: number };
@@ -253,7 +253,7 @@ async function handleMockPermitBody(
         ? candidate.configProfile
         : "normal"
     );
-    addEvent({
+    await addEvent({
       eventType: "ExecutionAttempted",
       routeId: candidate.routeId,
       decision: decision.decision,
@@ -271,7 +271,7 @@ async function handleMockPermitBody(
     const result = executeMockLegacy(decision);
     return {
       success: result.success,
-      event: addEvent({
+      event: await addEvent({
         ...result.event,
         context: {
           ...result.event.context,
@@ -354,7 +354,7 @@ async function handleMockPermitBody(
   };
 
   try {
-    addEvent({
+    await addEvent({
       eventType: "ExecutionAttempted",
       routeId: effectiveRouteId,
       decision: evaluation.decision,
@@ -376,7 +376,7 @@ async function handleMockPermitBody(
     const result = executeMockPermit(permit, evaluation.decision, effectiveRouteId);
     return {
       success: result.success,
-      event: addEvent({
+      event: await addEvent({
         ...result.event,
         context: {
           ...result.event.context,
@@ -387,7 +387,7 @@ async function handleMockPermitBody(
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Mock execution failed";
-    addEvent({
+    await addEvent({
       eventType: "ExecutionRejected",
       routeId: effectiveRouteId,
       decision: evaluation.decision,
@@ -441,7 +441,7 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const { evaluation, permit, signature } = validation.request;
-  addEvent({
+  await addEvent({
     eventType: "ExecutionAttempted",
     routeId: validation.effectiveRouteId,
     decision: evaluation.decision,
@@ -469,7 +469,7 @@ router.post("/", async (req: Request, res: Response) => {
       evaluation.decision,
       validation.effectiveRouteId
     );
-    const event = addEvent({
+    const event = await addEvent({
       ...result.event,
       context: {
         ...result.event.context,
@@ -484,7 +484,7 @@ router.post("/", async (req: Request, res: Response) => {
         : err instanceof VaultExecutionError
           ? err.code
           : "CHAIN_EXECUTION_FAILED";
-    addEvent({
+    await addEvent({
       eventType: "ExecutionRejected",
       routeId: validation.effectiveRouteId,
       decision: evaluation.decision,

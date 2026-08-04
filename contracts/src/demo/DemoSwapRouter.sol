@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {VaultExecution} from "../VaultExecution.sol";
-import {ISentinelAchievements} from "../achievements/ISentinelAchievements.sol";
+import {ISentinelLedger} from "../ledger/ISentinelLedger.sol";
 import {DemoPoolRegistry} from "../registry/DemoPoolRegistry.sol";
 import {DemoScenarioDeployer} from "../demo/DemoScenarioDeployer.sol";
 import {DemoPair} from "../dex/DemoPair.sol";
@@ -16,7 +16,7 @@ contract DemoSwapRouter {
     VaultExecution public immutable vault;
     DemoPoolRegistry public immutable registry;
     DemoScenarioDeployer public immutable scenarioDeployer;
-    ISentinelAchievements public immutable achievements;
+    ISentinelLedger public immutable ledger;
 
     /// @notice Minimum wall-clock wait (on-chain timestamp) before an SDA escrowed swap may settle.
     /// Simulates the gap between signing an intent and cross-chain message arrival (paper SDA §3.2.2).
@@ -67,14 +67,14 @@ contract DemoSwapRouter {
         uint256 amountOut
     );
 
-    constructor(address vault_, address registry_, address scenarioDeployer_, address achievements_) {
+    constructor(address vault_, address registry_, address scenarioDeployer_, address ledger_) {
         if (vault_ == address(0) || registry_ == address(0) || scenarioDeployer_ == address(0)) {
             revert VaultExecution.ZeroAddress();
         }
         vault = VaultExecution(vault_);
         registry = DemoPoolRegistry(registry_);
         scenarioDeployer = DemoScenarioDeployer(scenarioDeployer_);
-        achievements = ISentinelAchievements(achievements_);
+        ledger = ISentinelLedger(ledger_);
     }
 
     /// @notice Validate permit via Vault, then pull tokenIn from user and swap on the demo pair.
@@ -115,8 +115,16 @@ contract DemoSwapRouter {
 
         amountOut = _swapOnPair(pool, amountIn, amountOutMin, recipient);
         emit RouterSwapExecuted(routeId, recipient, pool.pair, amountIn, amountOut);
-        if (address(achievements) != address(0)) {
-            achievements.recordSafeSwap(user, pool.tokenIn, amountIn);
+        if (address(ledger) != address(0)) {
+            ledger.recordTrade(
+                user,
+                routeId,
+                ISentinelLedger.ExecutionMode.Safe,
+                uint8(pool.label),
+                pool.tokenIn,
+                amountIn,
+                amountOut
+            );
         }
     }
 
@@ -181,6 +189,17 @@ contract DemoSwapRouter {
             quotedOutAtComplete,
             amountOut
         );
+        if (address(ledger) != address(0)) {
+            ledger.recordTrade(
+                pending.user,
+                pending.routeId,
+                ISentinelLedger.ExecutionMode.Sda,
+                uint8(pool.label),
+                pool.tokenIn,
+                pending.amountIn,
+                amountOut
+            );
+        }
     }
 
     function getSdaWindowReadyAt(bytes32 swapId) external view returns (uint256) {

@@ -32,6 +32,7 @@ import {
 } from "../services/swapService.js";
 
 import { addEvent } from "../services/eventService.js";
+import { mirrorSwapToLedger } from "../services/ledgerSyncService.js";
 
 import type { SwapRequest } from "../types.js";
 
@@ -223,7 +224,7 @@ async function handleSwap(
 
     const result = await executor({ ...parsed, correlationId });
 
-    addEvent({
+    await addEvent({
       eventType: result.success ? "SwapExecuted" : "SwapFailed",
       routeId: result.executedRouteId ?? result.routeId,
       decision: result.agentDecision,
@@ -257,6 +258,8 @@ async function handleSwap(
       },
     });
 
+    mirrorSwapToLedger(result, safetyMode);
+
     res.json(result);
 
   } catch (err) {
@@ -269,7 +272,7 @@ async function handleSwap(
           ? err.name
           : "SWAP_FAILED";
 
-    addEvent({
+    await addEvent({
 
       eventType: "SwapFailed",
 
@@ -425,7 +428,7 @@ router.post("/verify-all", async (req: Request, res: Response) => {
 
 
 
-    addEvent({
+    await addEvent({
 
       eventType: "SwapBatchCompleted",
 

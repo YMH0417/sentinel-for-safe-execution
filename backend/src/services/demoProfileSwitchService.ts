@@ -14,6 +14,7 @@ import {
 } from "../config/demoProfile.js";
 import { resetSwapRuntimeCache } from "../config/chainConfig.js";
 import { invalidatePoolsHealthCache } from "./poolHealthCacheService.js";
+import { invalidatePoolVolumeCache } from "./poolVolumeCacheService.js";
 import { clearLiveDemoConfigCache } from "./demoRegistryService.js";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
@@ -248,6 +249,7 @@ export function switchDemoProfile(profileName: string): {
   clearLiveDemoConfigCache();
   resetSwapRuntimeCache();
   invalidatePoolsHealthCache();
+  invalidatePoolVolumeCache();
 
   if (isLocal) {
     warnings.push("本地 profile 需确保 Anvil 在 8545 运行（.\\start-demo.ps1 -Profile " + profileName + "）");

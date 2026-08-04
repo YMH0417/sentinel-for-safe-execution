@@ -86,6 +86,7 @@ body {
 /* Hidden scrollbar — wheel / touch / trackpad scrolling still works */
 .sentinel-page,
 .dashboard-alert-list,
+.dashboard-ai-col-body,
 .scroll-hidden {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -93,6 +94,7 @@ body {
 
 .sentinel-page::-webkit-scrollbar,
 .dashboard-alert-list::-webkit-scrollbar,
+.dashboard-ai-col-body::-webkit-scrollbar,
 .scroll-hidden::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -323,12 +325,30 @@ body {
   justify-content: space-between;
 }
 
+.dashboard-card-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dashboard-card-refresh-btn {
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-sizing: border-box;
+  gap: 4px;
+}
+
 .dashboard-info-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border-radius: 50%;
   border: 1px solid var(--border);
@@ -481,7 +501,7 @@ body {
 .dashboard-chain-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .dashboard-chain-row {
@@ -489,7 +509,8 @@ body {
   align-items: center;
   justify-content: space-between;
   font-size: 13px;
-  padding: 8px 12px;
+  padding: 12px 14px;
+  min-height: 44px;
   background: var(--bg-inset);
   border-radius: 8px;
   border: 1px solid transparent;
@@ -505,6 +526,50 @@ body {
   font-weight: 700;
   font-family: var(--font-display);
   font-size: 14px;
+}
+
+.dashboard-chain-volume {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dashboard-chain-volume-unit {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.dashboard-chain-volume-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.dashboard-chain-abnormal {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dashboard-chain-abnormal-label {
+  color: var(--text-dim);
+}
+
+.dashboard-chain-abnormal-value {
+  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--red);
+}
+
+.dashboard-chain-abnormal-meta {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .dashboard-status-strip {
@@ -529,15 +594,20 @@ body {
 }
 
 .dashboard-alert-list {
-  height: 55%;
+  flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
   padding-right: 4px;
+}
+
+.dashboard-alerts-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .dashboard-alert-item {
@@ -566,19 +636,168 @@ body {
   border-left-color: var(--purple);
 }
 
-.dashboard-ai-box {
-  position: absolute;
-  bottom: 24px;
-  height: 30%;
-  width: 93%;
-  margin-top: 10px;
-  padding: 14px;
+.dashboard-ai-chart-cell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-ai-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 2px;
+  padding: 8px 10px;
   background: rgba(0, 229, 204, 0.05);
   border: 1px solid rgba(0, 229, 204, 0.15);
   border-radius: 10px;
-  font-size: 16px;
-  color: var(--text-muted);
-  line-height: 1.6;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.dashboard-ai-split {
+  display: flex;
+  gap: 0;
+  padding: 6px 8px;
+}
+
+.dashboard-ai-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dashboard-ai-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-ai-col-divider {
+  width: 1px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 8px;
+  align-self: stretch;
+}
+
+.dashboard-ai-result-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+  height: 100%;
+}
+
+.dashboard-ai-result-side {
+  width: 148px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 8px 2px 2px;
+}
+
+.dashboard-ai-result-side-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.dashboard-ai-result-side-status {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.dashboard-ai-result-side-status--safe {
+  color: var(--green);
+}
+
+.dashboard-ai-result-side-status--warn {
+  color: var(--yellow);
+}
+
+.dashboard-ai-result-side-status--neutral {
+  color: var(--cyan);
+}
+
+.dashboard-ai-result-side-confidence {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.dashboard-ai-result-inner-divider {
+  width: 1px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  align-self: stretch;
+}
+
+.dashboard-ai-result-detail {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 0 2px 10px;
+}
+
+.dashboard-ai-result-narrative {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.dashboard-ai-result-list {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.dashboard-ai-result-list li {
+  margin-bottom: 2px;
+}
+
+.dashboard-ai-compact .dashboard-ai-mini-list,
+.dashboard-ai-mini-list {
+  margin: 6px 0 0;
+  padding-left: 14px;
+}
+
+.dashboard-ai-mini-list li {
+  margin-bottom: 2px;
+}
+
+.dashboard-ai-muted {
+  color: var(--text);
+  opacity: 0.82;
+}
+
+.dashboard-ai-error {
+  color: var(--red);
+  word-break: break-word;
+}
+
+.dashboard-ai-idle {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .dashboard-stat-card {
@@ -2115,8 +2334,8 @@ main {
 .dashboard-legend-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  padding-top: 14px;
+  gap: 12px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
   margin-top: auto;
 }
@@ -2126,7 +2345,7 @@ main {
   flex-direction: row;
   align-items: center;
   gap: 10px;
-  padding: 5px 10px;
+  padding: 12px 10px;
   background: var(--bg-inset);
   border-radius: 8px;
   border: 1px solid transparent;
@@ -2158,16 +2377,17 @@ main {
 .dashboard-legend-dot-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
+  margin-left: 6px;
 }
 
 .dashboard-legend-dot-label {
   font-size: 13px;
   color: var(--text-muted);
   text-align: left;
-  line-height: 1.25;
+  line-height: 1.45;
 }
 
 .dashboard-legend-dot-pct {
@@ -2175,5 +2395,113 @@ main {
   font-weight: 700;
   font-family: var(--font-display);
   text-align: left;
-  line-height: 1.2;
+  line-height: 1.4;
 }
+
+/* ── 风控规则页 ── */
+.risk-rules-intro {
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  font-size: 16px;
+  line-height: 1.75;
+  max-width: 52rem;
+}
+
+.risk-rules-error {
+  color: var(--red);
+  margin-bottom: 16px;
+}
+
+.risk-rules-muted {
+  color: var(--text-dim);
+}
+
+.risk-rules-card-hint {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: -4px 0 12px;
+  line-height: 1.6;
+}
+
+.risk-rules-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.risk-rules-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.risk-rules-list li:last-child {
+  border-bottom: none;
+}
+
+.risk-rules-list strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.risk-rules-list span {
+  color: var(--text-muted);
+}
+
+.risk-rules-status-ok {
+  color: var(--green) !important;
+}
+
+.risk-rules-status-bad {
+  color: var(--red) !important;
+}
+
+.risk-rules-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.risk-rules-row:last-child {
+  border-bottom: none;
+}
+
+.risk-rules-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.risk-rules-row-badge {
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.risk-rules-row-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.65;
+}
+
+.risk-rules-bullet-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.75;
+}
+
+.risk-rules-bullet-list li {
+  margin-bottom: 10px;
+}
+
+.risk-rules-bullet-list strong {
+  color: var(--text);
+}
+
