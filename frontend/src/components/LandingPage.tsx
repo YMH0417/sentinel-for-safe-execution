@@ -24,13 +24,13 @@ export function LandingPage() {
           <h1 className="landing-title">SENTINEL</h1>
           <p className="landing-kicker">-DeFi Security-</p>
           <div className="landing-tagline">
-            <p>
+            <p className="landing-tagline-lead">
               <span style={{fontWeight: 700, color: "var(--cyan)"}}>Don&apos;t trade</span> naked.
             </p>
-            <p style={{fontSize: 30}}>
-              Every route analyzed.
-            </p>
-            <p style={{fontSize: 30}}>Every contract scored.</p>
+            <div className="landing-tagline-sub">
+              <p>Every route analyzed.</p>
+              <p>Every contract scored.</p>
+            </div>
           </div>
 
           {account ? (
@@ -48,7 +48,7 @@ export function LandingPage() {
               onClick={handleConnect}
               disabled={isConnecting}
             >
-              {isConnecting ? "CONNECTING..." : "CONNECT WALLET"}
+              {isConnecting ? "正在连接钱包" : "连接钱包"}
             </button>
           )}
         </div>

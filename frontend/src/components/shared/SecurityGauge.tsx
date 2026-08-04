@@ -64,17 +64,17 @@ export function SecurityGauge({ score, size = 180, label = "安全评分" }: Pro
         {/* Center text */}
         <text
           x="50%"
-          y="46%"
+          y="50%"
           textAnchor="middle"
           fill="var(--text)"
-          fontSize={36}
+          fontSize={44}
           fontWeight={700}
           fontFamily="var(--font-display)"
           className="security-gauge-score-text"
         >
           {score}
         </text>
-        <text x="50%" y="60%" textAnchor="middle" fill="var(--text-muted)" fontSize={13}>
+        <text x="50%" y="64%" textAnchor="middle" fill="var(--text-muted)" fontSize={15}>
           / 100
         </text>
       </svg>

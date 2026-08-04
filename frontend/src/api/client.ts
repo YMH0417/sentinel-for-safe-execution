@@ -454,6 +454,96 @@ export function computeScoreLegend(events: Event[], poolReport?: PoolsHealthRepo
   };
 }
 
+export interface SecurityScoreExplanation {
+  score: number;
+  baseScore: number;
+  rejectCount: number;
+  fallbackCount: number;
+  scoreAfterEvents: number;
+  poolScore: number | null;
+  healthyPools: number;
+  poolCount: number;
+  legend: ScoreLegend;
+  legendRaw: {
+    highRiskEvents: number;
+    toxicPools: number;
+    strategyEvents: number;
+    warningEvents: number;
+    degradedPools: number;
+    highRiskTotal: number;
+    strategyTotal: number;
+    warningTotal: number;
+    denominator: number;
+  };
+}
+
+export function explainSecurityMetrics(
+  events: Event[],
+  poolReport?: PoolsHealthReport
+): SecurityScoreExplanation {
+  const baseScore = 85;
+  const recentScore = events.slice(-20);
+  let rejectCount = 0;
+  let fallbackCount = 0;
+  for (const e of recentScore) {
+    if (e.eventType.includes("Reject") || e.eventType === "SwapFailed") rejectCount += 1;
+    if (e.decision === "FALLBACK_TO_SAFE_ROUTE") fallbackCount += 1;
+  }
+  let scoreAfterEvents = baseScore - rejectCount * 8 - fallbackCount * 3;
+  let poolScore: number | null = null;
+  let healthyPools = 0;
+  let poolCount = 0;
+  let score = scoreAfterEvents;
+  if (poolReport && poolReport.poolCount > 0) {
+    healthyPools = poolReport.healthy;
+    poolCount = poolReport.poolCount;
+    poolScore = Math.round((healthyPools / poolCount) * 100);
+    score = Math.round(scoreAfterEvents * 0.6 + poolScore * 0.4);
+  }
+  score = Math.max(0, Math.min(100, score));
+
+  const recentLegend = events.slice(-30);
+  const highRiskEvents = recentLegend.filter(
+    (e) => e.decision === "REJECT" || e.eventType.includes("Reject") || e.eventType === "SwapFailed"
+  ).length;
+  const strategyEvents = recentLegend.filter(
+    (e) => e.decision === "FALLBACK_TO_SAFE_ROUTE" || e.eventType.includes("Fallback")
+  ).length;
+  const warningEvents = recentLegend.filter(
+    (e) => e.eventType.includes("Warn") || (e.decision === "ALLOW" && (e.riskScore ?? 0) >= 40)
+  ).length;
+  const toxicPools = poolReport?.pools.filter((p) => p.poolLabel === "TOXIC").length ?? 0;
+  const degradedPools = poolReport ? poolReport.degraded + poolReport.empty : 0;
+  const highRiskTotal = highRiskEvents + toxicPools;
+  const strategyTotal = strategyEvents;
+  const warningTotal = warningEvents + degradedPools;
+  const denominator = Math.max(highRiskTotal + strategyTotal + warningTotal, 1);
+  const legend = computeScoreLegend(events, poolReport);
+
+  return {
+    score,
+    baseScore,
+    rejectCount,
+    fallbackCount,
+    scoreAfterEvents,
+    poolScore,
+    healthyPools,
+    poolCount,
+    legend,
+    legendRaw: {
+      highRiskEvents,
+      toxicPools,
+      strategyEvents,
+      warningEvents,
+      degradedPools,
+      highRiskTotal,
+      strategyTotal,
+      warningTotal,
+      denominator,
+    },
+  };
+}
+
 export interface ChainStatusRow {
   label: string;
   score: number;

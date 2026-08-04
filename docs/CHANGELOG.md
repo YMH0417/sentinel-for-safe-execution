@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-05 — Monad testnet contract inventory
+
+- Added [`monad-testnet-contracts.md`](monad-testnet-contracts.md): full on-chain inventory (56 active contracts), wiring diagram, orphan Vault/Router from pre-badge deploy, and **2026-08-05 RPC verification** results.
+- Added `scripts/verify-monad-testnet.ps1` to re-run manifest ↔ chain sanity checks against `https://testnet-rpc.monad.xyz`.
+
 ## 2026-08-02 — Dual-chain, Settings, MetaMask swap
 
 ### Profiles & deployment

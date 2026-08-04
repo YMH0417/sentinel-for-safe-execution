@@ -15,6 +15,8 @@ Profile 定义：[`shared/demo-chain-profiles.json`](../shared/demo-chain-profil
 | `anvil-fork-monad` | **10143** | `local-10143-demo.json` | `local` |
 | `monad-testnet` | **10143** | `monad-10143-demo.json` | `remote` |
 
+On-chain inventory and verification: [`../docs/monad-testnet-contracts.md`](../docs/monad-testnet-contracts.md) · `.\scripts\verify-monad-testnet.ps1`
+
 ---
 
 ## Quick start (Windows, recommended)

@@ -754,7 +754,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
             onClick={handleConnectWallet}
             disabled={isConnecting}
           >
-            {isConnecting ? "连接中..." : "连接 MetaMask"}
+            {isConnecting ? "正在连接钱包" : "连接 MetaMask"}
           </button>
         </div>
       )}

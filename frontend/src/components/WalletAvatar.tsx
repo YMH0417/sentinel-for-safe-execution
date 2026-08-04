@@ -206,7 +206,7 @@ export function WalletAvatar() {
         disabled={isConnecting}
         style={{ padding: "10px 18px", fontSize: 18 }}
       >
-        {isConnecting ? "连接中..." : "Connect Wallet"}
+        {isConnecting ? "正在连接钱包" : "连接钱包"}
       </button>
     );
   }

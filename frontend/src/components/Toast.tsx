@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -122,32 +123,43 @@ const typeStyles: Record<ToastType, { bg: string; border: string; text: string }
 };
 
 function ToastContainer({ toasts, onRemove }: { toasts: ToastItem[]; onRemove: (id: string) => void }) {
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setHeaderSlot(document.getElementById("header-toast-slot"));
+  }, [toasts.length]);
+
   if (toasts.length === 0) return null;
 
-  return (
-    <div style={{
-      position: "fixed",
-      top: 20,
-      right: 20,
-      display: "flex",
-      flexDirection: "column",
-      gap: 8,
-      zIndex: 9999,
-      maxWidth: 380,
-      pointerEvents: "none",
-    }}>
-      {toasts.map(toast => (
+  const stack = (
+    <div className={headerSlot ? "app-header-toast-stack" : "toast-stack-fallback"}>
+      {toasts.map((toast) => (
         <ToastItem
           key={toast.id}
           item={toast}
           onDismiss={() => onRemove(toast.id)}
+          inline={Boolean(headerSlot)}
         />
       ))}
     </div>
   );
+
+  if (headerSlot) {
+    return createPortal(stack, headerSlot);
+  }
+
+  return stack;
 }
 
-function ToastItem({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) {
+function ToastItem({
+  item,
+  onDismiss,
+  inline = false,
+}: {
+  item: ToastItem;
+  onDismiss: () => void;
+  inline?: boolean;
+}) {
   const styles = typeStyles[item.type];
   const [visible, setVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -166,23 +178,33 @@ function ToastItem({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
 
   return (
     <div
+      className={inline ? "toast-item toast-item--header" : "toast-item"}
       onClick={handleClose}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "12px 16px",
+        gap: inline ? 8 : 10,
+        padding: inline ? undefined : "12px 16px",
         background: styles.bg,
         border: `1px solid ${styles.border}`,
-        borderRadius: 10,
+        borderRadius: inline ? undefined : 10,
         color: styles.text,
-        fontSize: 13,
+        fontSize: inline ? undefined : 13,
         fontWeight: 500,
+        whiteSpace: inline ? "nowrap" : undefined,
         cursor: item.duration === 0 ? "pointer" : "default",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         pointerEvents: "auto",
         opacity: visible ? 1 : 0,
-        transform: removing ? "translateX(100%)" : visible ? "translateX(0)" : "translateX(100%)",
+        transform: removing
+          ? inline
+            ? "translateY(-6px)"
+            : "translateX(100%)"
+          : visible
+            ? "translate(0)"
+            : inline
+              ? "translateY(-6px)"
+              : "translateX(100%)",
         transition: "all 0.2s ease",
         boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
         backdropFilter: "blur(8px)",

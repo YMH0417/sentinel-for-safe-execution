@@ -7,8 +7,9 @@ import {
   computeScoreLegend,
   computeUserStats,
   computeWorkflowStages,
+  explainSecurityMetrics,
 } from "../api/client";
-import type { SafetyExplanation } from "../api/client";
+import type { SafetyExplanation, SecurityScoreExplanation } from "../api/client";
 import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
 import { useWallet } from "../contexts/WalletContext";
@@ -34,6 +35,7 @@ export function DashboardPage() {
   const { events, pools, status, balances, score, refreshing, poolsPending, refresh } = useDashboardData(account);
   const [aiState, setAiState] = useState<AiState>({ status: "idle" });
   const [aiLoading, setAiLoading] = useState(false);
+  const [showScoreHelp, setShowScoreHelp] = useState(false);
 
   const handleRefresh = () => void refresh();
 
@@ -59,6 +61,7 @@ export function DashboardPage() {
   };
 
   const legend = computeScoreLegend(events, pools ?? undefined);
+  const scoreExplain = explainSecurityMetrics(events, pools ?? undefined);
   const chainRows = computePoolChainStatus(pools ?? undefined);
   const stats = computeUserStats(events);
   const workflow = computeWorkflowStages(events);
@@ -92,8 +95,16 @@ export function DashboardPage() {
         <div className="dashboard-main-top">
         {/* 左上：安全评分 */}
         <div className="dashboard-card dashboard-score-cell">
-          <div className="dashboard-card-title">
+          <div className="dashboard-card-title dashboard-card-title-spread">
             <span>安全性评分</span>
+            <button
+              type="button"
+              className="dashboard-info-btn"
+              aria-label="查看安全性评分计算方法"
+              onClick={() => setShowScoreHelp(true)}
+            >
+              i
+            </button>
           </div>
           <div className="dashboard-score-gauge">
             <SecurityGauge score={score} size={180} label="" />
@@ -285,6 +296,13 @@ export function DashboardPage() {
               </div>
             </div>
       </div>
+      {showScoreHelp && (
+        <SecurityScoreHelpModal
+          explain={scoreExplain}
+          eventCount={events.length}
+          onClose={() => setShowScoreHelp(false)}
+        />
+      )}
     </div>
   );
 }
@@ -355,8 +373,90 @@ function LegendDot({ label, pct, color }: { label: string; pct: number; color: s
   return (
     <div className="dashboard-legend-dot-item">
       <span className="dashboard-legend-dot" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-      <span className="dashboard-legend-dot-label">{label}</span>
-      <span className="dashboard-legend-dot-pct" style={{ color }}>{pct}%</span>
+      <div className="dashboard-legend-dot-text">
+        <span className="dashboard-legend-dot-label">{label}</span>
+        <span className="dashboard-legend-dot-pct" style={{ color }}>{pct}%</span>
+      </div>
+    </div>
+  );
+}
+
+function SecurityScoreHelpModal({
+  explain,
+  eventCount,
+  onClose,
+}: {
+  explain: SecurityScoreExplanation;
+  eventCount: number;
+  onClose: () => void;
+}) {
+  const raw = explain.legendRaw;
+  return (
+    <div
+      className="dashboard-modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="sentinel-card dashboard-score-help-modal" role="dialog" aria-labelledby="score-help-title">
+        <button type="button" className="dashboard-score-help-close" onClick={onClose} aria-label="关闭">
+          ✕
+        </button>
+        <h3 id="score-help-title" className="dashboard-score-help-title">
+          安全性评分 · 计算方法
+        </h3>
+        <p className="dashboard-score-help-intro">
+          数据来自 backend 全局事件日志（<code>GET /api/events</code>）与池子健康报告（
+          <code>GET /api/debug/pools-health</code>），在浏览器本地实时计算；非链上数据，且<strong>未按当前钱包过滤</strong>。
+        </p>
+
+        <section className="dashboard-score-help-section">
+          <h4>综合评估分数（当前 {explain.score} / 100）</h4>
+          <ol className="dashboard-score-help-list">
+            <li>基准分：<strong>{explain.baseScore}</strong></li>
+            <li>
+              最近 <strong>20</strong> 条事件扣分：
+              <ul>
+                <li>Reject / SwapFailed：{explain.rejectCount} 条 × 8 = −{explain.rejectCount * 8}</li>
+                <li>Fallback 安全路由：{explain.fallbackCount} 条 × 3 = −{explain.fallbackCount * 3}</li>
+              </ul>
+              事件调整后：<strong>{explain.scoreAfterEvents}</strong>
+            </li>
+            {explain.poolScore !== null ? (
+              <li>
+                池子健康加权：healthy {explain.healthyPools} / {explain.poolCount} → 池分{" "}
+                <strong>{explain.poolScore}</strong>；最终分 = 事件分 × 0.6 + 池分 × 0.4 ={" "}
+                <strong>{explain.score}</strong>
+              </li>
+            ) : (
+              <li>暂无池子报告时，不混入池子健康加权。</li>
+            )}
+            <li>结果限制在 0～100；圆环颜色：≥70 青、≥40 黄、&lt;40 红。</li>
+          </ol>
+        </section>
+
+        <section className="dashboard-score-help-section">
+          <h4>下方三格占比（合计 100%）</h4>
+          <p>基于最近 <strong>30</strong> 条事件 + 池子状态，统计三类「权重计数」后换算百分比（与中间分数独立）：</p>
+          <ul className="dashboard-score-help-list">
+            <li>
+              <strong>高风险拦截 {explain.legend.highRisk}%</strong> = (Reject/SwapFailed 事件 {raw.highRiskEvents} + TOXIC 池{" "}
+              {raw.toxicPools}) / 总计 {raw.denominator}
+            </li>
+            <li>
+              <strong>策略预警 {explain.legend.strategy}%</strong> = Fallback 事件 {raw.strategyEvents} / 总计 {raw.denominator}
+            </li>
+            <li>
+              <strong>风险警告 {explain.legend.warning}%</strong> = (Warn 或 ALLOW 且 risk≥40 的事件 {raw.warningEvents} +
+              降级/空池 {raw.degradedPools}) / 总计 {raw.denominator}（余量补齐至 100%）
+            </li>
+          </ul>
+        </section>
+
+        <p className="dashboard-score-help-foot">
+          当前 backend 共 {eventCount} 条事件；点击卡片「↻ 刷新」会重新拉取并重算。
+        </p>
+      </div>
     </div>
   );
 }

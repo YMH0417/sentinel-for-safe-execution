@@ -1,6 +1,6 @@
 # Documentation Index
 
-> **Last updated**: 2026-08-02
+> **Last updated**: 2026-08-05
 
 ## Start here
 
@@ -11,6 +11,7 @@
 | [`api-contract.md`](api-contract.md) | Frontend / integrators | HTTP schemas **v0.6** |
 | [`demo-script.md`](demo-script.md) | Presenters | Safe/Unsafe demo script, profile switching |
 | [`route-scenarios.md`](route-scenarios.md) | QA / product | Mock routes + 48 demo routes (incl. SDA) |
+| [`monad-testnet-contracts.md`](monad-testnet-contracts.md) | Ops / dev | **Monad testnet 链上合约清单 + 验证记录** |
 | [`analysis-pipeline.md`](analysis-pipeline.md) | Data / backend | Event analysis engine |
 | [`data-analysis.md`](data-analysis.md) | Product | Baseline findings and evidence limits |
 | [`CHANGELOG.md`](CHANGELOG.md) | Everyone | Release notes (replaces `dev-changes/`) |
@@ -40,6 +41,8 @@ Definition: [`../shared/demo-chain-profiles.json`](../shared/demo-chain-profiles
 | [`../scripts/start-demo.ps1`](../scripts/start-demo.ps1) | Anvil + deploy + backend + frontend |
 | [`../scripts/switch-demo-profile.ps1`](../scripts/switch-demo-profile.ps1) | Rewrite `backend/.env` without redeploy |
 | [`../scripts/sync-backend-env.ps1`](../scripts/sync-backend-env.ps1) | Manifest → `.env` |
+| [`../scripts/compare-profiles.ps1`](../scripts/compare-profiles.ps1) | Compare profile manifests |
+| [`../scripts/verify-monad-testnet.ps1`](../scripts/verify-monad-testnet.ps1) | RPC sanity check for `monad-testnet` manifest |
 | [`../scripts/ci-demo-local.sh`](../scripts/ci-demo-local.sh) | CI: local 31337 + verify-all |
 
 ## Contracts

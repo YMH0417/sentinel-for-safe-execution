@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { api } from "../../api/client";
 import logo from "../../imgs/logo.svg";
@@ -14,6 +14,9 @@ const NAV = [
 ];
 
 export function AppLayout() {
+  const { pathname } = useLocation();
+  const isLanding = pathname === "/";
+
   useEffect(() => {
     void api.warmCache().catch(() => undefined);
   }, []);
@@ -42,6 +45,8 @@ export function AppLayout() {
             ))}
           </nav>
 
+          <div id="header-toast-slot" className="app-header-toast-slot" aria-live="polite" />
+
           <div className="app-header-actions">
             <ThemeToggle />
             <WalletAvatar />
@@ -49,7 +54,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="sentinel-page">
+      <main className={`sentinel-page${isLanding ? " sentinel-page--landing" : ""}`}>
         <Outlet />
       </main>
     </div>

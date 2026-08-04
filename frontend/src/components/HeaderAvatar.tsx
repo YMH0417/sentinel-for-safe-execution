@@ -48,7 +48,7 @@ export function HeaderAvatar() {
           cursor: isConnecting ? "not-allowed" : "pointer",
         }}
       >
-        {isConnecting ? "连接中..." : "连接 MetaMask"}
+        {isConnecting ? "正在连接钱包" : "连接 MetaMask"}
       </button>
     );
   }
