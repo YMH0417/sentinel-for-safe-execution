@@ -182,10 +182,12 @@ export function WalletAvatar() {
     navigate("/profile");
   };
 
+
   const handleConnect = async () => {
     try {
       await connectWallet();
       showToast({ type: "success", message: "MetaMask 已连接" });
+      navigate("/dashboard");
     } catch (e) {
       showToast({
         type: "error",
@@ -202,7 +204,7 @@ export function WalletAvatar() {
         className="sentinel-btn sentinel-btn-primary"
         onClick={handleConnect}
         disabled={isConnecting}
-        style={{ padding: "10px 18px", fontSize: 14 }}
+        style={{ padding: "10px 18px", fontSize: 18 }}
       >
         {isConnecting ? "连接中..." : "Connect Wallet"}
       </button>
@@ -275,36 +277,18 @@ export function WalletAvatar() {
           {/* View Profile */}
           <button
             type="button"
-            className="wallet-popup-action wallet-popup-action-profile"
+            className="wallet-popup-action sentinel-btn wallet-popup-profile"
             onClick={handleProfile}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="4.5" r="2.5" stroke="currentColor" strokeWidth="1.3" />
-              <path
-                d="M2 12.5c0-2.5 2.2-4 5-4s5 1.5 5 4"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
             View Profile
           </button>
 
           {/* Disconnect */}
           <button
             type="button"
-            className="wallet-popup-action wallet-popup-action-disconnect"
+            className="wallet-popup-action sentinel-btn sentinel-btn-danger wallet-popup-disconnect"
             onClick={handleDisconnect}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M5 1H3a2 2 0 00-2 2v8a2 2 0 002 2h2M9 4l3 3-3 3M6 7h6"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
             Disconnect Wallet
           </button>
         </div>

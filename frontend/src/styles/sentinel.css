@@ -21,7 +21,7 @@
   --font-display: "Courier New", Courier, monospace;
   --radius: 12px;
   --radius-sm: 16px;
-  --header-height: 70px;
+  --header-height: 80px;
   --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.3);
   --risk-bg-low: #162520;
@@ -52,11 +52,9 @@
   --text: #1f2328;
   --text-muted: #656d76;
   --text-dim: #8c959f;
-  --cyan: #008c7a;
+  --cyan: #04bca3;
   --green: #1a7f37;
   --green-dark: #1a7f37;
-  --red: #cf222e;
-  --yellow: #9a6700;
   --blue: #0969da;
   --purple: #8250df;
   --gradient-brand: linear-gradient(90deg, #0969da, #1a7f37, #8250df);
@@ -102,9 +100,8 @@ body {
 }
 
 .sentinel-page {
-  flex: 1;
-  min-height: 0;
-  padding: var(--page-padding-y) var(--page-padding-x);
+  height: calc(100vh - 80px);
+  padding: 2% 5%;
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1095,7 +1092,8 @@ body {
 }
 
 .landing-tagline {
-  color: rgba(0, 229, 204, 0.6);
+  color: var(--cyan);
+  opacity: 0.6;
   font-family: "Noto Sans SC";
   font-style: Regular;
   font-size: 36px;
@@ -1116,7 +1114,7 @@ body {
 
 .landing-cta {
   padding: 18px 36px !important;
-  font-size: 18px !important;
+  font-size: 30px !important;
   letter-spacing: 0.5px;
 }
 
@@ -1126,7 +1124,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 13px 18px;
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
@@ -1141,7 +1139,8 @@ body {
 }
 
 .sentinel-btn-primary {
-  background: linear-gradient(135deg, var(--cyan), color-mix(in srgb, var(--cyan) 80%, var(--green) 20%));
+  background: var(--cyan);
+  opacity: 0.9;
   color: var(--btn-primary-text);
   box-shadow: 0 2px 12px rgba(0, 229, 204, 0.2);
   transition: opacity 0.15s, transform 0.15s, box-shadow 0.2s;
@@ -1149,6 +1148,7 @@ body {
 
 .sentinel-btn-primary:hover:not(:disabled) {
   box-shadow: 0 4px 20px rgba(0, 229, 204, 0.35);
+  opacity: 0.8;
 }
 
 .sentinel-btn-secondary {
@@ -1385,7 +1385,6 @@ body {
 }
 
 .app-header-brand img {
-  height: 60px;
   margin-right: 2rem;
 }
 
@@ -1597,7 +1596,7 @@ main {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 3px 14px 3px 3px;
+  padding: 6px 12px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   font-family: inherit;
@@ -1624,7 +1623,7 @@ main {
 
 .wallet-avatar-addr {
   font-family: monospace;
-  font-size: 13px;
+  font-size: 18px;
   color: var(--text);
   font-weight: 500;
   white-space: nowrap;
@@ -1715,7 +1714,7 @@ main {
 
 .wallet-popup-addr-text {
   font-family: monospace;
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text);
   flex: 1;
   min-width: 0;
@@ -1750,29 +1749,13 @@ main {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   transition: background 0.15s, color 0.15s;
   font-family: inherit;
   text-align: left;
 }
 
-.wallet-popup-action-profile {
-  color: var(--text);
-}
-
-.wallet-popup-action-profile:hover {
-  background: rgba(0, 229, 204, 0.08);
-  color: var(--cyan);
-}
-
-.wallet-popup-action-disconnect {
-  color: var(--red);
-}
-
-.wallet-popup-action-disconnect:hover {
-  background: rgba(248, 81, 73, 0.1);
-}
 
 /* ── Theme Toggle Button ── */
 
@@ -1780,8 +1763,9 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
+  margin-right: 1rem;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.04);

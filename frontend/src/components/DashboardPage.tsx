@@ -113,7 +113,7 @@ export function DashboardPage() {
               className="sentinel-btn sentinel-btn-ghost"
               onClick={handleRefresh}
               disabled={refreshing}
-              style={{ padding: "4px 10px", fontSize: 11 }}
+              style={{ padding: "4px 10px", fontSize: 14 }}
             >
               {refreshing ? "刷新中" : "↻ 刷新"}
             </button>
@@ -157,15 +157,17 @@ export function DashboardPage() {
             ) : (
               alerts.map((a, i) => (
                 <div key={a.id ?? i} className={`dashboard-alert-item ${alertLevel(a)}`}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {alertLevel(a) === "critical" ? "Critical" : alertLevel(a) === "warn" ? "Warn" : "Info"}
-                    {a.routeId ? `: ${a.routeId}` : ""}
+                  <div style={{display: "flex", justifyContent: "space-between"}}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      {alertLevel(a) === "critical" ? "Critical" : alertLevel(a) === "warn" ? "Warn" : "Info"}
+                      {a.routeId ? `: ${a.routeId}` : ""}
+                    </div>
+                    <div style={{ color: "var(--text-dim)", fontSize: 14, marginTop: 4 }}>
+                      {formatDate(a.timestamp)}
+                    </div>
                   </div>
                   <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
                     {a.message?.slice(0, 80)}
-                  </div>
-                  <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 4 }}>
-                    {formatDate(a.timestamp)}
                   </div>
                 </div>
               ))
@@ -180,7 +182,7 @@ export function DashboardPage() {
                   className="sentinel-btn sentinel-btn-ghost"
                   onClick={handleAiAnalysis}
                   disabled={aiLoading}
-                  style={{ padding: "2px 10px", fontSize: 11 }}
+                  style={{ padding: "2px 10px", fontSize: 14 }}
                 >
                   AI 深度分析
                 </button>
@@ -206,7 +208,7 @@ export function DashboardPage() {
                   className="sentinel-btn sentinel-btn-ghost"
                   onClick={handleAiAnalysis}
                   disabled={aiLoading}
-                  style={{ padding: "2px 10px", fontSize: 11 }}
+                  style={{ padding: "2px 10px", fontSize: 14 }}
                 >
                   重试
                 </button>
@@ -231,7 +233,7 @@ export function DashboardPage() {
             <button
               type="button"
               className="sentinel-btn sentinel-btn-ghost"
-              style={{ padding: "4px 10px", fontSize: 11 }}
+              style={{ padding: "4px 10px", fontSize: 14 }}
               onClick={() => navigate("/execution")}
             >
               View More
@@ -247,8 +249,8 @@ export function DashboardPage() {
                     width: "100%",
                   }}
                 />
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{s.count}</div>
+                <div style={{ fontSize: 14, color: "var(--text-muted)" }}>{s.label}</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{s.count}</div>
               </div>
             ))}
           </div>

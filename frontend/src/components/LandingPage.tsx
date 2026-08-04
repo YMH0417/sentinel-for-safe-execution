@@ -25,12 +25,12 @@ export function LandingPage() {
           <p className="landing-kicker">-DeFi Security-</p>
           <div className="landing-tagline">
             <p>
-              Don&apos;t trade naked.
+              <span style={{fontWeight: 700, color: "var(--cyan)"}}>Don&apos;t trade</span> naked.
             </p>
-            <p>
+            <p style={{fontSize: 30}}>
               Every route analyzed.
             </p>
-            <p>Every contract scored.</p>
+            <p style={{fontSize: 30}}>Every contract scored.</p>
           </div>
 
           {account ? (
@@ -39,7 +39,7 @@ export function LandingPage() {
               className="sentinel-btn sentinel-btn-primary landing-cta"
               onClick={() => navigate("/dashboard")}
             >
-              进入仪表盘 →
+              进入仪表盘
             </button>
           ) : (
             <button

@@ -55,3 +55,24 @@
 .badget-item {
   width: 18%;
 }
+
+.wallet-popup-profile {
+  color: var(--text);
+}
+
+.wallet-popup-profile:hover {
+  background: rgba(0, 229, 204, 0.08);
+  color: var(--cyan);
+}
+
+.wallet-popup-disconnect:hover {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.transaction-page {
+  padding: 0 2rem;
+}
+.transaction-box {
+  display: flex;
+  justify-content: space-between;
+}
