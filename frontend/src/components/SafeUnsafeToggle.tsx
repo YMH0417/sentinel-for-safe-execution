@@ -24,12 +24,12 @@ export function SafeUnsafeToggle({ safeMode, onChange }: Props) {
           fontWeight: safeMode ? 700 : 400,
         }}
       >
-        Safe
+        安全
       </span>
       <div
         role="switch"
         aria-checked={safeMode}
-        aria-label={safeMode ? "Safe Mode" : "Unsafe Mode"}
+        aria-label={safeMode ? "安全模式" : "非安全模式"}
         onClick={() => onChange(!safeMode)}
         style={{
           width: 44,
@@ -62,7 +62,7 @@ export function SafeUnsafeToggle({ safeMode, onChange }: Props) {
           fontWeight: !safeMode ? 700 : 400,
         }}
       >
-        Unsafe
+        非安全
       </span>
       <span
         style={{

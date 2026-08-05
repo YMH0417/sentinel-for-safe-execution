@@ -1,7 +1,7 @@
 # API Contract — Sentinel for Safe Execution v0.7
 
 > **Last updated**: 2026-08-05  
-> Profile switching (Settings + API), MetaMask wallet swap plan, supply streaming, Monad RPC retry notes.
+> Profile switching (API / CLI), MetaMask wallet swap plan, supply streaming, Monad RPC retry notes.
 > Removed: `/analysis*` endpoints and `/debug/pools-health` (dashboard uses events + ledger pool-volume).
 
 ## Base URL
@@ -28,7 +28,7 @@ Frontend: http://127.0.0.1:8081/api/*  (proxied via Vite)
 | `contracts/deployments/local-31337-demo.json` | anvil-local manifest |
 | `contracts/deployments/local-10143-demo.json` | anvil-fork-monad manifest |
 | `contracts/deployments/monad-10143-demo.json` | monad-testnet manifest |
-| `backend/.env` | addresses + keys (`scripts/sync-backend-env.ps1` or Settings profile switch) |
+| `backend/.env` | addresses + keys (`scripts/sync-backend-env.ps1` or `POST /api/demo/profile`) |
 
 Backend loads `.env` via dotenv on startup. Fallback: `DEMO_DEPLOYMENT_PATH` → read vault/router from JSON.
 
@@ -456,7 +456,7 @@ Token mint/burn overview for a holder address.
 GET /api/demo/supply?holder=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 ```
 
-**Streaming progress** (Settings balance refresh):
+**Streaming progress** (系统设置页 mint/burn 余额刷新，授权钱包):
 
 ```http
 GET /api/demo/supply?holder=0x...&stream=1

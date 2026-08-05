@@ -1,4 +1,4 @@
-﻿import { useState, type ReactNode } from "react";
+﻿import { useEffect, useState, type ReactNode } from "react";
 import {
   api,
   isDashboardAlertEvent,
@@ -35,8 +35,16 @@ const TRADE_EVENT_TYPES = new Set([
   "ExecutionRejected",
 ]);
 
-function findLatestTradeEvent(events: Event[]): Event | undefined {
-  return [...events].reverse().find((e) => TRADE_EVENT_TYPES.has(e.eventType));
+function findLatestTradeEvent(events: Event[], account?: string | null): Event | undefined {
+  if (!account) return undefined;
+  const accountLower = account.toLowerCase();
+  return [...events]
+    .reverse()
+    .find(
+      (e) =>
+        TRADE_EVENT_TYPES.has(e.eventType) &&
+        e.context?.account?.toLowerCase() === accountLower
+    );
 }
 
 const LABEL_DOT: Record<LabelVolumeRow["label"], keyof typeof DOT_CLASS> = {
@@ -84,6 +92,10 @@ export function DashboardPage() {
   const [showPoolHelp, setShowPoolHelp] = useState(false);
   const [showAlertsHelp, setShowAlertsHelp] = useState(false);
 
+  useEffect(() => {
+    setAiState({ status: "idle" });
+  }, [account]);
+
   const handleRefresh = () => void refresh();
 
   const handleAiAnalysis = async () => {
@@ -91,7 +103,7 @@ export function DashboardPage() {
     setAiLoading(true);
     setAiState({ status: "loading" });
 
-    const latestTrade = findLatestTradeEvent(events);
+    const latestTrade = findLatestTradeEvent(events, account);
     const overviewPayload = {
       score,
       legend,
@@ -109,7 +121,7 @@ export function DashboardPage() {
 
     try {
       const [tradeSettled, overviewSettled] = await Promise.allSettled([
-        api.aiAlertAnalysis(latestTrade?.id),
+        latestTrade ? api.aiAlertAnalysis(latestTrade.id) : Promise.resolve(null),
         api.aiDashboardOverview(overviewPayload),
       ]);
 
@@ -287,6 +299,7 @@ export function DashboardPage() {
             label="交易失败数"
             value={String(stats.rejectCount)}
             accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
+            hint={account ? undefined : "连接钱包后显示"}
           />
           <SidebarStat
             label="USDC 余额"
@@ -323,9 +336,11 @@ export function DashboardPage() {
                 {aiState.status === "idle" && (
                   <AiColPlaceholder
                     text={
-                      findLatestTradeEvent(events)
-                        ? "点击「开始分析」解读最近一笔成交或拦截。"
-                        : "暂无交易记录，完成一笔 swap 后可在此解读。"
+                      findLatestTradeEvent(events, account)
+                        ? "点击「开始分析」解读你最近一笔成交或拦截。"
+                        : account
+                          ? "暂无你的交易记录，完成一笔 swap 后可在此解读。"
+                          : "连接钱包后，可解读你最近一笔成交或拦截。"
                     }
                   />
                 )}

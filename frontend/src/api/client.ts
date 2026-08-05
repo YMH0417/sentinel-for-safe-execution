@@ -205,12 +205,26 @@ export interface DemoSupplyOverview {
   }>;
 }
 
+export interface RiskProfileThresholds {
+  maxLossBps: number;
+  maxQuoteDeviationThreshold: number;
+  failureThreshold: number;
+  poolRiskThreshold: number;
+}
+
 export interface RiskConfig {
   defaultProfile: string;
+  activeProfile?: string;
   paused: boolean;
   maxSlippageBps?: number;
   maxUnsafeSlippageBps?: number;
-  profiles?: Record<string, unknown>;
+  profile?: RiskProfileThresholds;
+  profiles?: Record<string, RiskProfileThresholds>;
+  decisionThresholds?: {
+    allow: string;
+    fallback: string;
+    reject: string;
+  };
 }
 
 export const api = {
@@ -377,13 +391,19 @@ export function computeSecurityScore(events: Event[]): number {
 }
 
 export function computeUserStats(events: Event[], account?: string | null) {
-  const scoped =
-    account != null && account !== ""
-      ? events.filter((e) => {
-          const who = e.context?.account?.toLowerCase();
-          return who == null || who === account.toLowerCase();
-        })
-      : events;
+  if (account == null || account === "") {
+    return {
+      swapCount: 0,
+      rejectCount: 0,
+      fallbackCount: 0,
+      safeVolumeUsd: 0,
+    };
+  }
+
+  const accountLower = account.toLowerCase();
+  const scoped = events.filter(
+    (e) => e.context?.account?.toLowerCase() === accountLower
+  );
   const safeSwaps = scoped.filter(
     (e) => e.eventType === "ExecutionSuccess" || e.eventType === "SwapExecuted"
   );

@@ -160,6 +160,40 @@ function riskLevel(score: number): "low" | "moderate" | "high" {
   return "low";
 }
 
+function formatDecisionLabel(decision?: string | null): string {
+  switch (decision) {
+    case "ALLOW":
+      return "放行";
+    case "REJECT":
+      return "拒绝";
+    case "FALLBACK_TO_SAFE_ROUTE":
+      return "改道";
+    default:
+      return "待评估";
+  }
+}
+
+/** 与后端 normal 配置一致：超过 0.8% 视为偏差偏大 */
+const QUOTE_DEVIATION_THRESHOLD = 0.008;
+
+function formatQuoteDeviation(route?: RouteType): {
+  label: string;
+  level: "low" | "moderate" | "high";
+} {
+  if (!route || route.expectedOut <= 0) {
+    return { label: "—", level: "low" };
+  }
+  const deviation = Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
+  const label = `${(deviation * 100).toFixed(2)}%`;
+  if (deviation <= QUOTE_DEVIATION_THRESHOLD) {
+    return { label, level: "low" };
+  }
+  if (deviation <= 0.03) {
+    return { label, level: "moderate" };
+  }
+  return { label, level: "high" };
+}
+
 export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
   const navigate = useNavigate();
   const { account, connectWallet, isConnecting } = useWallet();
@@ -176,6 +210,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
   const [recommendedRouteId, setRecommendedRouteId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
+  const [showSettingsHelp, setShowSettingsHelp] = useState(false);
   const [executionElapsedSeconds, setExecutionElapsedSeconds] = useState<number | null>(null);
   const executionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const executionStartedAtRef = useRef<number | null>(null);
@@ -210,13 +245,14 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
 
   const selectedRouteData = routes.find((r) => r.routeId === selectedRoute);
   const maxReceiveOut =
-    !safeMode && selectedRouteData?.expectedOut !== undefined
+    selectedRouteData?.expectedOut !== undefined
       ? computeMaxOut(selectedRouteData.expectedOut, slippageBps)
       : null;
   const minReceiveOut =
-    !safeMode && selectedRouteData?.expectedOut !== undefined
+    selectedRouteData?.expectedOut !== undefined
       ? computeMinOut(selectedRouteData.expectedOut, slippageBps)
       : null;
+  const quoteDeviationView = formatQuoteDeviation(selectedRouteData);
 
   const loadRoutes = async (options?: {
     preserveSelection?: boolean;
@@ -506,13 +542,11 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     if (safeMode && !evalDecision) {
       const msg = "Safe 模式需先完成「风险评估」再执行";
       setError(msg);
-      showToast({ type: "warning", message: msg });
       return;
     }
     if (safeMode && evalDecision?.decision === "REJECT") {
       const msg = "当前路由已被 Safety Agent 拒绝，请手动选择其他路由后再执行";
       setError(msg);
-      showToast({ type: "error", message: msg });
       return;
     }
     if (safeMode && evalDecision?.decision === "FALLBACK_TO_SAFE_ROUTE") {
@@ -524,7 +558,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       } else {
         const msg = `Agent 建议切换到 ${evalDecision.fallbackRouteId ?? "安全路由"}，请手动切换后重新执行`;
         setError(msg);
-        showToast({ type: "warning", message: msg });
         return;
       }
     }
@@ -534,7 +567,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     if (!routeData) {
       const msg = "请先获取报价并选择有效路由";
       setError(msg);
-      showToast({ type: "error", message: msg });
       return;
     }
 
@@ -664,7 +696,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       }
       const msg = getErrorMessage(e, "Execute failed");
       setError(`Execute failed: ${msg}`);
-      showToast({ type: "error", message: msg });
     } finally {
       stopExecutionTimer();
       setLoading("");
@@ -696,7 +727,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       if (latestDecision?.decision === "REJECT") {
         const msg = "Safety Agent 拒绝了当前路由，请手动选择其他路由";
         setError(msg);
-        showToast({ type: "error", message: msg });
         return;
       }
       if (latestDecision?.decision === "FALLBACK_TO_SAFE_ROUTE") {
@@ -714,7 +744,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
         } else {
           const msg = `Agent 建议 ${latestDecision.fallbackRouteId ?? "安全路由"}，请手动切换路由后再执行`;
           setError(msg);
-          showToast({ type: "warning", message: msg });
           return;
         }
       }
@@ -723,7 +752,6 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     } catch (e: unknown) {
       const msg = getErrorMessage(e, "完整流程执行失败");
       setError(msg);
-      showToast({ type: "error", message: msg });
     } finally {
       setLoading("");
     }
@@ -789,66 +817,45 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       )}
 
       <div className="sentinel-tx-grid">
-        <div className="sentinel-card">
-          <div className="sentinel-label">Swap 参数</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Token In</label>
-              <select className="sentinel-select" value={tokenIn} onChange={(e) => setTokenIn(e.target.value)}>
-                {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
-                  <option key={t} value={t} disabled={t === tokenOut}>{t}</option>
-                ))}
-              </select>
+        <div className="sentinel-card tx-settings-card">
+          <div className="tx-settings-header">
+            <div className="sentinel-label">交易设置</div>
+            <button
+              type="button"
+              className="dashboard-info-btn"
+              aria-label="查看交易设置说明"
+              onClick={() => setShowSettingsHelp(true)}
+            >
+              i
+            </button>
+          </div>
+          <div className="tx-settings-body">
+            <div className="tx-settings-token-row">
+              <div className="tx-field">
+                <label>支付代币</label>
+                <select className="sentinel-select" value={tokenIn} onChange={(e) => setTokenIn(e.target.value)}>
+                  {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
+                    <option key={t} value={t} disabled={t === tokenOut}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="tx-field">
+                <label>获得代币</label>
+                <select className="sentinel-select" value={tokenOut} onChange={(e) => setTokenOut(e.target.value)}>
+                  {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
+                    <option key={t} value={t} disabled={t === tokenIn}>{t}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div>
-              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Token Out</label>
-              <select className="sentinel-select" value={tokenOut} onChange={(e) => setTokenOut(e.target.value)}>
-                {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
-                  <option key={t} value={t} disabled={t === tokenIn}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Amount</label>
+            <div className="tx-field">
+              <label>兑换数量</label>
               <input className="sentinel-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
             <SafeUnsafeToggle safeMode={safeMode} onChange={onSafeModeChange} />
-            {safeMode ? (
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  background: "rgba(35,134,54,0.08)",
-                  border: "1px solid rgba(35,134,54,0.25)",
-                  fontSize: 12,
-                  color: "var(--text-muted)",
-                  lineHeight: 1.5,
-                }}
-              >
-                Safe 模式由 <strong style={{ color: "var(--text)" }}>Safety Agent</strong> 负责评估；
-                任意币对的 <strong style={{ color: "var(--text)" }}>SHALLOW 浅池</strong> 触发 Fallback 时会<strong style={{ color: "var(--text)" }}>自动改走同币对 SAFE 池</strong>（含 USDC↔GOOD 双向）；TOXIC / SDA / BAD·BAIT 兑出仍拦截。
-              </div>
-            ) : (
-            <div>
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  background: "rgba(218,54,51,0.08)",
-                  border: "1px solid rgba(218,54,51,0.25)",
-                  fontSize: 12,
-                  color: "var(--text-muted)",
-                  lineHeight: 1.5,
-                }}
-              >
-                Unsafe 模式<strong style={{ color: "var(--red)" }}> 绕过 Safety Agent</strong>，
-                仅通过滑点带宽（相对 SAFE 公允价）拦截异常报价。
-              </div>
-              <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
-                滑点容忍（Unsafe 唯一保护）
-              </label>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            <div className={`tx-slippage-block${safeMode ? " is-disabled" : ""}`} aria-disabled={safeMode}>
+              <label className="tx-slippage-label">滑点</label>
+              <div className="tx-slippage-presets">
                 {SLIPPAGE_PRESETS_BPS.map((bps) => (
                   <button
                     key={bps}
@@ -856,12 +863,13 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                     className={`sentinel-btn ${slippageBps === bps ? "sentinel-btn-primary" : "sentinel-btn-secondary"}`}
                     style={{ padding: "4px 10px", fontSize: 12 }}
                     onClick={() => setSlippageBps(bps)}
+                    disabled={safeMode || !!loading}
                   >
                     {formatSlippagePercent(bps)}
                   </button>
                 ))}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="tx-slippage-input-row">
                 <input
                   className="sentinel-input"
                   type="number"
@@ -875,197 +883,249 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                       setSlippageBps(Math.min(UNSAFE_MAX_SLIPPAGE_BPS, Math.max(0, Math.round(next))));
                     }
                   }}
+                  disabled={safeMode || !!loading}
                   style={{ maxWidth: 100 }}
                 />
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  bps（Unsafe 上限 {UNSAFE_MAX_SLIPPAGE_BPS} = 100%）
+                <span className="tx-slippage-unit">
+                  基点（上限 {UNSAFE_MAX_SLIPPAGE_BPS} = 100%）
                 </span>
               </div>
-              {selectedRouteData && minReceiveOut !== null && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  允许接收区间{" "}
-                  <strong style={{ color: "var(--text)" }}>
-                    {minReceiveOut.toFixed(4)} ~ {maxReceiveOut?.toFixed(4)} {tokenOut}
-                  </strong>
-                  {" "}（公允价 {selectedRouteData.expectedOut.toFixed(4)} ± {formatSlippagePercent(slippageBps)}）
-                  {selectedRouteData.quotedOut < minReceiveOut && (
-                    <span style={{ display: "block", color: "var(--danger, #f85149)", marginTop: 4 }}>
-                      报价 {selectedRouteData.quotedOut.toFixed(4)} 低于下限，将因滑点失败
-                    </span>
-                  )}
-                  {maxReceiveOut !== null && selectedRouteData.quotedOut > maxReceiveOut && (
-                    <span style={{ display: "block", color: "var(--danger, #f85149)", marginTop: 4 }}>
-                      报价 {selectedRouteData.quotedOut.toFixed(4)} 高于上限，将因滑点失败
-                    </span>
-                  )}
-                </div>
-              )}
+              <div className="tx-slippage-quote-hint">
+                {selectedRouteData && minReceiveOut !== null ? (
+                  <>
+                    允许接收区间{" "}
+                    <strong>{minReceiveOut.toFixed(4)} ~ {maxReceiveOut?.toFixed(4)} {tokenOut}</strong>
+                    {" "}（公允价 {selectedRouteData.expectedOut.toFixed(4)} ± {formatSlippagePercent(slippageBps)}）
+                    {!safeMode && selectedRouteData.quotedOut < minReceiveOut && (
+                      <span className="tx-slippage-warn">
+                        报价 {selectedRouteData.quotedOut.toFixed(4)} 低于下限，将因滑点失败
+                      </span>
+                    )}
+                    {!safeMode && maxReceiveOut !== null && selectedRouteData.quotedOut > maxReceiveOut && (
+                      <span className="tx-slippage-warn">
+                        报价 {selectedRouteData.quotedOut.toFixed(4)} 高于上限，将因滑点失败
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="tx-slippage-quote-placeholder">选择路由后显示允许接收区间</span>
+                )}
+              </div>
             </div>
-            )}
             <button type="button" className="sentinel-btn sentinel-btn-secondary" onClick={() => void loadRoutes()} disabled={!!loading}>
               {loading === "Loading routes" ? "加载中" : "获取报价"}
             </button>
           </div>
         </div>
 
-        <div className="sentinel-card">
-          <div
-            style={{
-              fontSize: 20,
-              fontWeight: 700,
-              color: "var(--text-primary)",
-              marginBottom: 16,
-            }}
-          >
-            风险指标
+        <div className="sentinel-card tx-route-card">
+          <div className="tx-route-header">
+            <div className="sentinel-label" style={{ margin: 0 }}>路由分析</div>
+            {quoteMeta.recommendedRouteId ? (
+              <span className="sentinel-badge sentinel-badge-green">有推荐路由</span>
+            ) : null}
           </div>
-          <div className="tx-risk-box">
-            <div className="tx-risk-flex">
-              <RiskIndicator
-                label="池子风险"
-                value={selectedRouteData?.poolRiskScore ?? "—"}
-                level={selectedRouteData ? riskLevel(selectedRouteData.poolRiskScore) : "low"}
-              />
-              <RiskIndicator
-                label="报价偏差"
-                value={selectedRouteData?.warningFlags.includes("quote_deviation") ? "高" : "低"}
-                level={selectedRouteData?.warningFlags.includes("quote_deviation") ? "high" : "low"}
-              />
+          {routes.length === 0 ? (
+            <div className="tx-route-empty">
+              {error ? (
+                <div className="tx-route-notice" role="alert">
+                  {error}
+                </div>
+              ) : (
+                "在左侧填写代币与数量，点击「获取报价」后，各池路由与报价将显示在这里。"
+              )}
             </div>
-            <div className="tx-risk-flex">
-              <RiskIndicator
-                label="Agent 决策"
-                value={safeMode ? (decision?.decision ?? "待评估") : "已绕过"}
-                level={
-                  safeMode
-                    ? decision?.decision === "REJECT"
-                      ? "high"
-                      : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
-                        ? "moderate"
-                        : "low"
-                    : "high"
-                }
-              />
-              <RiskIndicator
-                label="安全模式"
-                value={safeMode ? "Safe" : "Unsafe"}
-                level={safeMode ? "low" : "high"}
-              />
+          ) : (
+            <div className="tx-route-body">
+              <div className="tx-route-table-wrap">
+                <table className="sentinel-table">
+                  <thead>
+                    <tr>
+                      <th>路由</th>
+                      <th>报价</th>
+                      <th>公允</th>
+                      <th>风险</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedRoutes.map((route) => {
+                      const isSelected = route.routeId === selectedRoute;
+                      const isRecommended = (recommendedRouteId ?? quoteMeta.recommendedRouteId) === route.routeId;
+                      const rl = riskLevel(route.poolRiskScore);
+                      return (
+                        <tr
+                          key={route.routeId}
+                          className={isSelected ? "selected" : undefined}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => {
+                            setSelectedRoute(route.routeId);
+                            setRecommendedRouteId(null);
+                            setDecision(null);
+                            setError("");
+                          }}
+                        >
+                          <td>
+                            <strong>{route.label}</strong>
+                            {isRecommended ? (
+                              <span className="sentinel-badge sentinel-badge-green" style={{ marginLeft: 6 }}>推荐</span>
+                            ) : null}
+                          </td>
+                          <td>{route.quotedOut}</td>
+                          <td>{route.expectedOut}</td>
+                          <td>
+                            <span className={`sentinel-badge ${rl === "high" ? "sentinel-badge-red" : rl === "moderate" ? "sentinel-badge-yellow" : "sentinel-badge-green"}`}>
+                              {route.poolRiskScore}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {pageCount > 1 && (
+                <div className="tx-route-pagination">
+                  <button type="button" className="sentinel-btn sentinel-btn-ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 12px", fontSize: 12 }}>
+                    上一页
+                  </button>
+                  <span style={{ fontSize: 13, color: "var(--text-muted)", alignSelf: "center" }}>
+                    {page + 1} / {pageCount}
+                  </span>
+                  <button type="button" className="sentinel-btn sentinel-btn-ghost" disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 12px", fontSize: 12 }}>
+                    下一页
+                  </button>
+                </div>
+              )}
+              <div className="tx-route-notice-area">
+                {error ? (
+                  <div className="tx-route-notice" role="alert">
+                    {error}
+                  </div>
+                ) : null}
+              </div>
+              <div className="tx-route-footer">
+                <div className="tx-action-bar">
+                  <button
+                    type="button"
+                    className="sentinel-btn sentinel-btn-ghost"
+                    onClick={() => evaluateRoute()}
+                    disabled={!!loading || !selectedRoute || !safeMode}
+                    title={!safeMode ? "非安全模式不经过智能体" : undefined}
+                  >
+                    {loading === "Evaluating route with Safety Agent" ? "评估中" : "风险评估"}
+                  </button>
+                  {!safeMode && (
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      非安全模式下智能体不生效，请直接执行并依赖滑点保护
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="sentinel-btn sentinel-btn-primary"
+                    onClick={runFullFlow}
+                    disabled={!!loading}
+                  >
+                    {primaryFlowButtonLabel}
+                  </button>
+                </div>
+              </div>
             </div>
-            
-          </div>
+          )}
         </div>
       </div>
 
-      {routes.length > 0 && (
-        <div className="sentinel-card" style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-            <div className="sentinel-label" style={{ margin: 0 }}>路由分析</div>
-            {quoteMeta.recommendedRouteId && (
-              <span className="sentinel-badge sentinel-badge-green">推荐: {quoteMeta.recommendedRouteId}</span>
-            )}
-          </div>
-          <table className="sentinel-table">
-            <thead>
-              <tr>
-                <th>路由</th>
-                <th>输出</th>
-                <th>预期</th>
-                <th>风险分</th>
-                <th>标记</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedRoutes.map((route) => {
-                const isSelected = route.routeId === selectedRoute;
-                const isRecommended = (recommendedRouteId ?? quoteMeta.recommendedRouteId) === route.routeId;
-                const rl = riskLevel(route.poolRiskScore);
-                return (
-                  <tr
-                    key={route.routeId}
-                    className={isSelected ? "selected" : undefined}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => {
-                      setSelectedRoute(route.routeId);
-                      setRecommendedRouteId(null);
-                      setDecision(null);
-                    }}
-                  >
-                    <td>
-                      <strong>{route.label}</strong>
-                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{route.routeId}</div>
-                      {isRecommended && <span className="sentinel-badge sentinel-badge-green" style={{ marginTop: 4 }}>推荐</span>}
-                    </td>
-                    <td>{route.quotedOut}</td>
-                    <td>{route.expectedOut}</td>
-                    <td>
-                      <span className={`sentinel-badge ${rl === "high" ? "sentinel-badge-red" : rl === "moderate" ? "sentinel-badge-yellow" : "sentinel-badge-green"}`}>
-                        {route.poolRiskScore}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: 12, color: "var(--red)" }}>
-                      {route.warningFlags.length > 0 ? route.warningFlags.join(", ") : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {pageCount > 1 && (
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
-              <button type="button" className="sentinel-btn sentinel-btn-ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 12px", fontSize: 12 }}>
-                上一页
-              </button>
-              <span style={{ fontSize: 13, color: "var(--text-muted)", alignSelf: "center" }}>
-                {page + 1} / {pageCount}
-              </span>
-              <button type="button" className="sentinel-btn sentinel-btn-ghost" disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 12px", fontSize: 12 }}>
-                下一页
-              </button>
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap", alignItems: "center" }}>
-            <button
-              type="button"
-              className="sentinel-btn sentinel-btn-ghost"
-              onClick={() => evaluateRoute()}
-              disabled={!!loading || !selectedRoute || !safeMode}
-              title={!safeMode ? "Unsafe 模式不经过 Agent" : undefined}
-            >
-              {loading === "Evaluating route with Safety Agent" ? "评估中" : "风险评估"}
-            </button>
-            {!safeMode && (
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Unsafe 下 Agent 不生效，请直接执行并依赖滑点保护
-              </span>
-            )}
-            <button
-              type="button"
-              className="sentinel-btn sentinel-btn-primary"
-              onClick={runFullFlow}
-              disabled={!!loading}
-              style={{ flex: 1, minWidth: 200 }}
-            >
-              {primaryFlowButtonLabel}
-            </button>
-          </div>
+      <div className="sentinel-card tx-risk-panel">
+        <div className="sentinel-label">风险指标</div>
+        <div className="tx-risk-strip">
+          <RiskIndicator
+            label="池子风险"
+            value={selectedRouteData?.poolRiskScore ?? "—"}
+            level={selectedRouteData ? riskLevel(selectedRouteData.poolRiskScore) : "low"}
+          />
+          <RiskIndicator
+            label="报价偏差"
+            value={quoteDeviationView.label}
+            level={quoteDeviationView.level}
+          />
+          <RiskIndicator
+            label="风控决策"
+            value={safeMode ? formatDecisionLabel(decision?.decision) : "已绕过"}
+            level={
+              safeMode
+                ? decision?.decision === "REJECT"
+                  ? "high"
+                  : decision?.decision === "FALLBACK_TO_SAFE_ROUTE"
+                    ? "moderate"
+                    : "low"
+                : "high"
+            }
+          />
+          <RiskIndicator
+            label="安全模式"
+            value={safeMode ? "安全" : "非安全"}
+            level={safeMode ? "low" : "high"}
+          />
         </div>
-      )}
+      </div>
 
-      {error && (
-        <div
-          className="sentinel-card"
-          style={{
-            marginTop: 16,
-            borderColor: "var(--red)",
-            background: "rgba(248, 81, 73, 0.08)",
-            color: "var(--red)",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {showSettingsHelp ? (
+        <TransactionSettingsHelpModal onClose={() => setShowSettingsHelp(false)} />
+      ) : null}
+    </div>
+  );
+}
+
+function TransactionSettingsHelpModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="dashboard-modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="sentinel-card dashboard-score-help-modal" role="dialog" aria-labelledby="tx-settings-help-title">
+        <button type="button" className="dashboard-score-help-close" onClick={onClose} aria-label="关闭">
+          ✕
+        </button>
+        <h3 id="tx-settings-help-title" className="dashboard-score-help-title">
+          交易设置说明
+        </h3>
+        <p className="dashboard-score-help-intro">
+          在这里选择要兑换的代币和数量，并决定用<strong>安全模式</strong>还是<strong>非安全模式</strong>发起交易。
+        </p>
+
+        <section className="dashboard-score-help-section">
+          <h4>怎么用</h4>
+          <ul className="dashboard-score-help-list">
+            <li>选好「支付代币」「获得代币」和「兑换数量」。</li>
+            <li>点击「获取报价」，在右侧路由表里选一条路线。</li>
+            <li>安全模式下可先点「风险评估」，再执行；也可一键完整流程。</li>
+            <li>执行前需连接 MetaMask，并按提示完成代币授权。</li>
+          </ul>
+        </section>
+
+        <section className="dashboard-score-help-section">
+          <h4>安全模式（推荐）</h4>
+          <p>系统会先帮你评估这条路由是否稳妥。</p>
+          <ul className="dashboard-score-help-list">
+            <li>浅池风险高时，可能自动改走同币对的安全池。</li>
+            <li>风险池、托管池，以及 BAD / BAIT 等高风险兑出会被拦截。</li>
+          </ul>
+        </section>
+
+        <section className="dashboard-score-help-section">
+          <h4>非安全模式</h4>
+          <p>不做智能体评估，主要用于对比演示。</p>
+          <ul className="dashboard-score-help-list">
+            <li>非安全模式下可调整滑点；报价偏离安全池公允价太多时会失败。</li>
+            <li>适合观察异常报价如何被拦住，不建议当作日常默认选项。</li>
+          </ul>
+        </section>
+
+        <p className="dashboard-score-help-foot">
+          下方「风险指标」会随你选中的路由更新，方便对照报价与决策结果。
+        </p>
+      </div>
     </div>
   );
 }

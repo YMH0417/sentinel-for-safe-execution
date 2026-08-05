@@ -29,7 +29,7 @@ export function InputPanel({
       </h3>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div>
-          <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>Token In</label>
+          <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>支付代币</label>
           <select value={tokenIn} onChange={e => onTokenInChange(e.target.value)} style={inputStyle}>
             {DEMO_TOKENS.map((t) => (
               <option key={t} value={t} disabled={t === tokenOut}>{t}</option>
@@ -38,7 +38,7 @@ export function InputPanel({
           </select>
         </div>
         <div>
-          <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>Token Out</label>
+          <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>获得代币</label>
           <select value={tokenOut} onChange={e => onTokenOutChange(e.target.value)} style={inputStyle}>
             {DEMO_TOKENS.map((t) => (
               <option key={t} value={t} disabled={t === tokenIn}>{t}</option>
@@ -47,7 +47,7 @@ export function InputPanel({
           </select>
         </div>
         <div>
-          <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>Amount</label>
+          <label style={{ display: "block", fontSize: 12, color: "#8b949e", marginBottom: 4 }}>兑换数量</label>
           <input
             type="number"
             value={amount}

@@ -29,7 +29,7 @@
 .\start-demo.ps1 -Profile anvil-local -VerifySwaps
 .\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps
 .\scripts\deploy-monad-testnet.ps1
-.\scripts\switch-demo-profile.ps1 -Profile monad-testnet   # or use Settings UI
+.\scripts\switch-demo-profile.ps1 -Profile monad-testnet   # or POST /api/demo/profile
 ```
 
 Definition: [`../shared/demo-chain-profiles.json`](../shared/demo-chain-profiles.json)

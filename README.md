@@ -71,7 +71,7 @@ Legacy mock 三条 route（`route-a/b/c`）仍可用于 **mock 模式** 快速�
 | `anvil-fork-monad` | **10143** | Fork Monad testnet 状态，本地 MON | `.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps` |
 | `monad-testnet` | **10143** | 公网 Monad RPC | `.\scripts\deploy-monad-testnet.ps1` |
 
-切换 backend 指向（重写 `backend/.env`，**Settings UI 可热切换无需重启**；CLI 需重启 backend）：
+切换 backend 指向（重写 `backend/.env`；CLI 切换后需重启 backend；`POST /api/demo/profile` 可热更新进程 env）：
 
 ```powershell
 .\scripts\switch-demo-profile.ps1 -Profile monad-testnet
@@ -79,7 +79,7 @@ Legacy mock 三条 route（`route-a/b/c`）仍可用于 **mock 模式** 快速�
 .\scripts\compare-profiles.ps1
 ```
 
-前端 **Settings → 网络环境** 调用 `POST /api/demo/profile`，即时更新 backend 进程内 `process.env` 与链上缓存。
+前端 **不再提供 profile 切换 UI**；请用上述脚本或 API。进入 **系统设置** 时 backend 会 best-effort 确保 `monad-testnet` profile（仅授权演示钱包可见该页内容）。
 
 > **MetaMask**：本地用 **31337**（与公网 10143 分离，避免 RPC 混用）；上 testnet 时切 **Monad Testnet (10143)**。  
 > **monad-testnet**：公网 RPC 约 **15 req/s**，报价/刷新余额采用串行 + 重试；未配置 `SWAP_PRIVATE_KEY` 时用 MetaMask 钱包路径执行 swap。
@@ -245,7 +245,15 @@ Base URL：`http://127.0.0.1:8080/api`
   - Safe + Router：用户须为 Vault `agentSigner`（testnet 默认 `0x881915BE…`）
   - Direct / SDA：用户 MetaMask 签名 transfer + swap（或 SDA 专用流程）
 
-**Settings 页（`/settings`）：** 切换 profile、MetaMask 转账、授权测试钱包 mint/burn、流式刷新余额。
+### 前端导航
+
+| 路由 | 名称 | 说明 |
+|------|------|------|
+| `/dashboard` | 仪表盘 | 平台 events 评分/三格；侧栏失败数与 AI 最近交易在连接钱包后按当前账户过滤 |
+| `/transaction` | 交易 | Safe / Unsafe swap；路由拒单提示在操作按钮区上方内联 |
+| `/risk-rules` | 风控规则 | 四种池型与 Safe/Unsafe 策略说明（只读） |
+| `/faucet` | 测试网资产 | Monad testnet 信息、官方 Gas faucet、Demo USDC 领取、MetaMask 代币转账 |
+| `/settings` | 系统设置 | 仅 Vault `agentSigner` 测试钱包可见：LLM 配置、mint/burn 与流式余额刷新 |
 
 **Agent 规则：** tokenOut 为 BAD/BAIT → REJECT；SDA 池 → REJECT（执行窗口风险）；TOXIC / SHALLOW → 可 FALLBACK 到同币对 SAFE 池。
 

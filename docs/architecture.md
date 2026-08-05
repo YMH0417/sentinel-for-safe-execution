@@ -5,7 +5,7 @@
 ## 一句话
 
 - **产品库（Neon）**：事件、成交、徽章、交易池状态 — 前端 Dashboard / 个人页只读 API。
-- **链（RPC）**：仅 Settings 链状态、下单前 quote/evaluate、真实发 tx。
+- **链（RPC）**：下单前 quote/evaluate、真实发 tx；测试网资产页展示静态链信息；调试 RPC 仍可通过 `/api/debug/rpc-check`。
 
 不再用 Anvil 合约当「数据库」，不再 hybrid 双链读。
 
@@ -25,7 +25,7 @@
 │  ┌─────────────────┐    ┌─────────────────────────────┐ │
 │  │ Product DB      │    │ Chain Gateway (RPC)         │ │
 │  │ Neon Postgres   │    │ 仅 quote / evaluate / swap  │ │
-│  │                 │    │ / settings 链诊断            │ │
+│  │                 │    │ / debug 链诊断（可选）        │ │
 │  │ • events        │    └─────────────────────────────┘ │
 │  │ • ledger_trades │              │                     │
 │  │ • checked_trades│              │ ethers → Monad      │
@@ -52,7 +52,7 @@
 | 合约地址 | manifest + env | Vercel Env | 部署脚本 | chain gateway |
 | 链上 reserves / 报价 | — | — | 不持久化 | evaluate、quote 时 RPC 读 |
 
-**不存进 DB 的**：实时余额、池 reserves、区块扫描结果（除非 Settings 调试接口临时读）。
+**不存进 DB 的**：实时余额、池 reserves、区块扫描结果（除非 debug 接口临时读）。
 
 ---
 
@@ -86,7 +86,7 @@
 | POST | `/api/execute` | Vault 执行 |
 | GET | `/api/swap/balances` | 余额 |
 | GET | `/api/demo/tokens|pools` | 注册表链上读 |
-| GET | `/api/debug/rpc-check` | Settings |
+| GET | `/api/debug/rpc-check` | 链诊断（可选，原 Settings 调试） |
 
 ---
 

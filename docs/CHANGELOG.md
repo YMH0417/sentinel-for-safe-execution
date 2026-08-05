@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-05 — 前端信息架构与文案
+
+- 新增 **测试网资产** 页（`/faucet`）：Monad testnet 静态信息、官方 Gas faucet 链接、Demo USDC 领取、MetaMask 代币转账。
+- **系统设置**（`/settings`）与测试网资产拆分：设置页仅授权 Agent 测试钱包（`0x881915BE…`）可见 LLM 与 mint/burn；其余用户见居中提示。
+- 风控规则页精简 intro 与卡片布局；交易页移除运行分析 Tab、路由拒单改为按钮区上方内联（无右上角 toast）。
+- Dashboard 侧栏「交易失败数」与「AI 最近一笔交易」在连接钱包后按 `context.account` 过滤；圆环/三格仍为平台 events 统计。
+- Profile 切换从前端 UI 移除；请用 `scripts/switch-demo-profile.ps1` 或 `POST /api/demo/profile`。
+
 ## 2026-08-05 — 移除运行分析页与 legacy 池健康
 
 - 删除前端「运行分析」Tab、`/analysis` 路由及 `/api/analysis*` 后端接口与 CLI `npm run analyze`。

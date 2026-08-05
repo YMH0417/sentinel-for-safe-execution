@@ -9,12 +9,14 @@ const NAV = [
   { to: "/dashboard", label: "仪表盘" },
   { to: "/transaction", label: "交易" },
   { to: "/risk-rules", label: "风控规则" },
-  { to: "/settings", label: "设置" },
+  { to: "/faucet", label: "测试网资产" },
+  { to: "/settings", label: "系统设置" },
 ];
 
 export function AppLayout() {
   const { pathname } = useLocation();
   const isLanding = pathname === "/";
+  const isTransaction = pathname === "/transaction";
 
   useEffect(() => {
     void api.warmCache().catch(() => undefined);
@@ -53,7 +55,9 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className={`sentinel-page${isLanding ? " sentinel-page--landing" : ""}`}>
+      <main
+        className={`sentinel-page${isLanding ? " sentinel-page--landing" : ""}${isTransaction ? " sentinel-page--transaction" : ""}`}
+      >
         <Outlet />
       </main>
     </div>

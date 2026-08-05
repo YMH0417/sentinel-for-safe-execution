@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAddress } from "ethers";
-import { api, type DebugStatus, type LlmSettingsView, type TokenBalance } from "../api/client";
+import { api, type DebugStatus, type LlmSettingsView } from "../api/client";
 import { useWallet } from "../contexts/WalletContext";
 import { DEMO_TEST_USER } from "../lib/demoConstants";
-import { claimUsdcFromFaucet } from "../lib/demoFaucet";
-import { ensureDemoChain, fetchDemoChainConfig, type DemoTokenMeta } from "../lib/wallet";
+import { ensureDemoChain, fetchDemoChainConfig } from "../lib/wallet";
 import {
   burnDemoToken,
   burnDemoTokenFromPool,
@@ -15,24 +14,19 @@ import {
   formatTokenAmount,
   mintDemoToken,
   mintDemoTokenToPool,
-  transferDemoToken,
   type DemoSupplyOverview,
   type PoolReserveRow,
 } from "../lib/tokenSupply";
 
-type TokenAction = "mint" | "burn" | "transfer";
+type TokenAction = "mint" | "burn";
 type BusyTarget = { scope: "wallet" | "pool"; id: string; action: TokenAction };
 
 const DEFAULT_DEMO_PROFILE = "monad-testnet";
-const TRANSFER_TOKEN_ORDER = ["USDC", "GOOD", "BAD", "BAIT"] as const;
 
 export function SettingsPage() {
   const { account, connectWallet } = useWallet();
   const [status, setStatus] = useState<DebugStatus | null>(null);
   const [msg, setMsg] = useState("");
-  const [faucetBusy, setFaucetBusy] = useState(false);
-  const [faucetMsg, setFaucetMsg] = useState("");
-  const [faucetError, setFaucetError] = useState("");
   const [supply, setSupply] = useState<DemoSupplyOverview | null>(null);
   const [supplyLoading, setSupplyLoading] = useState(false);
   const [supplyProgress, setSupplyProgress] = useState<DemoSupplyProgress | null>(null);
@@ -56,13 +50,6 @@ export function SettingsPage() {
   const [llmResponseLanguage, setLlmResponseLanguage] = useState<"en" | "zh">("zh");
 
   const profileEnsuringRef = useRef(false);
-
-  const [transferRecipient, setTransferRecipient] = useState("");
-  const [transferAmounts, setTransferAmounts] = useState<Record<string, string>>({});
-  const [transferBalances, setTransferBalances] = useState<Record<string, TokenBalance>>({});
-  const [transferTokens, setTransferTokens] = useState<DemoTokenMeta[]>([]);
-  const [transferLoading, setTransferLoading] = useState(false);
-  const [transferMsg, setTransferMsg] = useState("");
 
   const applyLlmForm = useCallback((view: LlmSettingsView) => {
     setLlmSettings(view);
@@ -179,30 +166,10 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (!connectedIsTestUser) return;
     void refreshStatus();
     void refreshLlmSettings();
-  }, [refreshLlmSettings, refreshStatus]);
-
-  const refreshTransferBalances = useCallback(async (holder: string) => {
-    setTransferLoading(true);
-    try {
-      const checksum = getAddress(holder);
-      const [balanceRes, tokensRes] = await Promise.all([
-        api.balances(checksum),
-        fetch("/api/demo/tokens").then(async (res) => {
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error ?? "无法加载 demo 代币");
-          return data as { tokens: DemoTokenMeta[] };
-        }),
-      ]);
-      setTransferBalances(balanceRes.balances);
-      setTransferTokens(tokensRes.tokens ?? []);
-    } catch {
-      setTransferBalances({});
-    } finally {
-      setTransferLoading(false);
-    }
-  }, []);
+  }, [connectedIsTestUser, refreshLlmSettings, refreshStatus]);
 
   const switchDemoProfile = useCallback(
     async (profileName: string) => {
@@ -230,74 +197,6 @@ export function SettingsPage() {
         profileEnsuringRef.current = false;
       });
   }, [isDemoMode, status?.demoProfile, switchDemoProfile]);
-
-  const handleTransfer = async (symbol: string, tokenAddress: string, decimals: number) => {
-    const recipient = transferRecipient.trim();
-    const amount = transferAmounts[symbol]?.trim();
-    if (!recipient) {
-      setSupplyError("请输入收款地址");
-      return;
-    }
-    if (!amount || Number(amount) <= 0) {
-      setSupplyError("请输入有效的转账数量");
-      return;
-    }
-    if (!account) {
-      setSupplyError("请先连接 MetaMask 后再转账");
-      return;
-    }
-    try {
-      getAddress(recipient);
-    } catch {
-      setSupplyError("收款地址格式无效");
-      return;
-    }
-
-    setBusy({ scope: "wallet", id: symbol, action: "transfer" });
-    setSupplyError("");
-    setTransferMsg("");
-    try {
-      const txHash = await transferDemoToken({
-        tokenAddress,
-        recipient,
-        amountHuman: amount,
-        decimals,
-      });
-      setTransferMsg(`${symbol} 转账成功：${txHash.slice(0, 10)}…`);
-      await refreshTransferBalances(account);
-      if (connectedIsTestUser) await refreshSupply(account);
-      setTransferAmounts((prev) => ({ ...prev, [symbol]: "" }));
-    } catch (e) {
-      setSupplyError(e instanceof Error ? e.message : "转账失败");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const claimFaucetUsdc = async () => {
-    if (!account) {
-      setFaucetError("请先连接 MetaMask");
-      return;
-    }
-    setFaucetBusy(true);
-    setFaucetError("");
-    setFaucetMsg("");
-    try {
-      const txHash = await claimUsdcFromFaucet(account);
-      setFaucetMsg(`已领取 10,000 USDC：${txHash.slice(0, 10)}…`);
-    } catch (e) {
-      setFaucetError(e instanceof Error ? e.message : "领取失败");
-    } finally {
-      setFaucetBusy(false);
-    }
-  };
-
-  const transferTokenRows = useMemo(() => {
-    const bySymbol = new Map(transferTokens.map((token) => [token.symbol, token]));
-    return TRANSFER_TOKEN_ORDER.map((symbol) => bySymbol.get(symbol)).filter(
-      (token): token is DemoTokenMeta => !!token
-    );
-  }, [transferTokens]);
 
   const canOperate = connectedIsTestUser && !!supply?.testUserIsAuthorizedMinter;
 
@@ -553,72 +452,24 @@ export function SettingsPage() {
 
   return (
     <div>
-      <h2 className="sentinel-title">设置</h2>
-
-      <div className="sentinel-grid-2">
-        <div className="sentinel-card">
-          <div className="sentinel-label">网络环境</div>
-          {status ? (
-            <>
-              <ul style={{ listStyle: "none", fontSize: 14, lineHeight: 2, marginBottom: 16 }}>
-                <li>模式：<strong>{status.chainMode}</strong></li>
-                <li>Profile：<strong>{status.demoProfile ?? "—"}</strong></li>
-                <li>部署目标：<strong>{status.deploymentTarget ?? "—"}</strong></li>
-                <li>链 ID：<strong>{status.expectedChainId ?? "—"}</strong></li>
-                <li>链名称：<strong>{status.chainName ?? "—"}</strong></li>
-                <li>
-                  RPC：
-                  <code style={{ fontSize: 14 }}>
-                    {status.demoRpcUrl ?? status.anvilRpcUrl ?? "—"}
-                  </code>
-                </li>
-                <li>
-                  Router Swap：
-                  <strong
-                    style={{
-                      color: status.routerSwapAvailable ? "var(--green)" : "var(--red)",
-                    }}
-                  >
-                    {status.routerSwapAvailable ? "可用" : "不可用"}
-                  </strong>
-                </li>
-              </ul>
-            </>
-          ) : (
-            <p style={{ color: "var(--text-dim)" }}>无法读取 backend 状态</p>
-          )}
+      {!connectedIsTestUser ? (
+        <div className="settings-gate">
+          <div className="settings-gate-inner">
+            <p className="settings-gate-text">
+              系统设置仅对授权钱包开放。请连接 MetaMask 并使用授权账户后查看。
+            </p>
+            {!account ? (
+              <button type="button" className="sentinel-btn sentinel-btn-primary" onClick={() => connectWallet().catch(() => undefined)}>
+                连接 MetaMask
+              </button>
+            ) : (
+              <p className="settings-gate-denied">当前连接的钱包无访问权限。</p>
+            )}
+          </div>
         </div>
-
-        <div className="sentinel-card">
-          <div className="sentinel-label">水龙头</div>
-          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
-            从测试钱包 <code>{DEMO_TEST_USER}</code> 领取 10,000 demo USDC 到当前连接地址。
-            首次领取时 backend 会用测试钱包授权；你在 MetaMask 确认交易并自行支付 Gas。
-          </p>
-          {!account ? (
-            <button type="button" className="sentinel-btn" onClick={() => connectWallet().catch(() => undefined)}>
-              连接 MetaMask
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="sentinel-btn"
-              onClick={claimFaucetUsdc}
-              disabled={faucetBusy}
-            >
-              {faucetBusy ? "领取中" : "领取 10,000 USDC"}
-            </button>
-          )}
-          {faucetMsg && (
-            <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>{faucetMsg}</p>
-          )}
-          {faucetError && (
-            <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>{faucetError}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="sentinel-card" style={{ marginTop: 20 }}>
+      ) : (
+        <>
+      <div className="sentinel-card">
         <div className="sentinel-label">大模型（AI 警报分析）</div>
         <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
           配置 Groq 等 OpenAI 兼容接口，写入 <code>backend/.env</code>。
@@ -990,108 +841,7 @@ export function SettingsPage() {
           )}
         </div>
       )}
-
-      {isDemoMode && (
-        <div className="sentinel-card" style={{ marginTop: 20 }}>
-          <div className="sentinel-label">代币转账</div>
-          <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
-            使用当前连接的钱包通过 MetaMask 发送 demo ERC20（任意有余额的钱包均可操作）。
-          </p>
-
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
-            {!account ? (
-              <button type="button" className="sentinel-btn" onClick={() => connectWallet().catch(() => undefined)}>
-                连接 MetaMask
-              </button>
-            ) : (
-              <span style={{ fontSize: 16 }}>
-                转出方：<code>{account}</code>
-              </span>
-            )}
-            <label className="sentinel-field" style={{ flex: 1, minWidth: 280 }}>
-              <span className="sentinel-field-label">收款地址</span>
-              <input
-                type="text"
-                className="sentinel-input"
-                placeholder="0x…"
-                value={transferRecipient}
-                onChange={(e) => setTransferRecipient(e.target.value)}
-                disabled={!account}
-              />
-            </label>
-            <button
-              type="button"
-              className="sentinel-btn sentinel-btn-secondary"
-              onClick={() => account && refreshTransferBalances(account)}
-              disabled={!account || transferLoading}
-            >
-              {transferLoading ? "刷新中" : "刷新余额"}
-            </button>
-          </div>
-
-          {transferMsg && (
-            <p style={{ fontSize: 16, color: "var(--green)", marginBottom: 12 }}>{transferMsg}</p>
-          )}
-
-          {transferTokenRows.length > 0 && (
-            <div className="scroll-hidden" style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 16 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ padding: "8px 6px" }}>代币</th>
-                    <th style={{ padding: "8px 6px" }}>余额</th>
-                    <th style={{ padding: "8px 6px" }}>转账</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transferTokenRows.map((token) => {
-                    const transferBusy =
-                      busy?.scope === "wallet" &&
-                      busy.id === token.symbol &&
-                      busy.action === "transfer";
-                    const balance = transferBalances[token.symbol]?.human ?? 0;
-                    return (
-                      <tr key={token.symbol} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                        <td style={{ padding: "10px 6px", fontWeight: 600 }}>{token.symbol}</td>
-                        <td style={{ padding: "10px 6px" }}>
-                          {formatTokenAmount(balance, token.decimals)}
-                        </td>
-                        <td style={{ padding: "10px 6px" }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }} className="settings-inline-controls">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="数量"
-                              value={transferAmounts[token.symbol] ?? ""}
-                              onChange={(e) =>
-                                setTransferAmounts((prev) => ({
-                                  ...prev,
-                                  [token.symbol]: e.target.value,
-                                }))
-                              }
-                              disabled={!account || transferBusy}
-                              className="sentinel-input sentinel-input-compact"
-                            />
-                            <button
-                              type="button"
-                              className="sentinel-btn sentinel-btn-secondary"
-                              disabled={!account || transferBusy}
-                              onClick={() =>
-                                handleTransfer(token.symbol, token.address, token.decimals)
-                              }
-                            >
-                              {transferBusy ? "转账中" : "转账"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        </>
       )}
     </div>
   );

@@ -16,10 +16,6 @@ const PROFILE_COPY: Record<string, { label: string; tagline: string }> = {
   },
 };
 
-function formatSlippagePercent(bps: number): string {
-  return `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
-}
-
 function profileLabel(key: string): string {
   return PROFILE_COPY[key]?.label ?? key;
 }
@@ -37,10 +33,8 @@ export function RiskRulesPage() {
 
   return (
     <div>
-      <h2 className="sentinel-title">风控规则</h2>
       <p className="risk-rules-intro">
-        你在兑换页发起交易时，系统会先帮你看一眼路由是否安全，再决定「放行」「建议换路」或「直接拦住」。
-        下面是你当前环境里生效的规则说明（只读，方便对照仪表盘上的决策原因）。
+        你在兑换页发起交易时，系统会先帮你看一眼路由是否安全，再决定「放行」「建议换路」或「直接拦住」。下面是当前生效的规则说明。
       </p>
 
       {error && (
@@ -49,53 +43,21 @@ export function RiskRulesPage() {
 
       <div className="sentinel-grid-2">
         <div className="sentinel-card">
-          <div className="sentinel-label">当前全局设置</div>
-          {config ? (
-            <ul className="risk-rules-list">
-              <li>
-                <strong>默认严格程度</strong>
-                <span>
-                  {profileLabel(config.defaultProfile)}
-                  {PROFILE_COPY[config.defaultProfile]?.tagline
-                    ? ` — ${PROFILE_COPY[config.defaultProfile].tagline}`
-                    : ""}
-                </span>
-              </li>
-              <li>
-                <strong>系统状态</strong>
-                <span
-                  className={
-                    config.paused ? "risk-rules-status-bad" : "risk-rules-status-ok"
-                  }
-                >
-                  {config.paused
-                    ? "已暂停 — 新交易会被拒绝，直到管理员恢复"
-                    : "正常运行 — 可以按规则评估与执行交易"}
-                </span>
-              </li>
-              <li>
-                <strong>强制模式滑点上限</strong>
-                <span>
-                  约 {formatSlippagePercent(config.maxSlippageBps ?? 100)}
-                  （仅在你主动选择「绕过风控 / 强制成交」时生效；安全模式由风控助手自行把关）
-                </span>
-              </li>
-            </ul>
-          ) : (
-            <p className="risk-rules-muted">加载中…</p>
-          )}
-        </div>
-
-        <div className="sentinel-card">
           <div className="sentinel-label">目标代币怎么看</div>
           <p className="risk-rules-card-hint">
             换出哪种币，比「池子报多高的价」更先被检查。
           </p>
           <RuleRow
-            token="USDC、GOOD"
+            token="USDC"
             level="放心换"
             color="var(--green)"
-            desc="演示环境里的正常资产，按常规则评估价格和池子风险即可。"
+            desc="演示环境里的基础稳定币，主要检查报价是否合理、池子风险是否可接受。"
+          />
+          <RuleRow
+            token="GOOD"
+            level="放心换"
+            color="var(--green)"
+            desc="演示环境里的正常资产，按常规检查报价偏离与池子风险即可。"
           />
           <RuleRow
             token="BAD"
@@ -143,6 +105,33 @@ export function RiskRulesPage() {
         </div>
 
         <div className="sentinel-card">
+          <div className="sentinel-label">当前全局设置</div>
+          {config ? (
+            <ul className="risk-rules-list">
+              <li>
+                <strong>默认严格程度</strong>
+                <span>
+                  {profileLabel(config.defaultProfile)}
+                  {PROFILE_COPY[config.defaultProfile]?.tagline
+                    ? ` — ${PROFILE_COPY[config.defaultProfile].tagline}`
+                    : ""}
+                </span>
+              </li>
+              <li>
+                <strong>评估时会看什么</strong>
+                <span>兑出哪种币、走哪个池，以及报价是否偏离公允价、池子历史是否稳定。</span>
+              </li>
+              <li>
+                <strong>最后怎么结论</strong>
+                <span>风险低就放行，中等且能换更安全的路就建议换路，明显危险就直接拦住。</span>
+              </li>
+            </ul>
+          ) : (
+            <p className="risk-rules-muted">加载中…</p>
+          )}
+        </div>
+
+        <div className="sentinel-card">
           <div className="sentinel-label">安全模式下的额外保护</div>
           <p className="risk-rules-card-hint">
             走「钱包签名 + 路由合约」的安全路径时，链上还会再验一道，防止页面被篡改后乱发交易。
@@ -159,9 +148,6 @@ export function RiskRulesPage() {
             </li>
             <li>
               <strong>授权有效期</strong> — 签名过期需重新评估，避免用过期报价成交。
-            </li>
-            <li>
-              <strong>全局暂停</strong> — 管理员打开暂停开关后，新交易一律不进链。
             </li>
           </ul>
         </div>

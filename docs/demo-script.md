@@ -1,6 +1,6 @@
 # Demo Script — Sentinel for Safe Execution
 
-> **Last updated**: 2026-08-02 — 三 profile（anvil-local / fork / monad-testnet），48 routes，Safe/Unsafe。
+> **Last updated**: 2026-08-05 — 三 profile（anvil-local / fork / monad-testnet），48 routes，Safe/Unsafe；测试网资产与系统设置分页。
 
 ---
 
@@ -28,26 +28,34 @@ Fork / local / testnet 的 **verify-all** 预期均为 **36 pass + 12 fail**（T
 
 ---
 
-## D. Settings 页 & MetaMask 执行（~2 分钟）
+## D. 测试网资产 & 系统设置 & MetaMask 执行（~2 分钟）
 
-打开 http://127.0.0.1:8081/settings
+### 测试网资产（`/faucet`）
 
-### 网络环境
+打开 http://127.0.0.1:8081/faucet
 
-> "Demo 可在 **本地 Anvil (31337)**、**Fork Monad (10143)**、**公网 Monad testnet** 间切换，无需重新部署合约。Settings 调用 `POST /api/demo/profile` 重写 `backend/.env` 并热更新进程。"
+> "Demo 公网场景固定展示 **Monad Testnet (10143)**：官方 Gas faucet、Demo USDC 领取、以及 MetaMask **代币转账**。"
 
-展示 **Router Swap** 卡片：仅当 backend 配置了 `SWAP_PRIVATE_KEY` + Router + Agent 时可用；**monad-testnet** 上通常为不可用，属预期行为。
+- **Gas**：外链 [faucet.monad.xyz](https://faucet.monad.xyz/)
+- **Demo USDC**：前端 claim；成功 toast「已领取 10,000 DEMO USDC」
+- **代币转账**：MetaMask 签名 ERC-20 `transfer`（四代币表格）
 
-### 代币转账 & 余额刷新
+Profile 切换（本地 / fork / 公网）请用 CLI：`.\scripts\switch-demo-profile.ps1 -Profile <name>` 或 `POST /api/demo/profile`（前端已无切换 UI）。
 
-- **转账**：MetaMask 签名 ERC-20 `transfer`
-- **刷新余额**：`GET /api/demo/supply?holder=…&stream=1`，UI 显示 **3/48** 式进度（避免公网 RPC  burst 失败）
+### 系统设置（`/settings`，授权钱包）
+
+打开 http://127.0.0.1:8081/settings — 仅 **Agent 测试钱包** `0x881915BE66Be800Cc180b6244809A1D188Bc1b2c` 可见：
+
+- **LLM** 配置（Groq 等）
+- **mint/burn** 与 **刷新余额**：`GET /api/demo/supply?holder=…&stream=1`，UI 显示 **X/Y** 进度（避免公网 RPC burst）
+
+未授权钱包：页面居中提示，无卡片内容。
 
 ### 公网 testnet 上执行 swap
 
 1. MetaMask 连接 **Monad Testnet (10143)**
-2. 交易页获取报价 → Safe 模式需使用 **Agent 测试钱包**（Vault `agentSigner`，deploy 时写入 manifest）
-3. 若 Settings 显示 Router Swap 不可用，前端自动走 **MetaMask 钱包路径**（`POST /api/swap/wallet/plan`）
+2. **交易**页获取报价 → Safe 模式需使用 **Agent 测试钱包**（Vault `agentSigner`）
+3. Backend 未配置 `SWAP_PRIVATE_KEY` 时，前端自动走 **MetaMask 钱包路径**（`POST /api/swap/wallet/plan`）
 
 > "Backend swap 密钥是可选的。公网 demo 故意不托管 swap 私钥；用户用 MetaMask 授权，Sentinel 仍做 Agent 评估与路由规划。"
 
@@ -185,9 +193,11 @@ For `CHAIN_MODE=mock` without Anvil.
 | Fork Monad locally | `.\start-demo.ps1 -Profile anvil-fork-monad -VerifySwaps` |
 | Deploy Monad testnet | `.\scripts\deploy-monad-testnet.ps1` |
 | Switch profile (CLI) | `.\scripts\switch-demo-profile.ps1 -Profile <name>` |
-| Switch profile (UI) | Settings → 网络环境 |
+| Switch profile | `.\scripts\switch-demo-profile.ps1` 或 `POST /api/demo/profile` |
+| Testnet faucet / transfer | http://127.0.0.1:8081/faucet |
+| LLM + mint/burn (authorized) | http://127.0.0.1:8081/settings（Agent 测试钱包） |
 | MetaMask wallet swap | Transaction 页（backend swap 未配置时自动） |
-| Supply refresh progress | Settings → `GET /demo/supply?stream=1` |
+| Supply refresh progress | Settings（授权）→ `GET /demo/supply?stream=1` |
 | Show 4 pool quotes | `GET /api/quote?tokenIn=USDC&tokenOut=GOOD&amount=100` |
 | BAD token reject | `POST /api/evaluate` `route-usdc-bad-safe` |
 | SDA reject (Safe) | `POST /api/evaluate` `route-usdc-good-sda` |
