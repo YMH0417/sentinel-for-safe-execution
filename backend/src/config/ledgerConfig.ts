@@ -6,6 +6,7 @@ import { getRpcUrl } from "./chainConfig.js";
 import type { DemoDeploymentConfig } from "./demoConfig.js";
 import { resolveDeploymentPath } from "./demoProfile.js";
 import { readJsonFile } from "../utils/readJsonFile.js";
+import { resolveRepoFilePath } from "../utils/resolveRepoPath.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,20 +29,16 @@ export function getLedgerRpcUrl(): string {
 function resolveLedgerDeploymentPath(): string {
   const explicit = process.env.LEDGER_DEPLOYMENT_PATH?.trim();
   if (explicit) {
-    const abs = path.isAbsolute(explicit)
-      ? explicit
-      : path.resolve(repoRoot, "backend", explicit);
-    if (fs.existsSync(abs)) return abs;
+    const resolved = resolveRepoFilePath(explicit);
+    if (fs.existsSync(resolved)) return resolved;
   }
   if (isHybridDemoMode()) {
     return resolveDeploymentPath("anvil-local");
   }
   const fromEnv = process.env.DEMO_DEPLOYMENT_PATH?.trim();
   if (fromEnv) {
-    const abs = path.isAbsolute(fromEnv)
-      ? fromEnv
-      : path.resolve(repoRoot, "backend", fromEnv);
-    if (fs.existsSync(abs)) return abs;
+    const resolved = resolveRepoFilePath(fromEnv);
+    if (fs.existsSync(resolved)) return resolved;
   }
   return resolveDeploymentPath();
 }

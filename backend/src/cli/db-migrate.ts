@@ -1,7 +1,7 @@
 import { config as loadEnv } from "dotenv";
 import { resolve } from "path";
 
-loadEnv({ path: resolve(process.cwd(), ".env") });
+loadEnv({ path: resolve(process.cwd(), ".env"), override: true });
 
 import { initPostgresStorage } from "../storage/db.js";
 import { getStorageDriver } from "../storage/config.js";

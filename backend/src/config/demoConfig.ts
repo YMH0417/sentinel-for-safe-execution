@@ -3,6 +3,7 @@ import { getAddress } from "ethers";
 import { parseRouteName, tokenSymbolFromKey } from "./demoRoutes.js";
 import { resolveDefaultDeploymentPath } from "./demoProfile.js";
 import { readJsonFile } from "../utils/readJsonFile.js";
+import { resolveRepoFilePath } from "../utils/resolveRepoPath.js";
 
 export type DemoTokenSymbol = "USDC" | "GOOD" | "BAD" | "BAIT";
 export type DemoPoolLabel = "SAFE" | "SHALLOW" | "TOXIC" | "SDA";
@@ -55,8 +56,9 @@ function hasDefaultDeploymentFile(): boolean {
 export function loadDemoConfig(): DemoDeploymentConfig {
   if (cachedConfig) return cachedConfig;
 
-  const deploymentPath =
-    process.env.DEMO_DEPLOYMENT_PATH?.trim() || defaultDeploymentPath;
+  const deploymentPath = resolveRepoFilePath(
+    process.env.DEMO_DEPLOYMENT_PATH?.trim() || defaultDeploymentPath
+  );
 
   if (!fs.existsSync(deploymentPath)) {
     throw new Error(`Demo deployment file not found: ${deploymentPath}`);

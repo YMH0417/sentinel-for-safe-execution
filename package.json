@@ -1,0 +1,8 @@
+{
+  "name": "sentinel-for-safe-execution",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "db:migrate": "npm run db:migrate --prefix backend"
+  }
+}

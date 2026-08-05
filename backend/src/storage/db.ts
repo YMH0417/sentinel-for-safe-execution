@@ -28,15 +28,9 @@ export async function ensureSchema(): Promise<void> {
         throw new Error("DATABASE_URL is required for postgres storage");
       }
       const ddl = readFileSync(join(__dirname, "schema.sql"), "utf-8");
-      const statements = ddl
-        .split(";")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0 && !s.startsWith("--"));
       const pool = new Pool({ connectionString: url });
       try {
-        for (const statement of statements) {
-          await pool.query(statement);
-        }
+        await pool.query(ddl);
       } finally {
         await pool.end();
       }
