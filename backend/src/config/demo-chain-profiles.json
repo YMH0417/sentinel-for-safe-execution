@@ -1,0 +1,39 @@
+{
+  "anvil-local": {
+    "chainId": 31337,
+    "chainName": "Anvil Local",
+    "rpcUrl": "http://127.0.0.1:8545",
+    "nativeCurrency": {
+      "name": "Ether",
+      "symbol": "ETH",
+      "decimals": 18
+    },
+    "manifestPath": "contracts/deployments/local-31337-demo.json",
+    "deploymentTarget": "local"
+  },
+  "anvil-fork-monad": {
+    "chainId": 10143,
+    "chainName": "Monad Testnet (Fork)",
+    "rpcUrl": "http://127.0.0.1:8545",
+    "forkUrl": "https://testnet-rpc.monad.xyz",
+    "nativeCurrency": {
+      "name": "Monad",
+      "symbol": "MON",
+      "decimals": 18
+    },
+    "manifestPath": "contracts/deployments/local-10143-demo.json",
+    "deploymentTarget": "local"
+  },
+  "monad-testnet": {
+    "chainId": 10143,
+    "chainName": "Monad Testnet",
+    "rpcUrl": "https://testnet-rpc.monad.xyz",
+    "nativeCurrency": {
+      "name": "Monad",
+      "symbol": "MON",
+      "decimals": 18
+    },
+    "manifestPath": "contracts/deployments/monad-10143-demo.json",
+    "deploymentTarget": "remote"
+  }
+}

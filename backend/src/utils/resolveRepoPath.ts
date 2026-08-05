@@ -5,8 +5,11 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/** Repo root (sentinel-for-safe-execution/). */
+/** Repo root (sentinel-for-safe-execution/). On Vercel this is /var/task. */
 export function getRepoRoot(): string {
+  if (process.env.VERCEL) {
+    return process.cwd();
+  }
   return path.resolve(__dirname, "../../..");
 }
 
@@ -19,12 +22,16 @@ export function resolveRepoFilePath(input: string): string {
 
   const normalized = trimmed.replace(/\\/g, "/");
   const repoRoot = getRepoRoot();
+  const basename = path.basename(normalized);
   const candidates = [
+    path.join(__dirname, "../config/deployments", basename),
+    path.join(__dirname, "../../deployments", basename),
     path.resolve(process.cwd(), trimmed),
     path.resolve(repoRoot, normalized),
     path.resolve(repoRoot, normalized.replace(/^\.\.\//, "")),
     path.resolve(repoRoot, "backend", normalized),
-    path.resolve(repoRoot, "contracts/deployments", path.basename(normalized)),
+    path.resolve(repoRoot, "contracts/deployments", basename),
+    path.resolve(repoRoot, "backend/dist/config/deployments", basename),
   ];
 
   for (const candidate of candidates) {

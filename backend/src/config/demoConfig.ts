@@ -1,9 +1,12 @@
 import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 import { getAddress } from "ethers";
 import { parseRouteName, tokenSymbolFromKey } from "./demoRoutes.js";
 import { resolveDefaultDeploymentPath } from "./demoProfile.js";
 import { readJsonFile } from "../utils/readJsonFile.js";
 import { resolveRepoFilePath } from "../utils/resolveRepoPath.js";
+import { buildDemoConfigFromEnv } from "./demoConfigFromEnv.js";
 
 export type DemoTokenSymbol = "USDC" | "GOOD" | "BAD" | "BAIT";
 export type DemoPoolLabel = "SAFE" | "SHALLOW" | "TOXIC" | "SDA";
@@ -36,36 +39,14 @@ export interface DemoDeploymentConfig {
   pools: DemoPoolEntry[];
 }
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const defaultDeploymentPath = resolveDefaultDeploymentPath();
 
 let cachedConfig: DemoDeploymentConfig | null = null;
 
-export function isDemoChainMode(): boolean {
-  if (process.env.CHAIN_MODE?.trim().toLowerCase() === "mock") return false;
-  return Boolean(process.env.DEMO_REGISTRY_ADDRESS?.trim() || process.env.DEMO_DEPLOYMENT_PATH?.trim() || hasDefaultDeploymentFile());
-}
-
-function hasDefaultDeploymentFile(): boolean {
-  try {
-    return fs.existsSync(defaultDeploymentPath);
-  } catch {
-    return false;
-  }
-}
-
-export function loadDemoConfig(): DemoDeploymentConfig {
-  if (cachedConfig) return cachedConfig;
-
-  const deploymentPath = resolveRepoFilePath(
-    process.env.DEMO_DEPLOYMENT_PATH?.trim() || defaultDeploymentPath
-  );
-
-  if (!fs.existsSync(deploymentPath)) {
-    throw new Error(`Demo deployment file not found: ${deploymentPath}`);
-  }
-
-  const raw = readJsonFile<DemoDeploymentConfig>(deploymentPath);
-
+function normalizeDemoConfig(raw: DemoDeploymentConfig): DemoDeploymentConfig {
   const registry = process.env.DEMO_REGISTRY_ADDRESS?.trim() || raw.registry;
   if (!registry) {
     throw new Error("Demo registry address missing in deployment file and DEMO_REGISTRY_ADDRESS");
@@ -88,7 +69,7 @@ export function loadDemoConfig(): DemoDeploymentConfig {
     }
   }
 
-  cachedConfig = {
+  return {
     ...raw,
     registry: getAddress(registry),
     vaultExecution: raw.vaultExecution ? getAddress(raw.vaultExecution) : undefined,
@@ -106,8 +87,64 @@ export function loadDemoConfig(): DemoDeploymentConfig {
       tokenOut: getAddress(pool.tokenOut),
     })),
   };
+}
 
-  return cachedConfig;
+function candidateDeploymentPaths(): string[] {
+  const envPath = process.env.DEMO_DEPLOYMENT_PATH?.trim();
+  const profile = process.env.DEMO_PROFILE?.trim() || "monad-testnet";
+  const manifestName =
+    profile === "monad-testnet"
+      ? "monad-10143-demo.json"
+      : profile === "anvil-fork-monad"
+        ? "local-10143-demo.json"
+        : "local-31337-demo.json";
+
+  return [
+    envPath ? resolveRepoFilePath(envPath) : "",
+    path.join(__dirname, "deployments", manifestName),
+    path.join(__dirname, "deployments", "monad-10143-demo.json"),
+    resolveRepoFilePath(defaultDeploymentPath),
+    resolveRepoFilePath(`contracts/deployments/${manifestName}`),
+    resolveRepoFilePath(`backend/deployments/${manifestName}`),
+  ].filter(Boolean);
+}
+
+export function isDemoChainMode(): boolean {
+  if (process.env.CHAIN_MODE?.trim().toLowerCase() === "mock") return false;
+  return Boolean(
+    process.env.DEMO_REGISTRY_ADDRESS?.trim() ||
+      process.env.DEMO_DEPLOYMENT_PATH?.trim() ||
+      hasDefaultDeploymentFile() ||
+      buildDemoConfigFromEnv()
+  );
+}
+
+function hasDefaultDeploymentFile(): boolean {
+  try {
+    return candidateDeploymentPaths().some((p) => fs.existsSync(p));
+  } catch {
+    return false;
+  }
+}
+
+export function loadDemoConfig(): DemoDeploymentConfig {
+  if (cachedConfig) return cachedConfig;
+
+  for (const deploymentPath of candidateDeploymentPaths()) {
+    if (!fs.existsSync(deploymentPath)) continue;
+    cachedConfig = normalizeDemoConfig(readJsonFile<DemoDeploymentConfig>(deploymentPath));
+    return cachedConfig;
+  }
+
+  const fromEnv = buildDemoConfigFromEnv();
+  if (fromEnv) {
+    cachedConfig = fromEnv;
+    return cachedConfig;
+  }
+
+  throw new Error(
+    `Demo deployment file not found (checked ${candidateDeploymentPaths().join(", ")})`
+  );
 }
 
 export function resolveTokenSymbol(

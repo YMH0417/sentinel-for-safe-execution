@@ -35,7 +35,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const repoRoot = path.resolve(__dirname, "../../..");
-const profilesFilePath = path.join(repoRoot, "shared/demo-chain-profiles.json");
+const profilesFilePath = path.join(__dirname, "demo-chain-profiles.json");
+const profilesFileFallback = path.join(repoRoot, "shared/demo-chain-profiles.json");
 
 /** Legacy manifest kept until Step 2 migration completes. */
 const legacyDeploymentPath = path.join(
@@ -70,11 +71,15 @@ export function isDemoProfileName(value: string): value is DemoProfileName {
 export function loadDemoChainProfiles(): DemoChainProfilesFile {
   if (cachedProfiles) return cachedProfiles;
 
-  if (!fs.existsSync(profilesFilePath)) {
-    throw new DemoProfileError(`Demo chain profiles file not found: ${profilesFilePath}`);
+  const resolvedPath = fs.existsSync(profilesFilePath)
+    ? profilesFilePath
+    : profilesFileFallback;
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new DemoProfileError(`Demo chain profiles file not found: ${resolvedPath}`);
   }
 
-  const parsed = JSON.parse(fs.readFileSync(profilesFilePath, "utf-8")) as DemoChainProfilesFile;
+  const parsed = JSON.parse(fs.readFileSync(resolvedPath, "utf-8")) as DemoChainProfilesFile;
   for (const name of VALID_PROFILES) {
     if (!parsed[name]) {
       throw new DemoProfileError(`Demo chain profiles missing entry: ${name}`);
