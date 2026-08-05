@@ -17,6 +17,7 @@ export function AppLayout() {
   const { pathname } = useLocation();
   const isLanding = pathname === "/";
   const isTransaction = pathname === "/transaction";
+  const isExecution = pathname === "/execution";
 
   useEffect(() => {
     void api.warmCache().catch(() => undefined);
@@ -56,7 +57,7 @@ export function AppLayout() {
       </header>
 
       <main
-        className={`sentinel-page${isLanding ? " sentinel-page--landing" : ""}${isTransaction ? " sentinel-page--transaction" : ""}`}
+        className={`sentinel-page${isLanding ? " sentinel-page--landing" : ""}${isTransaction ? " sentinel-page--transaction" : ""}${isExecution ? " sentinel-page--execution" : ""}`}
       >
         <Outlet />
       </main>

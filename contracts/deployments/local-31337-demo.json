@@ -1,24 +1,27 @@
-{
-  "chainId": 31337,
-  "network": "anvil-local",
-  "deploymentTarget": "local",
-  "profile": "anvil-local",
-  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "agentSigner": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
-  "registry": "0xc6347f72a4d80ae7D8e733F5937A641C85A2f09d",
-  "vaultExecution": "0xf5059a5D33d5853360D16C683c16e67980206f36",
-  "swapRouter": "0x998abeb3E57409262aE5b751f60747921B33613E",
-  "ledger": "0x95401dc811bb5740090279Ba06cfA8fcF6113778",
-  "achievements": null,
-  "scenarioDeployer": "0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E",
-  "testUser": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
-  "deploymentMode": "initial",
-  "poolsPerBatch": 12,
-  "tokens": {
-    "USDC": "0x4F57F9239eFCBf43e5920f579D03B3849C588396",
-    "GOOD": "0xF3c6CF1C13EcC07204BEFce90EE14B5Bf8BbA4c9",
-    "BAD": "0x09601fBa6C50825Ff4A95112008311e21f3f24d9",
-    "BAIT": "0xf1Ff05db8575aE0aeC72d12B66CA48810DfC2c63"
-  },
-  "pools": []
+﻿{
+    "chainId":  31337,
+    "network":  "anvil-local",
+    "deploymentTarget":  "local",
+    "profile":  "anvil-local",
+    "deployer":  "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "agentSigner":  "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+    "registry":  "0xc6347f72a4d80ae7D8e733F5937A641C85A2f09d",
+    "vaultExecution":  "0x04C89607413713Ec9775E14b954286519d836FEf",
+    "swapRouter":  "0x21dF544947ba3E8b3c32561399E88B52Dc8b2823",
+    "ledger":  "0xdbC43Ba45381e02825b14322cDdd15eC4B3164E6",
+    "achievements":  null,
+    "scenarioDeployer":  "0xE6E340D132b5f46d1e472DebcD681B2aBc16e57E",
+    "testUser":  "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+    "deploymentMode":  "initial",
+    "poolsPerBatch":  12,
+    "tokens":  {
+                   "USDC":  "0x4F57F9239eFCBf43e5920f579D03B3849C588396",
+                   "GOOD":  "0xF3c6CF1C13EcC07204BEFce90EE14B5Bf8BbA4c9",
+                   "BAD":  "0x09601fBa6C50825Ff4A95112008311e21f3f24d9",
+                   "BAIT":  "0xf1Ff05db8575aE0aeC72d12B66CA48810DfC2c63"
+               },
+    "pools":  [
+
+              ]
 }
+

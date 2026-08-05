@@ -1,23 +1,27 @@
 {
-  "chainId": 10143,
-  "network": "monad-testnet",
-  "deploymentTarget": "remote",
-  "profile": "monad-testnet",
-  "deployer": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
-  "agentSigner": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
-  "registry": "0x1757dD1615885a44a2fB3aa5A39C504aB3BFbD07",
-  "vaultExecution": "0x18B8E9d0391D3aAD05b5F408811D510B38f50FFd",
-  "swapRouter": "0xFA18c940A5D7EFB861d28C71b215c867F237b51B",
-  "achievements": "0xA73afF431841f1436E026A53887A565Bb0Dd62be",
-  "scenarioDeployer": "0x0C00008d3Df7EC6A365770437741Fa991C87c2D4",
-  "testUser": "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
-  "deploymentMode": "phased",
-  "poolsPerBatch": 12,
-  "tokens": {
-    "USDC": "0xD52b74c0a6aB06D51e09a7eC19F5B379b9ea72aF",
-    "GOOD": "0x230e61ec5e90DeA10495afD4F0E8E1bCDeaD0951",
-    "BAD": "0x898675E5B15E374a573e6B6D3d56f85FA85c82B5",
-    "BAIT": "0xA26C06AaBdE448EF5598FE0d5B5a867057404585"
-  },
-  "pools": []
+    "chainId":  10143,
+    "network":  "monad-testnet",
+    "deploymentTarget":  "remote",
+    "profile":  "monad-testnet",
+    "deployer":  "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+    "agentSigner":  "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+    "registry":  "0x1757dD1615885a44a2fB3aa5A39C504aB3BFbD07",
+    "vaultExecution":  "0x2F5f0E677C9cCd535410bCd92CfC968AFB8F71B2",
+    "swapRouter":  "0xec137722C0Bf9D619Aa9573A068CEDE4c388ACd9",
+    "achievements":  null,
+    "scenarioDeployer":  "0x0C00008d3Df7EC6A365770437741Fa991C87c2D4",
+    "testUser":  "0x881915BE66Be800Cc180b6244809A1D188Bc1b2c",
+    "deploymentMode":  "phased",
+    "poolsPerBatch":  12,
+    "tokens":  {
+                   "USDC":  "0xD52b74c0a6aB06D51e09a7eC19F5B379b9ea72aF",
+                   "GOOD":  "0x230e61ec5e90DeA10495afD4F0E8E1bCDeaD0951",
+                   "BAD":  "0x898675E5B15E374a573e6B6D3d56f85FA85c82B5",
+                   "BAIT":  "0xA26C06AaBdE448EF5598FE0d5B5a867057404585"
+               },
+    "pools":  [
+
+              ],
+    "ledger":  "0xfc5Cd419a4aeB04f6Fe336A83C2B6f5A1A2f5B15"
 }
+

@@ -185,7 +185,7 @@ contract SentinelLedger is ISentinelLedger {
         uint8 oldFlags = s.badgeFlags;
         uint8 newFlags = oldFlags;
 
-        if (s.tradeCount >= 1) {
+        if (s.checkCount >= 1) {
             newFlags |= uint8(BADGE_FIRST_SWAP);
         }
         if (s.usdcVolume >= VOLUME_10K && s.checkCount >= 3) {

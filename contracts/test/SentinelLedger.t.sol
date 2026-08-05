@@ -20,11 +20,11 @@ contract SentinelLedgerTest is Test {
         ledger.setReporter(reporter, true);
     }
 
-    function testRecordTradeUnlocksFirstBadge() public {
+    function testForceTradeDoesNotUnlockFirstBadge() public {
         vm.prank(reporter);
         ledger.recordTrade(user, bytes32(uint256(1)), ISentinelLedger.ExecutionMode.Force, 0, address(usdc), 100e6, 95e6);
 
-        assertEq(ledger.badgeFlagsOf(user), uint8(1));
+        assertEq(ledger.badgeFlagsOf(user), uint8(0));
         (uint128 volume,, uint64 tradeCount, uint64 safeCount,) = ledger.stats(user);
         assertEq(volume, uint128(100e6));
         assertEq(tradeCount, 1);
@@ -55,6 +55,7 @@ contract SentinelLedgerTest is Test {
         assertEq(tradeCount, 1);
         assertEq(safeCount, 1);
         assertEq(volume, uint128(10_000e6));
+        assertEq(ledger.badgeFlagsOf(user), uint8(1));
     }
 
     function testDashboardSnapshotUpdatesOnTrade() public {

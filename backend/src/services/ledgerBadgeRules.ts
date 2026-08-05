@@ -19,7 +19,7 @@ export function evaluateBadgeFlags(stats: UserLedgerStats): number {
   let flags = 0;
   const { checkCount, tradeCount, usdcVolumeHuman: vol } = stats;
 
-  if (tradeCount >= 1) flags |= 1 << 0;
+  if (checkCount >= 1) flags |= 1 << 0; // 开张：第一笔 Safe 放行成交
   if (vol >= VOLUME_10K && checkCount >= 3) flags |= 1 << 1;
   if (vol >= VOLUME_50K && checkCount >= 5) flags |= 1 << 2;
   if (vol >= VOLUME_100K && checkCount >= 10) flags |= 1 << 3;

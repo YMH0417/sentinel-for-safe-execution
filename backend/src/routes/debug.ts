@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import * as fs from "fs";
 import * as path from "path";
 import { isMockChainMode, getOptionalVaultAddress, getSwapWallet, getOptionalSwapRouterAddress, getRpcUrl } from "../config/chainConfig.js";
-import { isHybridDemoMode, getLedgerRpcUrl } from "../config/ledgerConfig.js";
+import { isHybridDemoMode, getLedgerRpcUrl, getLedgerContractAddress } from "../config/ledgerConfig.js";
 import { isDemoChainMode, loadDemoConfig } from "../config/demoConfig.js";
 import { getDemoChainProfile, getDemoProfile } from "../config/demoProfile.js";
 import { JsonRpcProvider } from "ethers";
@@ -145,7 +145,10 @@ router.get("/status", async (_req: Request, res: Response) => {
     demoProfile: demoChain.demoProfile,
     deploymentTarget: demoChain.deploymentTarget,
     hybridDemoMode: isHybridDemoMode(),
-    ledgerRpcUrl: isHybridDemoMode() ? getLedgerRpcUrl() : null,
+    ledgerRpcUrl: process.env.SENTINEL_LEDGER_SOURCE?.trim().toLowerCase() === "chain"
+      ? getLedgerRpcUrl()
+      : null,
+    ledgerAddress: getLedgerContractAddress() ?? null,
     ledgerSource: process.env.SENTINEL_LEDGER_SOURCE?.trim() || "auto",
     storageDriver: (await import("../storage/index.js")).getStorageInfo().driver,
     rpcConfigured,

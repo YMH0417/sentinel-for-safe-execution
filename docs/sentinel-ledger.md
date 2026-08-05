@@ -9,20 +9,16 @@ Monad 上的 `SentinelAchievements` 合约已**作废**。新产品从 **0 累�
 | 环境 | 合约初始状态 | 徽章 / 成交量数据来源 |
 |------|--------------|----------------------|
 | **Anvil 本地** | `DeployAllDemo` 部署空 ledger；可选 `SeedAnvilLedger.s.sol` 写入演示 stats | 默认读链上 ledger；成交量框读本地 ledger POST |
-| **Monad 测试网** | 同上，**仅 initial 部署**（stats 全 0） | `SENTINEL_LEDGER_SOURCE=local`，每笔成交 POST 累计 |
+| **Monad 测试网** | `DeployLedgerSystem` 部署空 ledger + 新 Vault/Router | `SENTINEL_LEDGER_SOURCE=chain`，读链上 `SentinelLedger.stats()`；成交量 `POOL_VOLUME_SOURCE=chain` |
 
 ## 架构
 
 ```
-用户成交 (MetaMask / 后端 swap)
+用户成交 (MetaMask / 后端 swap) — **Monad Testnet**
         │
-        ├─ Anvil Safe/SDA ──► DemoSwapRouter ──► SentinelLedger.recordTrade (链上，从 0 起)
+        ├─ Safe Router ──► DemoSwapRouter ──► SentinelLedger.recordTrade (链上，从 0 起)
         │
-        └─ 成交后立即 ──► POST /api/ledger/trades ──► backend/data/trade-ledger.json
-                                    │
-                                    ▼
-                         GET /api/demo/achievements/:addr  (徽章墙)
-                         GET /api/debug/pool-volume         (近 100 笔成交量，读 ledger)
+        └─ 可选 POST /api/ledger/trades ──► 本地 JSON（备份；徽章/成交量默认读链）
 ```
 
 **不**为徽章或成交量扫 `eth_getLogs`。`POOL_VOLUME_SOURCE=ledger`（Monad / Anvil 默认）。
@@ -66,10 +62,8 @@ forge script script/SeedAnvilLedger.s.sol --rpc-url http://127.0.0.1:8545 --broa
 
 | 变量 | 说明 |
 |------|------|
-| `SENTINEL_LEDGER_SOURCE=local` | Monad 强制读本地账本 |
-| `SENTINEL_LEDGER_SOURCE=chain` | Anvil 读链上 `SentinelLedger.stats()` |
-| `POOL_VOLUME_SOURCE=ledger` | 成交量来自 ledger（默认） |
-| `POOL_VOLUME_SOURCE=chain` | 成交量来自 RPC 扫块（调试用） |
+| `SENTINEL_LEDGER_SOURCE=chain` | 读链上 `SentinelLedger.stats()`（Monad / Anvil 均可） |
+| `POOL_VOLUME_SOURCE=chain` | 成交量来自 Monad RPC 扫 Router 事件 |
 | `LEDGER_BOOTSTRAP_ON_START=false` | 启动时不扫链 / 不 seed（默认） |
 | `LEDGER_BOOTSTRAP_ON_START=true` | 仅当需从链导入历史时开启 |
 

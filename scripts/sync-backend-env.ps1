@@ -92,20 +92,26 @@ if ($Hybrid) {
     $lines += "LEDGER_BOOTSTRAP_ON_START=false"
     $lines += "LEDGER_SEED_ON_START=false"
 }
+elseif ($deployment.ledger -and ($Profile -eq "monad-testnet" -or $deployment.deploymentTarget -eq "remote")) {
+    $lines += "SENTINEL_LEDGER_SOURCE=chain"
+    $lines += "POOL_VOLUME_SOURCE=chain"
+    $lines += "LEDGER_BOOTSTRAP_ON_START=false"
+    $lines += "LEDGER_MIRROR_TO_CHAIN=false"
+}
 elseif ($deployment.achievements) {
     $lines += "DEMO_ACHIEVEMENTS_ADDRESS=$($deployment.achievements)"
 }
 
 $isLocal = ($chainProfile.deploymentTarget -eq "local") -or ($deployment.deploymentTarget -eq "local")
 
-# Monad / remote — product DB local (Neon on Vercel); chain only for swap/quote
-if (-not $Hybrid -and ($Profile -eq "monad-testnet" -or $deployment.deploymentTarget -eq "remote")) {
-    $lines += "SENTINEL_LEDGER_SOURCE=local"
+# Local Anvil full stack — read chain ledger when deployed
+if (-not $Hybrid -and $isLocal -and $deployment.ledger) {
+    $lines += "SENTINEL_LEDGER_SOURCE=chain"
     $lines += "POOL_VOLUME_SOURCE=ledger"
     $lines += "LEDGER_BOOTSTRAP_ON_START=false"
 }
-# Local Anvil — product DB JSON files unless DATABASE_URL is set
-if (-not $Hybrid -and $isLocal) {
+# Local Anvil without on-chain ledger
+elseif (-not $Hybrid -and $isLocal) {
     $lines += "SENTINEL_LEDGER_SOURCE=local"
     $lines += "POOL_VOLUME_SOURCE=ledger"
     $lines += "LEDGER_BOOTSTRAP_ON_START=false"
@@ -162,6 +168,9 @@ Write-Host "  registry       = $($deployment.registry)"
 Write-Host "  vault          = $($deployment.vaultExecution)"
 Write-Host "  swapRouter     = $($deployment.swapRouter)"
 Write-Host "  scenarioDeployer = $($deployment.scenarioDeployer)"
+if ($deployment.ledger) {
+    Write-Host "  ledger         = $($deployment.ledger)"
+}
 
 return @{
     EnvPath = $envPath

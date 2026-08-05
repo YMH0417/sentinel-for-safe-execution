@@ -6,6 +6,7 @@ import {
   listLedgerTrades,
   type RecordLedgerTradeInput,
 } from "../services/tradeLedgerService.js";
+import { getUserAchievements } from "../services/achievementsService.js";
 import { invalidatePoolVolumeCache } from "../services/poolVolumeCacheService.js";
 import {
   bootstrapLedgerFromChain,
@@ -49,7 +50,7 @@ router.get("/achievements/:address", async (req: Request, res: Response) => {
   }
 
   try {
-    res.json(await getLedgerAchievementsView(addressParam));
+    res.json(await getUserAchievements(addressParam));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load ledger achievements";
     res.status(400).json({ error: message });

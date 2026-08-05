@@ -27,7 +27,7 @@ function tokenAddress(symbol: string, tokens: ReturnType<typeof loadLedgerDemoCo
   const key = symbol.toUpperCase() as keyof typeof tokens;
   const addr = tokens[key];
   if (!addr) {
-    throw new Error(`Ledger mirror: token ${symbol} missing in anvil manifest`);
+    throw new Error(`Ledger mirror: token ${symbol} missing in deployment manifest`);
   }
   return getAddress(addr);
 }
@@ -38,13 +38,13 @@ function executionMode(input: RecordLedgerTradeInput): number {
   return 1;
 }
 
-/** Mirror a recorded trade onto local Anvil SentinelLedger (reporter must be enabled). */
-export async function mirrorTradeToAnvilLedger(input: RecordLedgerTradeInput): Promise<void> {
+/** Mirror a recorded trade onto SentinelLedger on the demo chain (reporter must be enabled). */
+export async function mirrorTradeToChainLedger(input: RecordLedgerTradeInput): Promise<void> {
   if (!shouldMirrorLedgerToChain()) return;
 
   const ledgerConfig = loadLedgerDemoConfig();
   if (!ledgerConfig.ledger) {
-    console.warn("  Ledger mirror skipped: no ledger address in anvil manifest");
+    console.warn("  Ledger mirror skipped: no ledger address in deployment manifest");
     return;
   }
 
@@ -70,9 +70,13 @@ export async function mirrorTradeToAnvilLedger(input: RecordLedgerTradeInput): P
   );
 }
 
-export function mirrorTradeToAnvilLedgerFireAndForget(input: RecordLedgerTradeInput): void {
-  void mirrorTradeToAnvilLedger(input).catch((err: unknown) => {
+export function mirrorTradeToChainLedgerFireAndForget(input: RecordLedgerTradeInput): void {
+  void mirrorTradeToChainLedger(input).catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`  Ledger mirror to Anvil failed: ${message}`);
+    console.warn(`  Ledger mirror failed: ${message}`);
   });
 }
+
+/** @deprecated Use mirrorTradeToChainLedger */
+export const mirrorTradeToAnvilLedger = mirrorTradeToChainLedger;
+export const mirrorTradeToAnvilLedgerFireAndForget = mirrorTradeToChainLedgerFireAndForget;

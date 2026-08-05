@@ -2,7 +2,8 @@
 import { config as loadEnv } from "dotenv";
 import { resolve } from "path";
 
-loadEnv({ path: resolve(process.cwd(), ".env") });
+// .env is source of truth — override stale DEMO_* vars inherited from the shell.
+loadEnv({ path: resolve(process.cwd(), ".env"), override: true });
 
 import express from "express";
 import cors from "cors";

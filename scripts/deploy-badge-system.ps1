@@ -78,7 +78,8 @@ foreach ($prop in $manifestJson.PSObject.Properties) {
 $merged["achievements"] = $patch.achievements
 $merged["vaultExecution"] = $patch.vaultExecution
 $merged["swapRouter"] = $patch.swapRouter
-($merged | ConvertTo-Json -Depth 10) + "`n" | Set-Content -Encoding utf8 $deploymentFile
+$jsonText = ($merged | ConvertTo-Json -Depth 10) + "`n"
+[System.IO.File]::WriteAllText($deploymentFile, $jsonText, [System.Text.UTF8Encoding]::new($false))
 Get-Content $deploymentFile -Raw | Write-Host
 
 if (-not $SkipSyncBackend) {

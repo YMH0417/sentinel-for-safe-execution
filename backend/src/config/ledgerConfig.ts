@@ -5,6 +5,7 @@ import { getAddress } from "ethers";
 import { getRpcUrl } from "./chainConfig.js";
 import type { DemoDeploymentConfig } from "./demoConfig.js";
 import { resolveDeploymentPath } from "./demoProfile.js";
+import { readJsonFile } from "../utils/readJsonFile.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,7 @@ export function isHybridDemoMode(): boolean {
   return process.env.DEMO_HYBRID_MODE?.trim().toLowerCase() === "true";
 }
 
-/** RPC for SentinelLedger reads/writes (Anvil in hybrid mode). */
+/** RPC for SentinelLedger reads/writes (same chain as demo unless hybrid Anvil). */
 export function getLedgerRpcUrl(): string {
   const explicit = process.env.LEDGER_RPC_URL?.trim();
   if (explicit) return explicit;
@@ -55,7 +56,7 @@ export function loadLedgerDemoConfig(): DemoDeploymentConfig {
     throw new Error(`Ledger deployment file not found: ${deploymentPath}`);
   }
 
-  const raw = JSON.parse(fs.readFileSync(deploymentPath, "utf-8")) as DemoDeploymentConfig;
+  const raw = readJsonFile<DemoDeploymentConfig>(deploymentPath);
   const ledgerFromEnv = process.env.DEMO_LEDGER_ADDRESS?.trim();
 
   cachedLedgerConfig = {

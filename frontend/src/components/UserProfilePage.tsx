@@ -24,47 +24,47 @@ const BADGES: BadgeData[] = [
   {
     id: "badge-1",
     tier: 0,
-    title: "First Check Swap",
+    title: "开张",
     icon: "①",
     image: badget1,
-    description: "Complete your first Safe Mode swap that passes the on-chain Sentinel check.",
-    requirement: "1+ trade",
+    description: "第一笔走 Safe 模式、Agent 放行的换币，开张勋章就到手。",
+    requirement: "完成 1 笔 Safe 放行成交",
   },
   {
     id: "badge-2",
     tier: 1,
-    title: "Diligent Guardian",
+    title: "回头客",
     icon: "②",
     image: badget2,
-    description: "Demonstrate consistent Safe Mode usage with meaningful USDC volume.",
-    requirement: "Volume ≥ $10,000, 3+ checked trades",
+    description: "不图快、走 Safe，让 Agent 帮你把关，成交量慢慢攒起来。",
+    requirement: "USDC 成交满 $1 万，且 3 笔 Safe 放行成交",
   },
   {
     id: "badge-3",
     tier: 2,
-    title: "Sentinel Adept",
+    title: "老江湖",
     icon: "③",
     image: badget3,
-    description: "Sustain higher protected trading volume with repeated Sentinel checks.",
-    requirement: "Volume ≥ $50,000, 5+ checks",
+    description: "交易量和 Safe 次数都上来了，说明你是正经用这个系统的人。",
+    requirement: "USDC 成交满 $5 万，且 5 笔 Safe 放行成交",
   },
   {
     id: "badge-4",
     tier: 3,
-    title: "Vault Sovereign",
+    title: "大户",
     icon: "④",
     image: badget4,
-    description: "Reach advanced cumulative USDC volume with disciplined check habits.",
-    requirement: "Volume ≥ $100,000, 10+ checks",
+    description: "十万刀级别的成交量，还一直走 Safe——这很少见。",
+    requirement: "USDC 成交满 $10 万，且 10 笔 Safe 放行成交",
   },
   {
     id: "badge-5",
     tier: 4,
-    title: "Legend of Sentinel",
+    title: "百万俱乐部",
     icon: "⑤",
     image: badget5,
-    description: "The ultimate on-chain achievement — million-dollar protected volume.",
-    requirement: "Volume ≥ $1,000,000, 10+ checks",
+    description: "Demo 里的天花板成就：百万美元成交量，还坚持 Safe 换币。",
+    requirement: "USDC 成交满 $100 万，且 10 笔 Safe 放行成交",
   },
 ];
 
@@ -147,13 +147,6 @@ export function UserProfilePage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <h2 className="sentinel-title" style={{ margin: "0 0 8px" }}>账户与勋章</h2>
-        <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
-          本地交易账本：经 Check 成交次数、USDC 交易量与勋章（每笔成交写入，无需扫块）
-        </p>
-      </div>
-
       {checksumAddr && (
         <div className="sentinel-card" style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 20, padding: "20px 24px" }}>
           <div style={{ flexShrink: 0 }}>
@@ -196,19 +189,18 @@ export function UserProfilePage() {
         </div>
       )}
 
-      <div className="sentinel-label" style={{ marginTop: 24, marginBottom: 12 }}>链上交易概览</div>
-      <div className="sentinel-grid-2" style={{ marginBottom: 24 }}>
+      <div className="sentinel-grid-2" style={{ marginTop: 24, marginBottom: 24 }}>
         <div className="sentinel-card">
-          <div className="sentinel-label">活动统计（链上）</div>
+          <div className="sentinel-label">活动统计</div>
           {loading ? (
             <p style={{ color: "var(--text-muted)", fontSize: 14 }}>加载中</p>
           ) : achievementsError ? (
             <p style={{ color: "var(--red)", fontSize: 14, margin: 0 }}>{achievementsError}</p>
           ) : account && achievements ? (
             <>
-              <StatRow label="经 Check 成交" value={String(achievements.checkCount)} />
+              <StatRow label="经校验成交" value={String(achievements.checkCount)} />
               <StatRow label="成交笔数" value={String(achievements.tradeCount ?? achievements.safeSwapCount)} />
-              <StatRow label="Safe Swap" value={String(achievements.safeSwapCount)} />
+              <StatRow label="Safe 模式成交" value={String(achievements.safeSwapCount)} />
               <StatRow label="已解锁勋章" value={`${unlockedBadges.length}/${BADGES.length}`} accent="var(--green)" />
             </>
           ) : (
@@ -218,7 +210,7 @@ export function UserProfilePage() {
           )}
         </div>
         <div className="sentinel-card">
-          <div className="sentinel-label">累计 USDC 交易量（链上）</div>
+          <div className="sentinel-label">累计 USDC 交易量</div>
           <div style={{ fontSize: 32, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)", marginBottom: 8 }}>
             ${safeVolume.toLocaleString()}
           </div>
@@ -239,14 +231,6 @@ export function UserProfilePage() {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <div className="sentinel-label" style={{ margin: 0 }}>勋章墙</div>
-        {checksumAddr && (
-          <button type="button" className="sentinel-btn sentinel-btn-secondary" onClick={() => refreshAchievements()} disabled={loading}>
-            {loading ? "刷新中" : "刷新链上数据"}
-          </button>
-        )}
-      </div>
       <div className="badget-wall">
         {[...unlockedBadges, ...lockedBadges].map((badge) => {
           const isUnlocked = isBadgeUnlocked(achievements, badge.tier);
@@ -407,13 +391,13 @@ function BadgeModal({
 
         <div style={{ display: "flex", justifyContent: "space-around", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>Requirement</div>
+            <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>解锁条件</div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{badge.requirement}</div>
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>Status</div>
+            <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>状态</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: isUnlocked ? "var(--green)" : "var(--red)" }}>
-              {isUnlocked ? "✓ Unlocked (on-chain)" : "🔒 Locked"}
+              {isUnlocked ? "已解锁（链上）" : "未解锁"}
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { getAddress } from "ethers";
 import { parseRouteName, tokenSymbolFromKey } from "./demoRoutes.js";
 import { resolveDefaultDeploymentPath } from "./demoProfile.js";
+import { readJsonFile } from "../utils/readJsonFile.js";
 
 export type DemoTokenSymbol = "USDC" | "GOOD" | "BAD" | "BAIT";
 export type DemoPoolLabel = "SAFE" | "SHALLOW" | "TOXIC" | "SDA";
@@ -61,7 +62,7 @@ export function loadDemoConfig(): DemoDeploymentConfig {
     throw new Error(`Demo deployment file not found: ${deploymentPath}`);
   }
 
-  const raw = JSON.parse(fs.readFileSync(deploymentPath, "utf-8")) as DemoDeploymentConfig;
+  const raw = readJsonFile<DemoDeploymentConfig>(deploymentPath);
 
   const registry = process.env.DEMO_REGISTRY_ADDRESS?.trim() || raw.registry;
   if (!registry) {

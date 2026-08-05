@@ -280,7 +280,7 @@ export function WalletAvatar() {
             className="wallet-popup-action sentinel-btn wallet-popup-profile"
             onClick={handleProfile}
           >
-            View Profile
+            账户与勋章
           </button>
 
           {/* Disconnect */}
@@ -289,7 +289,7 @@ export function WalletAvatar() {
             className="wallet-popup-action sentinel-btn sentinel-btn-danger wallet-popup-disconnect"
             onClick={handleDisconnect}
           >
-            Disconnect Wallet
+            断开钱包
           </button>
         </div>
       )}
