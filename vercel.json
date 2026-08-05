@@ -1,26 +1,14 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "installCommand": "npm install",
-        "buildCommand": "npm run build",
-        "distDir": "dist"
-      }
-    },
-    {
-      "src": "api/index.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": "backend/dist/**,contracts/deployments/**,shared/**,backend/src/storage/schema.sql"
-      }
-    }
+  "installCommand": "npm install --prefix frontend && npm install --prefix backend && npm install --prefix api",
+  "buildCommand": "npm run build --prefix frontend && npm run build --prefix backend",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" }
   ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.ts" },
-    { "src": "/assets/(.*)", "dest": "/frontend/dist/assets/$1" },
-    { "src": "/(.*)", "dest": "/frontend/dist/index.html" }
-  ]
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60,
+      "includeFiles": "backend/dist/**,contracts/deployments/**,shared/**"
+    }
+  }
 }
