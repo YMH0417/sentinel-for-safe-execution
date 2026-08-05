@@ -2,6 +2,9 @@
   "name": "sentinel-api",
   "private": true,
   "type": "module",
+  "scripts": {
+    "vercel-build": "npm install --prefix ../backend && npm run build --prefix ../backend"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
     "@vercel/node": "^5.0.0",
