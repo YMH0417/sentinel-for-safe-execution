@@ -1,5 +1,6 @@
 import type { Decision, Event, SwapResult } from "../types";
 import { parseApiError } from "../lib/apiError";
+import { eventMatchesAccount } from "../lib/eventAccount";
 import { fetchJson, TimeoutError } from "../lib/withTimeout";
 
 const API = "/api";
@@ -274,6 +275,16 @@ export const api = {
       if (!res.ok) throw new Error(parseApiError(data.error, "写入交易账本失败"));
       return data as { trade: unknown; stats: OnChainAchievements };
     }),
+  recordWalletSwapSettled: (body: import("../types").SwapResult) =>
+    fetch(`${API}/swap/wallet/settled`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data.error, "记录链上成交事件失败"));
+      return data as { ok: boolean };
+    }),
   quote: (tokenIn: string, tokenOut: string, amount: string) =>
     getJson<{ routes: import("../types").Route[]; referencePrice?: number; recommendedRouteId?: string }>(
       `/quote?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amount=${amount}`
@@ -400,10 +411,7 @@ export function computeUserStats(events: Event[], account?: string | null) {
     };
   }
 
-  const accountLower = account.toLowerCase();
-  const scoped = events.filter(
-    (e) => e.context?.account?.toLowerCase() === accountLower
-  );
+  const scoped = events.filter((e) => eventMatchesAccount(e, account));
   const safeSwaps = scoped.filter(
     (e) => e.eventType === "ExecutionSuccess" || e.eventType === "SwapExecuted"
   );

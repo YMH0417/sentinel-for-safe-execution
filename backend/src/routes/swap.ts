@@ -341,11 +341,49 @@ router.post("/wallet/plan", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "recipient is required for wallet swap" });
   }
 
+  const correlationId = randomUUID();
+
   try {
-    const plan = await planWalletDemoSwap(parsed);
+    const plan = await planWalletDemoSwap({ ...parsed, correlationId });
     res.json(plan);
   } catch (err) {
     if (err instanceof SwapExecutionError) {
+      if (
+        err.code === "SWAP_REJECTED_BY_AGENT" ||
+        err.code === "SWAP_FALLBACK_REQUIRED" ||
+        err.code === "QUOTE_DEVIATION_EXCEEDED" ||
+        err.code === "SLIPPAGE_EXCEEDED"
+      ) {
+        await addEvent({
+          eventType: "SwapFailed",
+          routeId: parsed.routeId,
+          decision:
+            err.code === "SWAP_REJECTED_BY_AGENT"
+              ? "REJECT"
+              : err.code === "SWAP_FALLBACK_REQUIRED"
+                ? "FALLBACK_TO_SAFE_ROUTE"
+                : undefined,
+          message: err.message,
+          context: {
+            correlationId,
+            account: parsed.recipient,
+            tokenIn: parsed.tokenIn,
+            tokenOut: parsed.tokenOut,
+            amountIn: parsed.amountIn,
+            safetyMode,
+            requestedRouteId: parsed.routeId,
+            configProfile: parsed.configProfile ?? "normal",
+            errorCode: err.code,
+            poolLabel:
+              typeof (err.details as { decision?: { evidence?: { poolLabel?: string } } })
+                ?.decision?.evidence?.poolLabel === "string"
+                ? (err.details as { decision: { evidence: { poolLabel: string } } }).decision
+                    .evidence.poolLabel
+                : undefined,
+            ...(err.details ?? {}),
+          },
+        });
+      }
       const status =
         err.code === "SWAP_REJECTED_BY_AGENT" || err.code === "SWAP_FALLBACK_REQUIRED"
           ? 422
@@ -370,6 +408,82 @@ router.post("/wallet/plan", async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : "Wallet swap plan failed";
     res.status(502).json({ error: message });
   }
+});
+
+router.post("/wallet/settled", async (req: Request, res: Response) => {
+  const body = req.body as Partial<import("../types.js").SwapResult>;
+  if (!body || typeof body !== "object") {
+    return res.status(400).json({ error: "request body must be an object" });
+  }
+  if (!body.recipient || !isAddress(body.recipient)) {
+    return res.status(400).json({ error: "recipient must be a valid address" });
+  }
+  if (!body.txHash || typeof body.txHash !== "string") {
+    return res.status(400).json({ error: "txHash is required" });
+  }
+
+  const recipient = getAddress(body.recipient);
+  const correlationId = randomUUID();
+  const success = body.success !== false;
+
+  const result = {
+    success,
+    routeId: body.routeId ?? body.executedRouteId ?? "",
+    requestedRouteId: body.requestedRouteId ?? body.routeId ?? "",
+    executedRouteId: body.executedRouteId ?? body.routeId ?? "",
+    agentDecision: body.agentDecision,
+    agentBypassed: Boolean(body.agentBypassed),
+    safetyMode: body.safetyMode === "force" ? "force" : "safe",
+    poolLabel: body.poolLabel,
+    executionMode: body.executionMode ?? "router",
+    tokenIn: body.tokenIn ?? "",
+    tokenOut: body.tokenOut ?? "",
+    amountIn: Number(body.amountIn) || 0,
+    quotedOut: Number(body.quotedOut) || 0,
+    expectedOut: body.expectedOut,
+    actualOut: Number(body.actualOut) || 0,
+    failureCode: body.failureCode,
+    failureMessage: body.failureMessage,
+    recipient,
+    txHash: body.txHash,
+    pairAddress: body.pairAddress ?? "",
+    gasUsed: body.gasUsed ?? "",
+    blockNumber: body.blockNumber ?? 0,
+    balancesBefore: body.balancesBefore ?? {},
+    balancesAfter: body.balancesAfter ?? {},
+    balanceDelta: body.balanceDelta ?? {},
+  } satisfies import("../types.js").SwapResult;
+
+  await addEvent({
+    eventType: success ? "SwapExecuted" : "SwapFailed",
+    routeId: result.executedRouteId ?? result.routeId,
+    decision: result.agentDecision,
+    message: success
+      ? `Wallet swap ${result.tokenIn}→${result.tokenOut} out=${result.actualOut}`
+      : result.failureMessage ?? "Wallet swap settlement failed",
+    txHash: result.txHash,
+    context: {
+      correlationId,
+      account: recipient,
+      tokenIn: result.tokenIn,
+      tokenOut: result.tokenOut,
+      amountIn: result.amountIn,
+      quotedOut: result.quotedOut,
+      expectedOut: result.expectedOut,
+      actualOut: result.actualOut,
+      executionMode: result.executionMode,
+      safetyMode: result.safetyMode,
+      requestedRouteId: result.requestedRouteId,
+      executedRouteId: result.executedRouteId,
+      poolLabel: result.poolLabel,
+      agentBypassed: result.agentBypassed,
+      errorCode: result.failureCode,
+      blockNumber: result.blockNumber,
+      gasUsed: result.gasUsed,
+    },
+  });
+
+  res.json({ ok: true });
 });
 
 /** Default: evaluate + fallback + slippage; uses router one-tx when configured */

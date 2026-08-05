@@ -7,6 +7,7 @@ import {
   computeScoreLegend,
   computeUserStats,
 } from "../api/client";
+import { eventMatchesAccount, isUnattributedTradeEvent } from "../lib/eventAccount";
 import type { LabelVolumeRow, SafetyExplanation, DashboardOverviewExplanation } from "../api/client";
 import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
@@ -37,14 +38,26 @@ const TRADE_EVENT_TYPES = new Set([
 
 function findLatestTradeEvent(events: Event[], account?: string | null): Event | undefined {
   if (!account) return undefined;
-  const accountLower = account.toLowerCase();
-  return [...events]
-    .reverse()
-    .find(
-      (e) =>
-        TRADE_EVENT_TYPES.has(e.eventType) &&
-        e.context?.account?.toLowerCase() === accountLower
-    );
+  const reversed = [...events].reverse();
+
+  const attributed = reversed.find(
+    (e) => TRADE_EVENT_TYPES.has(e.eventType) && eventMatchesAccount(e, account)
+  );
+  if (attributed) return attributed;
+
+  // Legacy rows (before context.account) — only if this wallet has no tagged events yet.
+  const walletHasTagged = events.some(
+    (e) => TRADE_EVENT_TYPES.has(e.eventType) && eventMatchesAccount(e, account)
+  );
+  if (walletHasTagged) return undefined;
+
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  return reversed.find(
+    (e) =>
+      TRADE_EVENT_TYPES.has(e.eventType) &&
+      isUnattributedTradeEvent(e) &&
+      e.timestamp >= cutoff
+  );
 }
 
 const LABEL_DOT: Record<LabelVolumeRow["label"], keyof typeof DOT_CLASS> = {

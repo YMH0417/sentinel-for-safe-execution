@@ -317,6 +317,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
             tokenIn,
             tokenOut,
             amountIn: Number(amount),
+            account: account ?? undefined,
           }),
         }
       );

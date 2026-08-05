@@ -334,6 +334,7 @@ export async function executeWalletDemoSwap(params: {
 
   if (result.success && result.txHash) {
     const ledgerMode = sdaMeta.sdaExecutionWindow ? "sda" : executionMode;
+    void api.recordWalletSwapSettled(result).catch(() => undefined);
     void api
       .recordLedgerTrade({
         user: recipient,

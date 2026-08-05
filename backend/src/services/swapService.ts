@@ -365,6 +365,7 @@ async function resolveExecutionPlan(
   const requestedDecision = decision;
   const eventContext = {
     correlationId: params.correlationId,
+    ...(params.recipient ? { account: getAddress(params.recipient) } : {}),
     tokenIn,
     tokenOut,
     amountIn: params.amountIn,

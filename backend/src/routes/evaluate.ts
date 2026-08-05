@@ -1,6 +1,7 @@
 // backend/src/routes/evaluate.ts — POST /evaluate
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
+import { getAddress, isAddress } from "ethers";
 import { evaluateRoute } from "../services/agentService.js";
 import { addEvent } from "../services/eventService.js";
 
@@ -17,12 +18,14 @@ router.post("/", async (req: Request, res: Response) => {
     });
   }
 
-  const { routeId, configProfile = "normal", tokenIn, tokenOut, amountIn } = req.body as {
+  const { routeId, configProfile = "normal", tokenIn, tokenOut, amountIn, account, recipient } = req.body as {
     routeId?: unknown;
     configProfile?: unknown;
     tokenIn?: unknown;
     tokenOut?: unknown;
     amountIn?: unknown;
+    account?: unknown;
+    recipient?: unknown;
   };
 
   if (typeof routeId !== "string" || routeId.trim() === "") {
@@ -59,8 +62,18 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const correlationId = randomUUID();
+  let walletAccount: string | undefined;
+  const walletRaw =
+    (typeof account === "string" && account.trim()) ||
+    (typeof recipient === "string" && recipient.trim()) ||
+    "";
+  if (walletRaw && isAddress(walletRaw)) {
+    walletAccount = getAddress(walletRaw);
+  }
+
   const context = {
     correlationId,
+    ...(walletAccount ? { account: walletAccount } : {}),
     tokenIn: typeof tokenIn === "string" ? tokenIn : undefined,
     tokenOut: typeof tokenOut === "string" ? tokenOut : undefined,
     amountIn: normalizedAmount,
