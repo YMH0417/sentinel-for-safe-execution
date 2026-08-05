@@ -166,6 +166,20 @@ export async function connectMetaMaskWallet(): Promise<string> {
   return getMetaMaskAccount({ requestIfNeeded: true });
 }
 
+/** Restore an existing MetaMask session without prompting the user. */
+export async function restoreMetaMaskSession(): Promise<string | null> {
+  if (!window.ethereum) return null;
+  try {
+    const accounts = (await window.ethereum.request({
+      method: "eth_accounts",
+    })) as string[];
+    if (!accounts?.length) return null;
+    return getAddress(accounts[0]);
+  } catch {
+    return null;
+  }
+}
+
 /** Swap execution — reuse existing MetaMask session; never revoke site access. */
 export async function ensureMetaMaskAccountForTransaction(): Promise<string> {
   return getMetaMaskAccount({ requestIfNeeded: true });

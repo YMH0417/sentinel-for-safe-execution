@@ -7,7 +7,7 @@ import {
   computeScoreLegend,
   computeUserStats,
 } from "../api/client";
-import { eventMatchesAccount, isUnattributedTradeEvent } from "../lib/eventAccount";
+import { eventMatchesAccount } from "../lib/eventAccount";
 import type { LabelVolumeRow, SafetyExplanation, DashboardOverviewExplanation } from "../api/client";
 import type { Event } from "../types";
 import { SecurityGauge } from "./shared/SecurityGauge";
@@ -39,24 +39,8 @@ const TRADE_EVENT_TYPES = new Set([
 function findLatestTradeEvent(events: Event[], account?: string | null): Event | undefined {
   if (!account) return undefined;
   const reversed = [...events].reverse();
-
-  const attributed = reversed.find(
-    (e) => TRADE_EVENT_TYPES.has(e.eventType) && eventMatchesAccount(e, account)
-  );
-  if (attributed) return attributed;
-
-  // Legacy rows (before context.account) — only if this wallet has no tagged events yet.
-  const walletHasTagged = events.some(
-    (e) => TRADE_EVENT_TYPES.has(e.eventType) && eventMatchesAccount(e, account)
-  );
-  if (walletHasTagged) return undefined;
-
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   return reversed.find(
-    (e) =>
-      TRADE_EVENT_TYPES.has(e.eventType) &&
-      isUnattributedTradeEvent(e) &&
-      e.timestamp >= cutoff
+    (e) => TRADE_EVENT_TYPES.has(e.eventType) && eventMatchesAccount(e, account)
   );
 }
 
@@ -310,8 +294,8 @@ export function DashboardPage() {
           />
           <SidebarStat
             label="交易失败数"
-            value={String(stats.rejectCount)}
-            accent={stats.rejectCount > 0 ? "var(--red)" : undefined}
+            value={String(stats.failureCount)}
+            accent={stats.failureCount > 0 ? "var(--red)" : undefined}
             hint={account ? undefined : "连接钱包后显示"}
           />
           <SidebarStat

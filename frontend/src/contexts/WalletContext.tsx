@@ -6,12 +6,14 @@ import React, {
   useEffect,
 } from "react";
 import { getAddress } from "ethers";
-import { connectMetaMaskWallet, revokeMetaMaskAccess } from "../lib/wallet";
+import { connectMetaMaskWallet, restoreMetaMaskSession, revokeMetaMaskAccess } from "../lib/wallet";
 import { getErrorMessage } from "../lib/errorMessage";
 
 interface WalletContextValue {
   account: string | null;
   isConnecting: boolean;
+  /** False until the initial eth_accounts probe finishes (page load / refresh). */
+  isWalletReady: boolean;
   setAccount: (account: string | null) => void;
   /** MetaMask eth_requestAccounts + switch/add demo chain when in demo mode */
   connectWallet: () => Promise<string>;
@@ -23,6 +25,7 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccountState] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isWalletReady, setIsWalletReady] = useState(false);
 
   const setAccount = useCallback((a: string | null) => {
     setAccountState(a);
@@ -48,12 +51,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [setAccount]);
 
   useEffect(() => {
-    try {
-      localStorage.removeItem("__sentinel_account__");
-    } catch {
-      /* ignore */
-    }
-  }, []);
+    let cancelled = false;
+
+    void (async () => {
+      const restored = await restoreMetaMaskSession();
+      if (cancelled) return;
+      if (restored) setAccount(restored);
+      setIsWalletReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setAccount]);
 
   useEffect(() => {
     const eth = window.ethereum;
@@ -101,6 +111,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       value={{
         account,
         isConnecting,
+        isWalletReady,
         setAccount,
         connectWallet,
         disconnectWallet,

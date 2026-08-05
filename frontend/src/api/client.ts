@@ -391,13 +391,30 @@ export const api = {
     }),
 };
 
-export function computeSecurityScore(events: Event[]): number {
-  let score = 85;
-  const recent = events.slice(-20);
-  for (const e of recent) {
-    if (e.eventType.includes("Reject") || e.eventType === "SwapFailed") score -= 8;
-    if (e.decision === "FALLBACK_TO_SAFE_ROUTE") score -= 3;
+const SCORE_EVENT_WINDOW = 20;
+
+function isFallbackEvent(event: Event): boolean {
+  return event.decision === "FALLBACK_TO_SAFE_ROUTE" || event.eventType.includes("Fallback");
+}
+
+function countFallbackEvents(events: Event[]): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const event of events) {
+    if (!isFallbackEvent(event)) continue;
+    const key = dedupeKeyForFailure(event);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    count += 1;
   }
+  return count;
+}
+
+export function computeSecurityScore(events: Event[]): number {
+  const recent = events.slice(-SCORE_EVENT_WINDOW);
+  let score = 85;
+  score -= countTradeFailures(recent) * 8;
+  score -= countFallbackEvents(recent) * 3;
   return Math.max(0, Math.min(100, score));
 }
 
@@ -405,7 +422,7 @@ export function computeUserStats(events: Event[], account?: string | null) {
   if (account == null || account === "") {
     return {
       swapCount: 0,
-      rejectCount: 0,
+      failureCount: 0,
       fallbackCount: 0,
       safeVolumeUsd: 0,
     };
@@ -415,20 +432,17 @@ export function computeUserStats(events: Event[], account?: string | null) {
   const safeSwaps = scoped.filter(
     (e) => e.eventType === "ExecutionSuccess" || e.eventType === "SwapExecuted"
   );
-  const rejects = scoped.filter(
-    (e) => e.decision === "REJECT" || e.eventType.includes("Reject") || e.eventType === "SwapFailed"
-  );
   const fallbacks = scoped.filter(
     (e) => e.decision === "FALLBACK_TO_SAFE_ROUTE" || e.eventType.includes("Fallback")
   );
   return {
     swapCount: safeSwaps.length,
-    rejectCount: rejects.length,
+    failureCount: countTradeFailures(scoped),
     fallbackCount: fallbacks.length,
     safeVolumeUsd: safeSwaps.reduce((total, event) => {
+      const amountIn = resolveEventAmountIn(event, scoped);
+      if (amountIn === undefined) return total;
       const ctx = event.context;
-      const amountIn = ctx?.amountIn;
-      if (typeof amountIn !== "number" || amountIn <= 0) return total;
       const tokenIn = ctx?.tokenIn?.toUpperCase();
       if (tokenIn === "USDC") return total + amountIn;
       const tokenOut = ctx?.tokenOut?.toUpperCase();
@@ -470,6 +484,82 @@ function parseRouteForAlert(routeId?: string): { pair: string; pool?: string } {
   return { pair: routeId };
 }
 
+function parsePositiveAmount(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
+}
+
+function tokenDecimals(symbol: string): number {
+  return symbol === "USDC" ? 6 : 18;
+}
+
+function resolveTokenInSymbol(event: Event, route: { pair: string }): string {
+  const fromCtx = event.context?.tokenIn;
+  if (typeof fromCtx === "string" && fromCtx.trim()) return fromCtx.toUpperCase();
+  const [tokenIn] = route.pair.split(" → ");
+  return tokenIn?.trim() || "USDC";
+}
+
+function resolveEventAmountFromContext(event: Event): number | undefined {
+  const ctx = event.context;
+  const direct = parsePositiveAmount(ctx?.amountIn);
+  if (direct !== undefined) return direct;
+
+  const raw = ctx?.amountInRaw;
+  if (typeof raw === "string" && raw.trim()) {
+    const routeId =
+      event.routeId ?? ctx?.executedRouteId ?? ctx?.requestedRouteId;
+    const route = parseRouteForAlert(routeId);
+    const symbol = resolveTokenInSymbol(event, route);
+    try {
+      const human = Number(raw) / 10 ** tokenDecimals(symbol);
+      if (Number.isFinite(human) && human > 0) return human;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return undefined;
+}
+
+/** Resolve swap amount from event context, including correlated peer events. */
+export function resolveEventAmountIn(event: Event, allEvents?: Event[]): number | undefined {
+  const direct = resolveEventAmountFromContext(event);
+  if (direct !== undefined) return direct;
+
+  const correlationId = event.context?.correlationId;
+  if (!correlationId || !allEvents?.length) return undefined;
+
+  for (const peer of allEvents) {
+    if (peer.id === event.id) continue;
+    if (peer.context?.correlationId !== correlationId) continue;
+    const peerAmount = resolveEventAmountFromContext(peer);
+    if (peerAmount !== undefined) return peerAmount;
+  }
+
+  return undefined;
+}
+
+function formatAlertAmountHint(event: Event, allEvents?: Event[]): string {
+  const routeId =
+    event.routeId ?? event.context?.executedRouteId ?? event.context?.requestedRouteId;
+  const route = parseRouteForAlert(routeId);
+  const amount = resolveEventAmountIn(event, allEvents);
+  if (amount === undefined) return "";
+  const symbol = resolveTokenInSymbol(event, route);
+  const display =
+    Math.abs(amount - Math.round(amount)) < 1e-6
+      ? String(Math.round(amount))
+      : amount.toFixed(2).replace(/\.?0+$/, "");
+  return `，金额约 ${display} ${symbol}`;
+}
+
 function humanizeAlertReason(event: Event): string {
   const code = event.context?.errorCode;
   if (code === "SWAP_REJECTED_BY_AGENT") return "系统认为这笔交易风险太高，已阻止执行。";
@@ -503,6 +593,38 @@ export function isAgentBypassed(ctx?: Event["context"]): boolean {
 }
 
 /** Agent 拦截/预警，或 Unsafe（Force）模式成交/失败。正常 Safe 成功不算警报。 */
+/** Agent 拦截、链上 revert、执行被拒等 — 凡交易未成功均计入。 */
+export function isTradeFailureEvent(event: Event): boolean {
+  if (event.decision === "REJECT") return true;
+  if (event.eventType.includes("Reject")) return true;
+  if (event.eventType === "SwapFailed") return true;
+  return false;
+}
+
+function dedupeKeyForFailure(event: Event): string {
+  const correlationId = event.context?.correlationId;
+  if (typeof correlationId === "string" && correlationId.trim()) {
+    return `corr:${correlationId.toLowerCase()}`;
+  }
+  const txHash = event.txHash?.trim();
+  if (txHash) return `tx:${txHash.toLowerCase()}`;
+  return `id:${event.id.toLowerCase()}`;
+}
+
+/** Count distinct failed trade attempts (dedupe DecisionMade + SwapFailed from same flow). */
+export function countTradeFailures(events: Event[]): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const event of events) {
+    if (!isTradeFailureEvent(event)) continue;
+    const key = dedupeKeyForFailure(event);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    count += 1;
+  }
+  return count;
+}
+
 export function isDashboardAlertEvent(event: Event): boolean {
   const ctx = event.context;
   const bypassed = isAgentBypassed(ctx);
@@ -546,7 +668,7 @@ export function selectDashboardAlerts(events: Event[], limit = 5): DashboardAler
   return events
     .filter(isDashboardAlertEvent)
     .map((event) => ({
-      ...formatDashboardAlert(event),
+      ...formatDashboardAlert(event, events),
       sortKey: event.timestamp,
       dedupeKey: (event.txHash ?? event.id).toLowerCase(),
     }))
@@ -560,13 +682,11 @@ export function selectDashboardAlerts(events: Event[], limit = 5): DashboardAler
     .map(({ sortKey: _sortKey, dedupeKey: _dedupeKey, ...view }) => view);
 }
 
-export function formatDashboardAlert(event: Event): DashboardAlertView {
+export function formatDashboardAlert(event: Event, allEvents?: Event[]): DashboardAlertView {
   const routeId =
     event.routeId ?? event.context?.executedRouteId ?? event.context?.requestedRouteId;
   const route = parseRouteForAlert(routeId);
-  const amountIn = event.context?.amountIn;
-  const amountHint =
-    typeof amountIn === "number" && amountIn > 0 ? `，金额约 ${amountIn} USDC` : "";
+  const amountHint = formatAlertAmountHint(event, allEvents);
   const routeHint = route.pool ? `${route.pair}（${route.pool}）` : route.pair;
   const bypassed = isAgentBypassed(event.context);
 
@@ -613,8 +733,8 @@ export function formatDashboardAlert(event: Event): DashboardAlertView {
       level: "warn",
       title: auto ? "已自动换更稳的路" : "建议换更稳的路",
       detail: auto
-        ? `${routeHint} 风险偏高，已自动改走 ${fallbackHint}。`
-        : `${routeHint} 风险偏高，建议改走 ${fallbackHint}。`,
+        ? `${routeHint}${amountHint} 风险偏高，已自动改走 ${fallbackHint}。`
+        : `${routeHint}${amountHint} 风险偏高，建议改走 ${fallbackHint}。`,
       date: formatDashboardDateTime(event.timestamp),
     };
   }
@@ -622,7 +742,7 @@ export function formatDashboardAlert(event: Event): DashboardAlertView {
   return {
     level: "info",
     title: "风险提示",
-    detail: `${routeHint} 风险分 ${event.riskScore ?? "—"}，${humanizeAlertReason(event)}`,
+    detail: `${routeHint}${amountHint} 风险分 ${event.riskScore ?? "—"}，${humanizeAlertReason(event)}`,
     date: formatDashboardDateTime(event.timestamp),
   };
 }
@@ -699,7 +819,7 @@ function legendPct(mass: number, totalActivity: number): number {
   return Math.max(0, Math.min(100, Math.round((mass / totalActivity) * 100)));
 }
 
-/** Share of recent activity across the three risk legend slices. */
+/** Share of recent activity across the three risk legend slices (platform-wide). */
 export function computeScoreLegend(events: Event[]): ScoreLegend {
   const breakdown = computeLegendBreakdown(events);
   return {
@@ -730,13 +850,9 @@ export interface SecurityScoreExplanation {
 
 export function explainSecurityMetrics(events: Event[]): SecurityScoreExplanation {
   const baseScore = 85;
-  const recentScore = events.slice(-20);
-  let rejectCount = 0;
-  let fallbackCount = 0;
-  for (const e of recentScore) {
-    if (e.eventType.includes("Reject") || e.eventType === "SwapFailed") rejectCount += 1;
-    if (e.decision === "FALLBACK_TO_SAFE_ROUTE") fallbackCount += 1;
-  }
+  const recentScore = events.slice(-SCORE_EVENT_WINDOW);
+  const rejectCount = countTradeFailures(recentScore);
+  const fallbackCount = countFallbackEvents(recentScore);
   const scoreAfterEvents = baseScore - rejectCount * 8 - fallbackCount * 3;
   const score = Math.max(0, Math.min(100, scoreAfterEvents));
 

@@ -41,3 +41,5 @@ tmp/
 # Persisted event log (local audit trail)
 backend/data/*.jsonl
 !backend/data/.gitkeep
+.vercel
+.env*
