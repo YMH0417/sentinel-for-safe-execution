@@ -5,6 +5,11 @@ import {
   writeLlmEnvConfig,
   type LlmEnvUpdateInput,
 } from "../services/llmEnvConfigService.js";
+import {
+  getPlatformPolicy,
+  updatePlatformPolicy,
+  type PlatformPolicy,
+} from "../services/platformPolicyService.js";
 
 const router = Router();
 
@@ -85,6 +90,43 @@ router.put("/llm", (req: Request, res: Response) => {
     res.status(500).json({
       error: { code: "LLM_SETTINGS_WRITE_FAILED", message },
     });
+  }
+});
+
+router.get("/platform-policy", async (_req: Request, res: Response) => {
+  try {
+    const policy = await getPlatformPolicy();
+    res.json(policy);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to read platform policy";
+    res.status(500).json({ error: { code: "PLATFORM_POLICY_READ_FAILED", message } });
+  }
+});
+
+router.put("/platform-policy", async (req: Request, res: Response) => {
+  if (!req.body || typeof req.body !== "object") {
+    return res.status(400).json({
+      error: { code: "INVALID_PLATFORM_POLICY", message: "request body must be an object" },
+    });
+  }
+  const body = req.body as Record<string, unknown>;
+  const input: Partial<PlatformPolicy> = {};
+  for (const key of ["multisigSimEnabled", "blockBadToken"] as const) {
+    if (key in body) {
+      if (typeof body[key] !== "boolean") {
+        return res.status(400).json({
+          error: { code: "INVALID_PLATFORM_POLICY", message: `${key} must be a boolean` },
+        });
+      }
+      input[key] = body[key] as boolean;
+    }
+  }
+  try {
+    const policy = await updatePlatformPolicy(input);
+    res.json(policy);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update platform policy";
+    res.status(500).json({ error: { code: "PLATFORM_POLICY_WRITE_FAILED", message } });
   }
 });
 

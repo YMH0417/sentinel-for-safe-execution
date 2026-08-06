@@ -6,7 +6,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { isDemoChainMode } from "../config/demoConfig.js";
 import { getRouteById } from "./routeService.js";
-import { getTokenRiskTag, inferQuoteParamsFromRouteId, QuoteParams } from "./chainQuoteService.js";
+import { inferQuoteParamsFromRouteId, QuoteParams, DEMO_TOKEN_RISK_TAGS } from "./chainQuoteService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +115,26 @@ function buildTechnicalReason(
 function generateReason(type: "allow" | "reject" | "fallback", route: Route, score: number, flags: string[]): string {
   const issues: string[] = [];
   const quoteDeviation = Math.abs(route.quotedOut - route.expectedOut) / route.expectedOut;
+  const routeLabel = route.label ?? route.routeId;
+
+  if (type === "reject") {
+    if (route.poolLabel === "TOXIC") {
+      return `【${routeLabel}】TOXIC 池报价 ${route.quotedOut.toFixed(4)} 显著高于公允价 ${route.expectedOut.toFixed(4)}，存在诱多风险（风险分 ${score}/100），拒绝执行。`;
+    }
+    if (route.poolLabel === "SHALLOW" && flags.includes("shallow_pool")) {
+      const impact = route.priceImpactBps != null ? `，价格冲击 ${route.priceImpactBps} bps` : "";
+      return `【${routeLabel}】SHALLOW 浅池流动性不足${impact}，大额成交易失败（风险分 ${score}/100），拒绝直接执行。`;
+    }
+    if (route.poolLabel === "SDA") {
+      return `【${routeLabel}】SDA 池执行窗口风险过高，签名与上链间报价易失效（风险分 ${score}/100），拒绝执行。`;
+    }
+  }
+
+  if (type === "fallback" && route.poolLabel === "SHALLOW") {
+    const target = route.fallbackRouteId ?? "同币对 SAFE 池";
+    return `【${routeLabel}】浅池流动性偏紧、价格冲击偏高（风险分 ${score}/100）。建议改走 ${target}，避免在 SHALLOW 池强行成交。`;
+  }
+
   if (quoteDeviation > 0.005) {
     issues.push(`报价偏差 ${(quoteDeviation * 100).toFixed(1)}%（预期 ${route.expectedOut}，实际报价 ${route.quotedOut}）`);
   }
@@ -132,9 +152,9 @@ function generateReason(type: "allow" | "reject" | "fallback", route: Route, sco
     case "allow":
       return `风险评分 ${score}/100，处于安全范围。报价、失败率与池风险均在可接受阈值内，可以执行此路由。`;
     case "reject":
-      return `风险评分 ${score}/100，已超过危险阈值（≥70）。${issues.length > 0 ? "主要问题：" + issues.join("；") + "。" : ""}建议拒绝执行，避免潜在损失。`;
+      return `【${route.label ?? route.routeId}】风险评分 ${score}/100，已超过危险阈值（≥70）。${issues.length > 0 ? "主要问题：" + issues.join("；") + "。" : ""}建议拒绝执行，避免潜在损失。`;
     case "fallback":
-      return `风险评分 ${score}/100，处于警告区间。${issues.length > 0 ? "发现：" + issues.join("；") + "。" : ""}建议切换到更安全的备用路由${route.fallbackRouteId ? `（${route.fallbackRouteId}）` : ""}。`;
+      return `【${route.label ?? route.routeId}】风险评分 ${score}/100，处于警告区间。${issues.length > 0 ? "发现：" + issues.join("；") + "。" : ""}建议切换到更安全的备用路由${route.fallbackRouteId ? `（${route.fallbackRouteId}）` : ""}。`;
     default:
       return "未知决策类型。";
   }
@@ -162,7 +182,7 @@ export async function evaluateRoute(
   if (isDemoChainMode()) {
     const tokenOut = route.tokenOut.toUpperCase();
     if (tokenOut === "BAD" || tokenOut === "BAIT") {
-      const riskTag = await getTokenRiskTag(tokenOut as "BAD" | "BAIT");
+      const riskTag = DEMO_TOKEN_RISK_TAGS[tokenOut as "BAD" | "BAIT"];
       const tokenFlag = tokenOut === "BAIT" ? "suspicious_token" : "high_token_risk";
       return {
         decision: "REJECT",

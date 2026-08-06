@@ -1,9 +1,8 @@
 ﻿import { useEffect, useState, useCallback } from "react";
-import { BrowserProvider, formatEther, getAddress } from "ethers";
+import { getAddress } from "ethers";
 import { useWallet } from "../contexts/WalletContext";
-import { api, type OnChainAchievements, type TokenBalance } from "../api/client";
-import { fetchNativeCurrencySymbol } from "../lib/wallet";
-import { Identicon } from "./WalletAvatar";
+import { api, type OnChainAchievements } from "../api/client";
+import { WalletBalanceCard } from "./WalletBalanceCard";
 import badget1 from "../imgs/badget1.svg";
 import badget2 from "../imgs/badget2.svg";
 import badget3 from "../imgs/badget3.svg";
@@ -69,6 +68,7 @@ const BADGES: BadgeData[] = [
 ];
 
 const TOP_VOLUME = 1_000_000;
+const VOLUME_TIERS = [0, 10_000, 50_000, 100_000, TOP_VOLUME] as const;
 
 function isBadgeUnlocked(achievements: OnChainAchievements | null, tier: number): boolean {
   if (!achievements) return false;
@@ -82,35 +82,8 @@ export function UserProfilePage() {
   const [achievements, setAchievements] = useState<OnChainAchievements | null>(null);
   const [achievementsError, setAchievementsError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [nativeBal, setNativeBal] = useState<string | null>(null);
-  const [nativeSymbol, setNativeSymbol] = useState("MON");
-  const [tokens, setTokens] = useState<Record<string, TokenBalance>>({});
 
   const checksumAddr = account ? (() => { try { return getAddress(account); } catch { return null; } })() : null;
-
-  const fetchBalances = useCallback(async () => {
-    if (!checksumAddr) return;
-    try {
-      if (window.ethereum) {
-        const provider = new BrowserProvider(window.ethereum);
-        const bal = await provider.getBalance(checksumAddr);
-        setNativeBal(formatEther(bal));
-      }
-    } catch {
-      setNativeBal(null);
-    }
-    try {
-      setNativeSymbol(await fetchNativeCurrencySymbol());
-    } catch {
-      setNativeSymbol("MON");
-    }
-    try {
-      const r = await api.balances(checksumAddr);
-      setTokens(r.balances);
-    } catch {
-      setTokens({});
-    }
-  }, [checksumAddr]);
 
   const refreshAchievements = useCallback(async () => {
     if (!checksumAddr) {
@@ -133,61 +106,22 @@ export function UserProfilePage() {
   }, [checksumAddr]);
 
   useEffect(() => {
-    if (checksumAddr) fetchBalances();
-  }, [checksumAddr, fetchBalances]);
-
-  useEffect(() => {
     void refreshAchievements();
   }, [refreshAchievements]);
 
-  const safeVolume = achievements?.usdcVolumeHuman ?? 0;
+  const safeVolume = Number(achievements?.usdcVolumeHuman ?? 0);
   const unlockedBadges = BADGES.filter((b) => isBadgeUnlocked(achievements, b.tier));
   const lockedBadges = BADGES.filter((b) => !isBadgeUnlocked(achievements, b.tier));
-  const nextVolumeTier = [10_000, 50_000, 100_000, 1_000_000].find((t) => safeVolume < t) ?? TOP_VOLUME;
+  const nextVolumeTier = VOLUME_TIERS.find((t) => safeVolume < t) ?? TOP_VOLUME;
+  const prevVolumeTier = VOLUME_TIERS.filter((t) => t <= safeVolume).pop() ?? 0;
+  const volumeProgressPct =
+    nextVolumeTier > prevVolumeTier
+      ? Math.min(((safeVolume - prevVolumeTier) / (nextVolumeTier - prevVolumeTier)) * 100, 100)
+      : 100;
 
   return (
     <div>
-      {checksumAddr && (
-        <div className="sentinel-card" style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 20, padding: "20px 24px" }}>
-          <div style={{ flexShrink: 0 }}>
-            <div style={{ borderRadius: "50%", padding: 3, background: "var(--gradient-brand)" }}>
-              <div style={{ borderRadius: "50%", background: "var(--bg-inset)", padding: 2 }}>
-                <Identicon address={checksumAddr} size={64} />
-              </div>
-            </div>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>钱包地址</div>
-            <div style={{
-              fontSize: 15,
-              fontWeight: 600,
-              fontFamily: "monospace",
-              marginBottom: 12,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}>
-              {checksumAddr}
-            </div>
-            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 2 }}>原生余额</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)" }}>
-                  {nativeBal !== null ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}` : "加载中"}
-                </div>
-              </div>
-              {Object.values(tokens).map((t) => (
-                <div key={t.symbol}>
-                  <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 2 }}>{t.symbol}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--font-display)" }}>
-                    {t.human.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {checksumAddr ? <WalletBalanceCard address={checksumAddr} /> : null}
 
       <div className="sentinel-grid-2" style={{ marginTop: 24, marginBottom: 24 }}>
         <div className="sentinel-card">
@@ -218,7 +152,7 @@ export function UserProfilePage() {
             <div
               style={{
                 height: "100%",
-                width: `${Math.min((safeVolume / TOP_VOLUME) * 100, 100)}%`,
+                width: `${volumeProgressPct}%`,
                 background: "var(--gradient-brand)",
                 borderRadius: 4,
                 transition: "width 0.5s ease",
@@ -226,7 +160,11 @@ export function UserProfilePage() {
             />
           </div>
           <div style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 4 }}>
-            下一档交易量: ${nextVolumeTier.toLocaleString()} · 已解锁 {unlockedBadges.length}/{BADGES.length} 枚勋章
+            距下一档 ${nextVolumeTier.toLocaleString()} 还需 $
+            {Math.max(nextVolumeTier - safeVolume, 0).toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            })}{" "}
+            · 已解锁 {unlockedBadges.length}/{BADGES.length} 枚勋章
           </div>
         </div>
       </div>

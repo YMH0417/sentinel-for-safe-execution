@@ -120,6 +120,11 @@ export interface DashboardOverviewExplanation {
   generatedAt: string;
 }
 
+export interface PlatformPolicy {
+  multisigSimEnabled: boolean;
+  blockBadToken: boolean;
+}
+
 export interface LlmSettingsView {
   envFile: string;
   apiKeyConfigured: boolean;
@@ -389,9 +394,23 @@ export const api = {
       if (!res.ok) throw new Error(parseApiError(data.error, "保存 LLM 配置失败"));
       return data as LlmSettingsView;
     }),
+  getPlatformPolicy: () => getJson<PlatformPolicy>("/settings/platform-policy"),
+  savePlatformPolicy: (body: Partial<PlatformPolicy>) =>
+    fetch(`${API}/settings/platform-policy`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data.error, "保存平台策略失败"));
+      return data as PlatformPolicy;
+    }),
 };
 
-const SCORE_EVENT_WINDOW = 20;
+/** Must match `computeScoreLegend` weights so the gauge aligns with the three legend dots. */
+const SCORE_WEIGHT_HIGH_RISK = 0.45;
+const SCORE_WEIGHT_STRATEGY = 0.25;
+const SCORE_WEIGHT_WARNING = 0.15;
 
 function isFallbackEvent(event: Event): boolean {
   return event.decision === "FALLBACK_TO_SAFE_ROUTE" || event.eventType.includes("Fallback");
@@ -411,11 +430,13 @@ function countFallbackEvents(events: Event[]): number {
 }
 
 export function computeSecurityScore(events: Event[]): number {
-  const recent = events.slice(-SCORE_EVENT_WINDOW);
-  let score = 85;
-  score -= countTradeFailures(recent) * 8;
-  score -= countFallbackEvents(recent) * 3;
-  return Math.max(0, Math.min(100, score));
+  const legend = computeScoreLegend(events);
+  const raw =
+    100 -
+    legend.highRisk * SCORE_WEIGHT_HIGH_RISK -
+    legend.strategy * SCORE_WEIGHT_STRATEGY -
+    legend.warning * SCORE_WEIGHT_WARNING;
+  return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
 export function computeUserStats(events: Event[], account?: string | null) {
@@ -849,19 +870,17 @@ export interface SecurityScoreExplanation {
 }
 
 export function explainSecurityMetrics(events: Event[]): SecurityScoreExplanation {
-  const baseScore = 85;
-  const recentScore = events.slice(-SCORE_EVENT_WINDOW);
-  const rejectCount = countTradeFailures(recentScore);
-  const fallbackCount = countFallbackEvents(recentScore);
-  const scoreAfterEvents = baseScore - rejectCount * 8 - fallbackCount * 3;
-  const score = Math.max(0, Math.min(100, scoreAfterEvents));
-
   const breakdown = computeLegendBreakdown(events);
   const legend = computeScoreLegend(events);
+  const score = computeSecurityScore(events);
+  const recentScore = events.slice(-LEGEND_EVENT_WINDOW);
+  const rejectCount = countTradeFailures(recentScore);
+  const fallbackCount = countFallbackEvents(recentScore);
+  const scoreAfterEvents = score;
 
   return {
     score,
-    baseScore,
+    baseScore: 100,
     rejectCount,
     fallbackCount,
     scoreAfterEvents,

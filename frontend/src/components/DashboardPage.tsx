@@ -285,7 +285,7 @@ export function DashboardPage() {
         </div>
         <div className="dashboard-sidebar-stats">
           <SidebarStat
-            label="累计交易量"
+            label="个人累计交易量"
             value={`$${usdcVolumeHuman.toLocaleString(undefined, {
               minimumFractionDigits: 0,
               maximumFractionDigits: 2,
@@ -293,13 +293,13 @@ export function DashboardPage() {
             hint={account ? undefined : "连接钱包后显示"}
           />
           <SidebarStat
-            label="交易失败数"
+            label="个人交易失败数"
             value={String(stats.failureCount)}
             accent={stats.failureCount > 0 ? "var(--red)" : undefined}
             hint={account ? undefined : "连接钱包后显示"}
           />
           <SidebarStat
-            label="USDC 余额"
+            label="个人 USDC 余额"
             value={usdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             accent="var(--green)"
           />

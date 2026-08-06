@@ -44,6 +44,10 @@ import {
 } from "./poolQuoteMath.js";
 import type { Decision, DecisionType, SwapRequest, SwapResult, WalletSwapPlan } from "../types.js";
 import { evaluateRoute, loadRiskConfig } from "./agentService.js";
+import {
+  checkPlatformPolicyBlock,
+  getPlatformPolicy,
+} from "./platformPolicyService.js";
 import { getChainRouteById } from "./chainQuoteService.js";
 import {
   defaultSwapDeadline,
@@ -335,6 +339,15 @@ async function resolveExecutionPlan(
   agentBypassed?: boolean;
 }> {
   if (params.skipEvaluate || params.force) {
+    const platformPolicy = await getPlatformPolicy();
+    const platformBlock = checkPlatformPolicyBlock({ tokenIn, tokenOut }, platformPolicy);
+    if (platformBlock) {
+      throw new SwapExecutionError("PLATFORM_MULTISIG_BLOCKED", platformBlock.reason, {
+        routeId: params.routeId,
+        flag: platformBlock.flag,
+      });
+    }
+
     return {
       executedRouteId: params.routeId,
       agentDecision: {

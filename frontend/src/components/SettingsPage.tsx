@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAddress } from "ethers";
-import { api, type DebugStatus, type LlmSettingsView } from "../api/client";
+import { api, type DebugStatus, type LlmSettingsView, type PlatformPolicy } from "../api/client";
 import { useWallet } from "../contexts/WalletContext";
 import { DEMO_TEST_USER } from "../lib/demoConstants";
+import { writePlatformPolicyToStorage, normalizePlatformPolicy } from "../lib/platformPolicy";
 import { ensureDemoChain, fetchDemoChainConfig } from "../lib/wallet";
 import {
   burnDemoToken,
@@ -49,6 +50,12 @@ export function SettingsPage() {
   const [llmEnabled, setLlmEnabled] = useState(true);
   const [llmResponseLanguage, setLlmResponseLanguage] = useState<"en" | "zh">("zh");
 
+  const [platformPolicy, setPlatformPolicy] = useState<PlatformPolicy | null>(null);
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
+  const [policyError, setPolicyError] = useState("");
+  const [policyMsg, setPolicyMsg] = useState("");
+
   const profileEnsuringRef = useRef(false);
 
   const applyLlmForm = useCallback((view: LlmSettingsView) => {
@@ -72,6 +79,36 @@ export function SettingsPage() {
       setLlmLoading(false);
     }
   }, [applyLlmForm]);
+
+  const refreshPlatformPolicy = useCallback(async () => {
+    setPolicyLoading(true);
+    setPolicyError("");
+    try {
+      const next = normalizePlatformPolicy(await api.getPlatformPolicy());
+      setPlatformPolicy(next);
+      writePlatformPolicyToStorage(next);
+    } catch (e) {
+      setPolicyError(e instanceof Error ? e.message : "加载多签配置失败");
+    } finally {
+      setPolicyLoading(false);
+    }
+  }, []);
+
+  const savePlatformPolicy = async (patch: Partial<PlatformPolicy>) => {
+    setPolicySaving(true);
+    setPolicyError("");
+    setPolicyMsg("");
+    try {
+      const saved = normalizePlatformPolicy(await api.savePlatformPolicy(patch));
+      setPlatformPolicy(saved);
+      writePlatformPolicyToStorage(saved);
+      setPolicyMsg("多签配置已保存");
+    } catch (e) {
+      setPolicyError(e instanceof Error ? e.message : "保存多签配置失败");
+    } finally {
+      setPolicySaving(false);
+    }
+  };
 
   const saveLlmSettings = async () => {
     setLlmSaving(true);
@@ -169,7 +206,8 @@ export function SettingsPage() {
     if (!connectedIsTestUser) return;
     void refreshStatus();
     void refreshLlmSettings();
-  }, [connectedIsTestUser, refreshLlmSettings, refreshStatus]);
+    void refreshPlatformPolicy();
+  }, [connectedIsTestUser, refreshLlmSettings, refreshPlatformPolicy, refreshStatus]);
 
   const switchDemoProfile = useCallback(
     async (profileName: string) => {
@@ -621,6 +659,58 @@ export function SettingsPage() {
             {llmError && (
               <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>{llmError}</p>
             )}
+          </>
+        )}
+      </div>
+
+      <div className="sentinel-card" style={{ marginTop: 20 }}>
+        <div className="sentinel-label">多签管控</div>
+        <p style={{ fontSize: 16, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.6 }}>
+          指定代币启用多签后，转出需多方签名批准；未获批准的交易将被直接拒绝。
+        </p>
+
+        {policyLoading && !platformPolicy ? (
+          <p style={{ color: "var(--text-dim)", fontSize: 16 }}>加载策略中</p>
+        ) : (
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16, marginBottom: 12, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={platformPolicy?.multisigSimEnabled ?? false}
+                onChange={(e) =>
+                  void savePlatformPolicy({
+                    multisigSimEnabled: e.target.checked,
+                    ...(e.target.checked ? {} : { blockBadToken: false }),
+                  })
+                }
+                disabled={policySaving}
+              />
+              <span>启用多签</span>
+            </label>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16, opacity: platformPolicy?.multisigSimEnabled ? 1 : 0.5 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, cursor: platformPolicy?.multisigSimEnabled ? "pointer" : "not-allowed" }}>
+                <input
+                  type="checkbox"
+                  checked={platformPolicy?.blockBadToken ?? false}
+                  disabled={!platformPolicy?.multisigSimEnabled || policySaving}
+                  onChange={(e) => void savePlatformPolicy({ blockBadToken: e.target.checked })}
+                />
+                <span>锁定 BAD 代币转出</span>
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-secondary"
+              onClick={() => void refreshPlatformPolicy()}
+              disabled={policyLoading || policySaving}
+            >
+              重新读取
+            </button>
+
+            {policyMsg ? <p style={{ marginTop: 12, fontSize: 16, color: "var(--green)" }}>{policyMsg}</p> : null}
+            {policyError ? <p style={{ marginTop: 12, fontSize: 16, color: "var(--red)" }}>{policyError}</p> : null}
           </>
         )}
       </div>

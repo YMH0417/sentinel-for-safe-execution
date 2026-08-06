@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { getAddress } from "ethers";
 import { api } from "../api/client";
 import { buildSwapResultFromEvents } from "../lib/swapResult";
 import { fetchDemoChainConfig } from "../lib/wallet";
+import { useWallet } from "../contexts/WalletContext";
 import type { Decision, Event, SwapResult } from "../types";
 import { Timeline } from "./Timeline";
+import { WalletBalanceCard } from "./WalletBalanceCard";
 
 const MONAD_EXPLORER_TX = "https://testnet.monadvision.com/tx/";
 
@@ -154,6 +157,7 @@ function buildTimelineFromEvents(
 export function ExecutionResultPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { account } = useWallet();
   const [searchParams] = useSearchParams();
   const state = (location.state ?? {}) as LocationState;
   const [events, setEvents] = useState<Event[]>([]);
@@ -188,18 +192,22 @@ export function ExecutionResultPage() {
   const preSwapBlocked =
     swap?.safetyMode === "force" &&
     (swap?.failureCode === "SLIPPAGE_EXCEEDED" ||
-      swap?.failureCode === "QUOTE_DEVIATION_EXCEEDED") &&
+      swap?.failureCode === "QUOTE_DEVIATION_EXCEEDED" ||
+      swap?.failureCode === "PLATFORM_MULTISIG_BLOCKED") &&
     !swap.onChainFailure &&
     gasUsed === 0;
   const onChainSettlementFailed = !success && Boolean(swap?.txHash) && gasUsed > 0;
   const suspiciousQuoteBlocked = swap?.failureCode === "QUOTE_DEVIATION_EXCEEDED";
+  const multisigTokenBlocked = swap?.failureCode === "PLATFORM_MULTISIG_BLOCKED";
 
   const headline = success
     ? "交易成功"
     : preSwapBlocked
-      ? suspiciousQuoteBlocked
-        ? "异常报价拦截"
-        : "滑点保护拦截"
+      ? multisigTokenBlocked
+        ? "多签锁定，无法转出"
+        : suspiciousQuoteBlocked
+          ? "异常报价拦截"
+          : "滑点保护拦截"
       : onChainSettlementFailed
         ? "链上结算异常"
         : gasUsed > 0
@@ -220,6 +228,14 @@ export function ExecutionResultPage() {
 
   return (
     <div className="sentinel-exec-page">
+      {account && (() => {
+        try {
+          return <WalletBalanceCard address={getAddress(account)} compact />;
+        } catch {
+          return null;
+        }
+      })()}
+
       {!swap && (
         <div className="sentinel-card sentinel-exec-empty">
           <p>暂无本次执行记录。</p>

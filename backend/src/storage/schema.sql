@@ -41,3 +41,9 @@ CREATE TABLE IF NOT EXISTS ledger_checked_trades (
 );
 
 CREATE INDEX IF NOT EXISTS idx_checked_user ON ledger_checked_trades (user_address);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key            TEXT PRIMARY KEY,
+  value          JSONB NOT NULL,
+  updated_at_ms  BIGINT NOT NULL
+);

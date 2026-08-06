@@ -13,6 +13,8 @@ export interface Route {
   supportsFallback: boolean;
   fallbackRouteId: string | null;
   warningFlags: string[];
+  poolLabel?: string;
+  priceImpactBps?: number;
   expectedDecision?: string;
 }
 

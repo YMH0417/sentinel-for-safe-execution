@@ -15,12 +15,13 @@ import {
   tokenSymbolFromKey,
 } from "../config/demoRoutes.js";
 import { getLiveDemoConfig } from "./demoRegistryService.js";
-import { getRpcUrl } from "../config/chainConfig.js";
+import { getSwapProvider } from "../config/chainConfig.js";
 import { Route, QuoteResponse } from "../types.js";
 import {
   readSwapReserves,
   remoteRpcPace,
 } from "./demoPairReadService.js";
+import { withRpcRetry } from "../utils/rpcRetry.js";
 import {
   getAmountOut,
   getPriceImpactBps,
@@ -150,7 +151,7 @@ function poolsForPair(
 
 export async function getChainQuote(params: QuoteParams = {}): Promise<QuoteResponse> {
   const config = await getLiveDemoConfig();
-  const provider = new JsonRpcProvider(getRpcUrl());
+  const provider = getSwapProvider();
 
   const tokenInSymbol = resolveTokenSymbol(config, params.tokenIn ?? "USDC") ?? "USDC";
   const tokenOutSymbol = resolveTokenSymbol(config, params.tokenOut ?? "GOOD") ?? "GOOD";
@@ -227,18 +228,82 @@ export async function getChainRouteById(
   params: QuoteParams = {}
 ): Promise<Route | undefined> {
   const quoteParams = inferQuoteParamsFromRouteId(routeId, params);
-  const quote = await getChainQuote(quoteParams);
-  return quote.routes.find((route) => route.routeId === routeId);
+  const config = await getLiveDemoConfig();
+  const pool = config.pools.find((entry) => entry.routeName === routeId);
+  if (!pool) {
+    const quote = await getChainQuote(quoteParams);
+    return quote.routes.find((route) => route.routeId === routeId);
+  }
+
+  const provider = getSwapProvider();
+  const tokenInSymbol = resolveTokenSymbol(config, quoteParams.tokenIn ?? "USDC") ?? "USDC";
+  const tokenOutSymbol = resolveTokenSymbol(config, quoteParams.tokenOut ?? "GOOD") ?? "GOOD";
+  const amountInHuman = quoteParams.amountIn ?? 100;
+  const tokenInAddress = getTokenAddress(config, tokenInSymbol);
+  const tokenOutAddress = getTokenAddress(config, tokenOutSymbol);
+  const decIn = decimalsForSymbol(tokenInSymbol);
+  const amountInRaw = toRawAmount(amountInHuman, decIn);
+
+  const pairPools = poolsForPair(config, tokenInAddress, tokenOutAddress);
+  const referencePool =
+    pairPools.find((entry) => entry.isReferencePool) ??
+    pairPools.find((entry) => entry.label === 0);
+  if (!referencePool) {
+    const quote = await getChainQuote(quoteParams);
+    return quote.routes.find((route) => route.routeId === routeId);
+  }
+
+  const decOut = decimalsForSymbol(tokenOutSymbol);
+  const { reserveIn: refIn, reserveOut: refOut } = await readSwapReserves(
+    provider,
+    referencePool.pair,
+    tokenInAddress
+  );
+  const referenceOutRaw = getAmountOut(amountInRaw, refIn, refOut);
+  const expectedOutHuman = toHumanAmount(referenceOutRaw, decOut);
+
+  return quotePool(
+    provider,
+    pool,
+    amountInRaw,
+    expectedOutHuman,
+    tokenInSymbol,
+    tokenOutSymbol
+  );
 }
+
+/** Matches DemoPoolRegistry.TokenRiskTag — static for sealed demo tokens. */
+export const DEMO_TOKEN_RISK_TAGS: Record<DemoTokenSymbol, number> = {
+  USDC: 0,
+  GOOD: 0,
+  BAD: 1,
+  BAIT: 2,
+};
+
+const tokenRiskTagCache = new Map<string, number>();
 
 export async function getTokenRiskTag(tokenOutSymbol: DemoTokenSymbol): Promise<number> {
   const config = await getLiveDemoConfig();
-  const provider = new JsonRpcProvider(getRpcUrl());
-  const registry = new Contract(config.registry, [
-    "function tokenRiskTag(address token) view returns (uint8)",
-  ], provider);
   const tokenAddress = getTokenAddress(config, tokenOutSymbol);
-  return Number(await registry.tokenRiskTag(tokenAddress));
+  const cacheKey = tokenAddress.toLowerCase();
+  const cached = tokenRiskTagCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const fallback = DEMO_TOKEN_RISK_TAGS[tokenOutSymbol] ?? 0;
+  try {
+    await remoteRpcPace();
+    const registry = new Contract(config.registry, [
+      "function tokenRiskTag(address token) view returns (uint8)",
+    ], getSwapProvider());
+    const tag = Number(
+      await withRpcRetry(() => registry.tokenRiskTag(tokenAddress) as Promise<bigint>)
+    );
+    tokenRiskTagCache.set(cacheKey, tag);
+    return tag;
+  } catch {
+    tokenRiskTagCache.set(cacheKey, fallback);
+    return fallback;
+  }
 }
 
 export function inferQuoteParamsFromRouteId(routeId: string, params: QuoteParams = {}): QuoteParams {

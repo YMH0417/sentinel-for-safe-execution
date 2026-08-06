@@ -42,7 +42,11 @@ function isSdaRoute(routeId: string): boolean {
   return routeId.includes("-sda");
 }
 
-const PRE_SWAP_BLOCK_CODES = new Set(["SLIPPAGE_EXCEEDED", "QUOTE_DEVIATION_EXCEEDED"]);
+const PRE_SWAP_BLOCK_CODES = new Set([
+  "SLIPPAGE_EXCEEDED",
+  "QUOTE_DEVIATION_EXCEEDED",
+  "PLATFORM_MULTISIG_BLOCKED",
+]);
 
 function parseSwapError(data: { error?: { code?: string; message?: string } | string }): string {
   if (typeof data.error === "string") return data.error;
@@ -133,6 +137,14 @@ interface Props {
   onSafeModeChange: (v: boolean) => void;
 }
 
+const LOADING_MSG = {
+  ROUTES: "加载路由报价",
+  EVALUATE: "风险评估中",
+  EXECUTE: "链上执行中",
+  FULL_FLOW: "一键流程执行中",
+  METAMASK: "等待 MetaMask 确认（代币授权 / 签名）",
+} as const;
+
 function generateDummySignature(): string {
   return "0x" + "12".repeat(65);
 }
@@ -152,6 +164,33 @@ function resolveFlowTargetRoute(
     return recommendedRouteId;
   }
   return routes[0]?.routeId ?? selectedRouteId;
+}
+
+function isValidTradeAmount(amount: string): boolean {
+  const value = Number(amount);
+  return Number.isFinite(value) && value > 0;
+}
+
+function sanitizeTradeAmountInput(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === "") return "";
+  return trimmed.replace(/-/g, "");
+}
+
+import { formatAgentRejectMessage, formatAgentFallbackMessage } from "../lib/agentMessages";
+import { usePlatformPolicy } from "../hooks/usePlatformPolicy";
+import { checkPlatformPolicyBlock, policyContextFromRoute } from "../lib/platformPolicy";
+
+function decisionMatchesExecutionTarget(
+  decision: Decision,
+  executionTarget: string
+): boolean {
+  if (decision.routeId === executionTarget) return true;
+  return (
+    decision.decision === "FALLBACK_TO_SAFE_ROUTE" &&
+    decision.fallbackRouteId === executionTarget &&
+    supportsAgentAutoFallback(decision.routeId)
+  );
 }
 
 function riskLevel(score: number): "low" | "moderate" | "high" {
@@ -198,6 +237,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
   const navigate = useNavigate();
   const { account, connectWallet, isConnecting } = useWallet();
   const { showToast } = useToast();
+  const { policy: platformPolicy } = usePlatformPolicy();
   const [tokenIn, setTokenIn] = useState("USDC");
   const [tokenOut, setTokenOut] = useState("GOOD");
   const [amount, setAmount] = useState("100");
@@ -214,6 +254,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
   const [executionElapsedSeconds, setExecutionElapsedSeconds] = useState<number | null>(null);
   const executionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const executionStartedAtRef = useRef<number | null>(null);
+  const flowInFlightRef = useRef(false);
 
   const startExecutionTimer = () => {
     executionStartedAtRef.current = performance.now();
@@ -243,6 +284,19 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     setRecommendedRouteId(null);
   }, [safeMode]);
 
+  useEffect(() => {
+    setDecision(null);
+    setRecommendedRouteId(null);
+    setError("");
+  }, [tokenIn, tokenOut, amount]);
+
+  useEffect(() => {
+    if (tokenIn !== tokenOut) return;
+    setRoutes([]);
+    setSelectedRoute("");
+    setQuoteMeta({});
+  }, [tokenIn, tokenOut]);
+
   const selectedRouteData = routes.find((r) => r.routeId === selectedRoute);
   const maxReceiveOut =
     selectedRouteData?.expectedOut !== undefined
@@ -253,15 +307,18 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       ? computeMinOut(selectedRouteData.expectedOut, slippageBps)
       : null;
   const quoteDeviationView = formatQuoteDeviation(selectedRouteData);
+  const isSameTokenPair = tokenIn === tokenOut;
 
   const loadRoutes = async (options?: {
     preserveSelection?: boolean;
+    manageLoading?: boolean;
   }): Promise<{
     routes: RouteType[];
     recommendedRouteId?: string;
     selectedRouteId: string;
   } | null> => {
-    setLoading("Loading routes");
+    const manageLoading = options?.manageLoading !== false;
+    if (manageLoading) setLoading(LOADING_MSG.ROUTES);
     const previousSelection = selectedRoute;
     try {
       const { res, data } = await fetchJson<{
@@ -284,27 +341,39 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
         referencePrice: data.referencePrice,
         recommendedRouteId: data.recommendedRouteId,
       });
-      if (nextSelected) setSelectedRoute(nextSelected);
+      const selectedRouteId = nextSelected || nextRoutes[0]?.routeId || "";
+      if (selectedRouteId) setSelectedRoute(selectedRouteId);
       setPage(0);
       setDecision(null);
       setError("");
       return {
         routes: nextRoutes,
         recommendedRouteId: recommended,
-        selectedRouteId: nextSelected,
+        selectedRouteId,
       };
     } catch (e: unknown) {
       setError(`Failed to load routes: ${e instanceof Error ? e.message : String(e)}`);
       return null;
     } finally {
-      setLoading("");
+      if (manageLoading) setLoading("");
     }
   };
 
-  const evaluateRoute = async (routeId?: string): Promise<Decision | null> => {
+  const evaluateRoute = async (
+    routeId?: string,
+    options?: { manageLoading?: boolean }
+  ): Promise<Decision | null> => {
+    const manageLoading = options?.manageLoading !== false;
     const target = routeId ?? selectedRoute;
-    if (!target) return null;
-    setLoading("Evaluating route with Safety Agent");
+    if (!target) {
+      setError("请先选择一条路由");
+      return null;
+    }
+    if (!isValidTradeAmount(amount)) {
+      setError("请输入有效的兑换数量");
+      return null;
+    }
+    if (manageLoading) setLoading(LOADING_MSG.EVALUATE);
     try {
       const { res, data } = await fetchJson<Decision & { error?: string | { message?: string } }>(
         `${API_BASE}/evaluate`,
@@ -330,10 +399,10 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       }
       return data;
     } catch (e: unknown) {
-      setError(`Evaluate failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`风险评估失败：${e instanceof Error ? e.message : String(e)}`);
       return null;
     } finally {
-      setLoading("");
+      if (manageLoading) setLoading("");
     }
   };
 
@@ -510,12 +579,12 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     return selectedRoute;
   };
 
-  const navigateUnsafeSlippageBlock = (
+  const navigateUnsafePreSwapBlock = (
     routeId: string,
-    slipError: SwapApiError,
+    blockError: SwapApiError,
     routeData?: RouteType
   ) => {
-    const failedSwap = buildFailedSwapResult(routeId, slipError, {
+    const failedSwap = buildFailedSwapResult(routeId, blockError, {
       tokenIn,
       tokenOut,
       amount,
@@ -526,28 +595,50 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       unsafeMode: true,
     });
     navigate("/execution", { state: { swap: failedSwap, decision: null } });
-    showToast({
-      type: "error",
-      message:
-        slipError.code === "QUOTE_DEVIATION_EXCEEDED"
+    const toastMessage =
+      blockError.code === "PLATFORM_MULTISIG_BLOCKED"
+        ? "多签锁定，无法转出"
+        : blockError.code === "QUOTE_DEVIATION_EXCEEDED"
           ? "报价异常偏高，交易被拦截（未上链）"
-          : "滑点过低，交易被拦截（未上链）",
-    });
+          : "滑点过低，交易被拦截（未上链）";
+    showToast({ type: "error", message: toastMessage });
+  };
+
+  const navigateUnsafeSlippageBlock = (
+    routeId: string,
+    slipError: SwapApiError,
+    routeData?: RouteType
+  ) => {
+    navigateUnsafePreSwapBlock(routeId, slipError, routeData);
   };
 
   const executeRoute = async (
     activeDecision?: Decision | null,
-    routeIdOverride?: string
+    routeIdOverride?: string,
+    options?: { manageLoading?: boolean }
   ) => {
-    const evalDecision = activeDecision ?? decision;
-    if (safeMode && !evalDecision) {
-      const msg = "Safe 模式需先完成「风险评估」再执行";
-      setError(msg);
-      return;
+    const manageLoading = options?.manageLoading !== false;
+    let evalDecision = activeDecision ?? decision;
+    const executionTarget = routeIdOverride ?? selectedRoute;
+
+    if (safeMode) {
+      const needsEvaluate =
+        !evalDecision ||
+        (executionTarget &&
+          evalDecision &&
+          !decisionMatchesExecutionTarget(evalDecision, executionTarget));
+      if (needsEvaluate) {
+        evalDecision = await evaluateRoute(executionTarget, { manageLoading: false });
+        if (!evalDecision) return;
+      }
     }
+
+    const previewRoute =
+      routes.find((r) => r.routeId === (executionTarget || evalDecision?.routeId)) ??
+      selectedRouteData;
+
     if (safeMode && evalDecision?.decision === "REJECT") {
-      const msg = "当前路由已被 Safety Agent 拒绝，请手动选择其他路由后再执行";
-      setError(msg);
+      setError(formatAgentRejectMessage(evalDecision, previewRoute));
       return;
     }
     if (safeMode && evalDecision?.decision === "FALLBACK_TO_SAFE_ROUTE") {
@@ -557,8 +648,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       ) {
         // Auto-fallback routes execute on the safe pool via backend / wallet plan.
       } else {
-        const msg = `Agent 建议切换到 ${evalDecision.fallbackRouteId ?? "安全路由"}，请手动切换后重新执行`;
-        setError(msg);
+        setError(formatAgentFallbackMessage(evalDecision, previewRoute));
         return;
       }
     }
@@ -572,6 +662,19 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     }
 
     if (!safeMode) {
+      const platformBlock = checkPlatformPolicyBlock(
+        platformPolicy,
+        policyContextFromRoute(routeData, tokenIn, tokenOut)
+      );
+      if (platformBlock) {
+        navigateUnsafePreSwapBlock(
+          routeId,
+          new SwapApiError(platformBlock.reason, "PLATFORM_MULTISIG_BLOCKED"),
+          routeData
+        );
+        return;
+      }
+
       const slipError = buildUnsafeSlippageError(routeData, slippageBps);
       if (slipError) {
         setError(slipError.message);
@@ -580,7 +683,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       }
     }
 
-    setLoading("Executing route on-chain");
+    if (manageLoading) setLoading(LOADING_MSG.EXECUTE);
     startExecutionTimer();
     if (!safeMode) {
       setDecision(null);
@@ -597,7 +700,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
           showToast({ type: "error", message: "请先连接 MetaMask 再执行链上交易" });
           return;
         }
-        setLoading("等待 MetaMask 确认（代币授权 / 签名）");
+        if (manageLoading) setLoading(LOADING_MSG.METAMASK);
         const swap = await executeDemoSwap(routeId, !safeMode);
 
         const finalDecision: Decision | null = safeMode
@@ -689,9 +792,11 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
         showToast({
           type: "error",
           message:
-            e.code === "QUOTE_DEVIATION_EXCEEDED"
-              ? "报价异常偏高，交易被拦截（未上链）"
-              : "滑点过低，交易被拦截（未上链）",
+            e.code === "PLATFORM_MULTISIG_BLOCKED"
+              ? "多签锁定，无法转出"
+              : e.code === "QUOTE_DEVIATION_EXCEEDED"
+                ? "报价异常偏高，交易被拦截（未上链）"
+                : "滑点过低，交易被拦截（未上链）",
         });
         return;
       }
@@ -699,35 +804,47 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
       setError(`Execute failed: ${msg}`);
     } finally {
       stopExecutionTimer();
-      setLoading("");
+      if (manageLoading) setLoading("");
     }
   };
 
   const runFullFlow = async () => {
-    setLoading("Running full flow");
+    if (flowInFlightRef.current) return;
+    if (!isValidTradeAmount(amount)) {
+      setError("请输入有效的兑换数量");
+      return;
+    }
+
+    flowInFlightRef.current = true;
+    setLoading(LOADING_MSG.FULL_FLOW);
     setError("");
 
     try {
-      const quote = await loadRoutes({ preserveSelection: true });
+      const quote = await loadRoutes({ preserveSelection: true, manageLoading: false });
       if (!quote?.routes.length) {
         setError("无法加载路由报价，请检查后端服务是否运行");
         return;
       }
-
-      await new Promise((r) => setTimeout(r, 300));
+      if (!quote.selectedRouteId) {
+        setError("未找到可用路由，请重新获取报价");
+        return;
+      }
 
       if (!safeMode) {
-        await executeRoute(null, quote.selectedRouteId);
+        await executeRoute(null, quote.selectedRouteId, { manageLoading: false });
         return;
       }
 
       let targetRouteId = quote.selectedRouteId;
-      let latestDecision = await evaluateRoute(targetRouteId);
-      await new Promise((r) => setTimeout(r, 300));
+      let latestDecision = await evaluateRoute(targetRouteId, { manageLoading: false });
+      if (!latestDecision) {
+        latestDecision = await evaluateRoute(targetRouteId, { manageLoading: false });
+      }
+      if (!latestDecision) return;
 
-      if (latestDecision?.decision === "REJECT") {
-        const msg = "Safety Agent 拒绝了当前路由，请手动选择其他路由";
-        setError(msg);
+      if (latestDecision.decision === "REJECT") {
+        const routePreview = quote.routes.find((r) => r.routeId === targetRouteId);
+        setError(formatAgentRejectMessage(latestDecision, routePreview));
         return;
       }
       if (latestDecision?.decision === "FALLBACK_TO_SAFE_ROUTE") {
@@ -743,17 +860,18 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
             message: `浅池风险偏高，已自动切换到 ${targetRouteId}`,
           });
         } else {
-          const msg = `Agent 建议 ${latestDecision.fallbackRouteId ?? "安全路由"}，请手动切换路由后再执行`;
-          setError(msg);
+          const routePreview = quote.routes.find((r) => r.routeId === targetRouteId);
+          setError(formatAgentFallbackMessage(latestDecision, routePreview));
           return;
         }
       }
 
-      await executeRoute(latestDecision, targetRouteId);
+      await executeRoute(latestDecision, targetRouteId, { manageLoading: false });
     } catch (e: unknown) {
       const msg = getErrorMessage(e, "完整流程执行失败");
       setError(msg);
     } finally {
+      flowInFlightRef.current = false;
       setLoading("");
     }
   };
@@ -776,18 +894,18 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
     if (executionElapsedSeconds !== null && !!loading) {
       return `执行中 ${executionElapsedSeconds.toFixed(1)}s`;
     }
-    if (loading === "Running full flow") return "流程执行中";
-    if (loading === "Loading routes") return "加载报价中";
-    if (loading === "Executing route on-chain") return "链上执行中";
-    if (loading === "Evaluating route with Safety Agent") return "评估中";
-    if (loading?.includes("MetaMask")) return "等待 MetaMask";
+    if (loading === LOADING_MSG.FULL_FLOW) return "流程执行中";
+    if (loading === LOADING_MSG.ROUTES) return "加载报价中";
+    if (loading === LOADING_MSG.EXECUTE) return "链上执行中";
+    if (loading === LOADING_MSG.EVALUATE) return "评估中";
+    if (loading === LOADING_MSG.METAMASK) return "等待 MetaMask";
     if (loading) return "处理中";
     return safeMode ? "一键完整流程（含执行）" : "无安全模式执行";
   })();
 
   return (
     <div>
-      <GlobalLoading active={!!loading} message={loading || undefined} />
+      <GlobalLoading active={!!loading} message={loading || undefined} transparentBackdrop />
 
       {!account && (
         <div
@@ -836,7 +954,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                 <label>支付代币</label>
                 <select className="sentinel-select" value={tokenIn} onChange={(e) => setTokenIn(e.target.value)}>
                   {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
-                    <option key={t} value={t} disabled={t === tokenOut}>{t}</option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
@@ -844,14 +962,24 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                 <label>获得代币</label>
                 <select className="sentinel-select" value={tokenOut} onChange={(e) => setTokenOut(e.target.value)}>
                   {["USDC", "GOOD", "BAD", "BAIT"].map((t) => (
-                    <option key={t} value={t} disabled={t === tokenIn}>{t}</option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
             </div>
             <div className="tx-field">
               <label>兑换数量</label>
-              <input className="sentinel-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <input
+                className="sentinel-input"
+                type="number"
+                min={0}
+                step="any"
+                value={amount}
+                onChange={(e) => setAmount(sanitizeTradeAmountInput(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === "-" || e.key === "e" || e.key === "E") e.preventDefault();
+                }}
+              />
             </div>
             <SafeUnsafeToggle safeMode={safeMode} onChange={onSafeModeChange} />
             <div className={`tx-slippage-block${safeMode ? " is-disabled" : ""}`} aria-disabled={safeMode}>
@@ -913,9 +1041,18 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                 )}
               </div>
             </div>
-            <button type="button" className="sentinel-btn sentinel-btn-secondary" onClick={() => void loadRoutes()} disabled={!!loading}>
-              {loading === "Loading routes" ? "加载中" : "获取报价"}
+            <button
+              type="button"
+              className="sentinel-btn sentinel-btn-secondary"
+              onClick={() => void loadRoutes()}
+              disabled={!!loading || isSameTokenPair}
+              title={isSameTokenPair ? "支付代币与获得代币不能相同" : undefined}
+            >
+              {loading === LOADING_MSG.ROUTES ? "加载中" : "获取报价"}
             </button>
+            {isSameTokenPair ? (
+              <p className="tx-same-token-hint">支付代币与获得代币相同，请切换后再获取报价</p>
+            ) : null}
           </div>
         </div>
 
@@ -959,6 +1096,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                           className={isSelected ? "selected" : undefined}
                           style={{ cursor: "pointer" }}
                           onClick={() => {
+                            if (route.routeId === selectedRoute) return;
                             setSelectedRoute(route.routeId);
                             setRecommendedRouteId(null);
                             setDecision(null);
@@ -1013,7 +1151,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                     disabled={!!loading || !selectedRoute || !safeMode}
                     title={!safeMode ? "非安全模式不经过智能体" : undefined}
                   >
-                    {loading === "Evaluating route with Safety Agent" ? "评估中" : "风险评估"}
+                    {loading === LOADING_MSG.EVALUATE ? "评估中" : "风险评估"}
                   </button>
                   {!safeMode && (
                     <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -1024,7 +1162,7 @@ export function TransactionPage({ safeMode, onSafeModeChange }: Props) {
                     type="button"
                     className="sentinel-btn sentinel-btn-primary"
                     onClick={runFullFlow}
-                    disabled={!!loading}
+                    disabled={!!loading || isSameTokenPair}
                   >
                     {primaryFlowButtonLabel}
                   </button>

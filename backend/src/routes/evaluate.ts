@@ -118,7 +118,11 @@ router.post("/", async (req: Request, res: Response) => {
 
     return res.json({ ...decision, correlationId });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Evaluate failed";
+    const raw = error instanceof Error ? error.message : "Evaluate failed";
+    const message =
+      raw.includes("missing revert data") || raw.includes("CALL_EXCEPTION")
+        ? "链上 RPC 暂时繁忙，请稍后重试"
+        : raw;
     return res.status(503).json({
       error: {
         code: "EVALUATE_FAILED",

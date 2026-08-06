@@ -77,7 +77,7 @@ export function Identicon({ address, size = 34 }: { address: string; size?: numb
   );
 }
 
-/* ────────────────────── WalletAvatar ────────────────────── */
+const WALLET_TOKEN_ORDER = ["USDC", "GOOD", "BAD", "BAIT"] as const;
 
 export function WalletAvatar() {
   const navigate = useNavigate();
@@ -238,20 +238,22 @@ export function WalletAvatar() {
          
           {/* Balance */}
           <div className="wallet-popup-balance">
-            <div className="wallet-popup-balance-value">
-              {nativeBal !== null
-                ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}`
-                : "Loading"}
-            </div>
-            {Object.values(tokens).length > 0 && (
-              <div className="wallet-popup-token-list">
-                {Object.values(tokens).map((t) => (
-                  <span key={t.symbol} className="wallet-popup-token">
-                    {t.human.toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.symbol}
-                  </span>
-                ))}
+            <div className="wallet-popup-balance-list">
+              <div className="wallet-popup-balance-value">
+                {nativeBal !== null
+                  ? `${parseFloat(nativeBal).toFixed(4)} ${nativeSymbol}`
+                  : "Loading"}
               </div>
-            )}
+              {WALLET_TOKEN_ORDER.map((symbol) => {
+                const t = tokens[symbol];
+                if (!t) return null;
+                return (
+                  <div key={symbol} className="wallet-popup-balance-value wallet-popup-balance-value-secondary">
+                    {t.human.toLocaleString(undefined, { maximumFractionDigits: 2 })} {symbol}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="wallet-popup-divider" />

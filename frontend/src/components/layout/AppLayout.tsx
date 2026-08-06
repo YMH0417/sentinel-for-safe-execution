@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import logo from "../../imgs/logo.svg";
 import { WalletAvatar } from "../WalletAvatar";
 import { ThemeToggle } from "../ThemeToggle";
+import { WalletFaucetOnboardingModal } from "../WalletFaucetOnboardingModal";
 
 const NAV = [
   { to: "/dashboard", label: "仪表盘" },
@@ -61,6 +62,8 @@ export function AppLayout() {
       >
         <Outlet />
       </main>
+
+      <WalletFaucetOnboardingModal />
     </div>
   );
 }

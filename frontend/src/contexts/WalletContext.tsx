@@ -4,6 +4,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 import { getAddress } from "ethers";
 import { connectMetaMaskWallet, restoreMetaMaskSession, revokeMetaMaskAccess } from "../lib/wallet";
@@ -14,6 +15,9 @@ interface WalletContextValue {
   isConnecting: boolean;
   /** False until the initial eth_accounts probe finishes (page load / refresh). */
   isWalletReady: boolean;
+  /** Shown when wallet is connected (explicit connect or MetaMask session restore). */
+  faucetOnboardingOpen: boolean;
+  dismissFaucetOnboarding: () => void;
   setAccount: (account: string | null) => void;
   /** MetaMask eth_requestAccounts + switch/add demo chain when in demo mode */
   connectWallet: () => Promise<string>;
@@ -26,6 +30,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccountState] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isWalletReady, setIsWalletReady] = useState(false);
+  const [faucetOnboardingOpen, setFaucetOnboardingOpen] = useState(false);
+  /** In-memory: user dismissed onboarding for this address (avoids MetaMask accountsChanged re-opening). */
+  const onboardingDismissedForRef = useRef<string | null>(null);
+
+  const tryOpenFaucetOnboarding = useCallback((address: string) => {
+    try {
+      const checksum = getAddress(address);
+      if (onboardingDismissedForRef.current === checksum) return;
+      setFaucetOnboardingOpen(true);
+    } catch {
+      setFaucetOnboardingOpen(true);
+    }
+  }, []);
 
   const setAccount = useCallback((a: string | null) => {
     setAccountState(a);
@@ -37,6 +54,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const address = await connectMetaMaskWallet();
       setAccount(address);
+      onboardingDismissedForRef.current = null;
+      setFaucetOnboardingOpen(true);
       return address;
     } catch (err) {
       throw new Error(getErrorMessage(err, "连接 MetaMask 失败"));
@@ -45,8 +64,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [setAccount]);
 
+  const dismissFaucetOnboarding = useCallback(() => {
+    if (account) {
+      try {
+        onboardingDismissedForRef.current = getAddress(account);
+      } catch {
+        onboardingDismissedForRef.current = account;
+      }
+    }
+    setFaucetOnboardingOpen(false);
+  }, [account]);
+
   const disconnectWallet = useCallback(() => {
     void revokeMetaMaskAccess();
+    setFaucetOnboardingOpen(false);
+    onboardingDismissedForRef.current = null;
     setAccount(null);
   }, [setAccount]);
 
@@ -56,14 +88,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       const restored = await restoreMetaMaskSession();
       if (cancelled) return;
-      if (restored) setAccount(restored);
+      if (restored) {
+        setAccount(restored);
+        tryOpenFaucetOnboarding(restored);
+      }
       setIsWalletReady(true);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [setAccount]);
+  }, [setAccount, tryOpenFaucetOnboarding]);
 
   useEffect(() => {
     const eth = window.ethereum;
@@ -73,10 +108,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const list = accounts as string[];
       if (!list?.length) {
         setAccount(null);
+        setFaucetOnboardingOpen(false);
         return;
       }
       try {
-        setAccount(getAddress(list[0]));
+        const next = getAddress(list[0]);
+        setAccount(next);
+        tryOpenFaucetOnboarding(next);
       } catch {
         setAccount(list[0] ?? null);
       }
@@ -104,7 +142,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       eth.removeListener?.("accountsChanged", onAccountsChanged);
       eth.removeListener?.("chainChanged", onChainChanged);
     };
-  }, [setAccount]);
+  }, [setAccount, tryOpenFaucetOnboarding]);
 
   return (
     <WalletContext.Provider
@@ -112,6 +150,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         account,
         isConnecting,
         isWalletReady,
+        faucetOnboardingOpen,
+        dismissFaucetOnboarding,
         setAccount,
         connectWallet,
         disconnectWallet,
